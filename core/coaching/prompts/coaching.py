@@ -64,6 +64,8 @@ def build_coaching_prompt(analysis: CoachingAnalysis) -> str:
             "exit_speed_delta_ms": round(pc.exit_speed_delta, 2),
             "throttle_application_delta_meters": round(pc.throttle_delta, 1),
         }
+        if pc.corner_name:
+            entry["corner_name"] = pc.corner_name
         if seg and track_length > 0:
             entry["distance_from_start_meters"] = round(seg.apex_distance, 0)
             entry["lap_position_percent"] = round(
@@ -76,7 +78,7 @@ def build_coaching_prompt(analysis: CoachingAnalysis) -> str:
     consistency_data = []
     for ca in analysis.consistency:
         seg = corner_segments.get(ca.corner_number)
-        entry = {
+        entry: dict = {
             "corner_number": ca.corner_number,
             "mean_time": round(ca.mean_time, 3),
             "std_time": round(ca.std_time, 3),
@@ -86,6 +88,8 @@ def build_coaching_prompt(analysis: CoachingAnalysis) -> str:
             "is_consistency_issue": ca.is_consistency_issue,
             "is_technique_issue": ca.is_technique_issue,
         }
+        if ca.corner_name:
+            entry["corner_name"] = ca.corner_name
         if seg and track_length > 0:
             entry["lap_position_percent"] = round(
                 seg.apex_distance / track_length * 100, 1

@@ -107,6 +107,81 @@ class TestAnalyzeSessionErrors:
             analyze_session(sample_ibt_path)
 
 
+class TestCornerNames:
+    """Tests for corner name matching in the analysis pipeline."""
+
+    def test_no_corner_names_without_db(self, multilap_ibt_path: Path):
+        """Without db_path, corner_name should be None on all priority corners."""
+        analysis = analyze_session(multilap_ibt_path)
+        for pc in analysis.priority_corners:
+            assert pc.corner_name is None
+        assert analysis.corner_names == {}
+
+    def test_corner_names_with_db(self, multilap_ibt_path: Path, tmp_path: Path):
+        """With db_path and Crew Chief data, corner names should be populated."""
+        import json
+        from core.track.crew_chief_seeder import seed_track_by_id
+        from core.track.track_db import TrackDB
+
+        # Set up DB and cache with Road America data
+        db_path = tmp_path / "tracks.db"
+        cache_path = tmp_path / "crew_chief_cache.json"
+
+        # Minimal Crew Chief JSON with Road America corners
+        cc_data = {
+            "TrackLandmarksData": [
+                {
+                    "irTrackName": "roadamerica full",
+                    "trackLandmarks": [
+                        {"landmarkName": "turn1", "distanceRoundLapStart": 541.94,
+                         "distanceRoundLapEnd": 758, "isCommonOvertakingSpot": True},
+                        {"landmarkName": "turn3", "distanceRoundLapStart": 1027.32,
+                         "distanceRoundLapEnd": 1227.80, "isCommonOvertakingSpot": True},
+                        {"landmarkName": "the_sweep", "distanceRoundLapStart": 1569.25,
+                         "distanceRoundLapEnd": 2182.89, "isCommonOvertakingSpot": False},
+                        {"landmarkName": "turn5", "distanceRoundLapStart": 2217.70,
+                         "distanceRoundLapEnd": 2382.10, "isCommonOvertakingSpot": True},
+                        {"landmarkName": "turn6", "distanceRoundLapStart": 2532.47,
+                         "distanceRoundLapEnd": 2686, "isCommonOvertakingSpot": True},
+                        {"landmarkName": "turn7", "distanceRoundLapStart": 2761.68,
+                         "distanceRoundLapEnd": 2939, "isCommonOvertakingSpot": True},
+                        {"landmarkName": "turn8", "distanceRoundLapStart": 3170.59,
+                         "distanceRoundLapEnd": 3343, "isCommonOvertakingSpot": True},
+                        {"landmarkName": "the_carousel", "distanceRoundLapStart": 3386.07,
+                         "distanceRoundLapEnd": 3930, "isCommonOvertakingSpot": False},
+                        {"landmarkName": "the_kink", "distanceRoundLapStart": 4131.72,
+                         "distanceRoundLapEnd": 4411, "isCommonOvertakingSpot": False},
+                        {"landmarkName": "canada_corner", "distanceRoundLapStart": 5017.59,
+                         "distanceRoundLapEnd": 5156.97, "isCommonOvertakingSpot": True},
+                        {"landmarkName": "thunder_valley", "distanceRoundLapStart": 5172.14,
+                         "distanceRoundLapEnd": 5334.57, "isCommonOvertakingSpot": False},
+                        {"landmarkName": "bill_mitchell_bend", "distanceRoundLapStart": 5343.98,
+                         "distanceRoundLapEnd": 5563, "isCommonOvertakingSpot": False},
+                        {"landmarkName": "turn14", "distanceRoundLapStart": 5652.12,
+                         "distanceRoundLapEnd": 5862, "isCommonOvertakingSpot": False},
+                    ],
+                }
+            ]
+        }
+        cache_path.write_text(json.dumps(cc_data), encoding="utf-8")
+
+        # Pre-seed the DB
+        db = TrackDB(db_path)
+        seed_track_by_id(db, "18", cache_path=cache_path)
+
+        # Run analysis with DB
+        analysis = analyze_session(multilap_ibt_path, db_path=db_path)
+
+        # At least some corners should have names
+        assert len(analysis.corner_names) > 0
+        # At least one priority corner should have a name
+        named_pcs = [pc for pc in analysis.priority_corners if pc.corner_name]
+        assert len(named_pcs) > 0, (
+            f"Expected named priority corners. "
+            f"Available names: {analysis.corner_names}"
+        )
+
+
 class TestBuildCoachingPrompt:
     """Test the prompt builder."""
 
@@ -134,3 +209,57 @@ class TestBuildCoachingPrompt:
         assert "best_lap_time_seconds" in prompt
         assert "theoretical_best_seconds" in prompt
         assert "time_lost_seconds" in prompt
+
+    def test_prompt_includes_corner_names(self, multilap_ibt_path: Path, tmp_path: Path):
+        """When corner names exist, prompt should include corner_name fields."""
+        import json
+        from core.coaching.prompts.coaching import build_coaching_prompt
+        from core.track.crew_chief_seeder import seed_track_by_id
+        from core.track.track_db import TrackDB
+
+        db_path = tmp_path / "tracks.db"
+        cache_path = tmp_path / "cache.json"
+        cc_data = {
+            "TrackLandmarksData": [
+                {
+                    "irTrackName": "roadamerica full",
+                    "trackLandmarks": [
+                        {"landmarkName": "turn1", "distanceRoundLapStart": 541.94,
+                         "distanceRoundLapEnd": 758, "isCommonOvertakingSpot": True},
+                        {"landmarkName": "turn3", "distanceRoundLapStart": 1027.32,
+                         "distanceRoundLapEnd": 1227.80, "isCommonOvertakingSpot": True},
+                        {"landmarkName": "the_sweep", "distanceRoundLapStart": 1569.25,
+                         "distanceRoundLapEnd": 2182.89, "isCommonOvertakingSpot": False},
+                        {"landmarkName": "turn5", "distanceRoundLapStart": 2217.70,
+                         "distanceRoundLapEnd": 2382.10, "isCommonOvertakingSpot": True},
+                        {"landmarkName": "turn6", "distanceRoundLapStart": 2532.47,
+                         "distanceRoundLapEnd": 2686, "isCommonOvertakingSpot": True},
+                        {"landmarkName": "turn7", "distanceRoundLapStart": 2761.68,
+                         "distanceRoundLapEnd": 2939, "isCommonOvertakingSpot": True},
+                        {"landmarkName": "turn8", "distanceRoundLapStart": 3170.59,
+                         "distanceRoundLapEnd": 3343, "isCommonOvertakingSpot": True},
+                        {"landmarkName": "the_carousel", "distanceRoundLapStart": 3386.07,
+                         "distanceRoundLapEnd": 3930, "isCommonOvertakingSpot": False},
+                        {"landmarkName": "the_kink", "distanceRoundLapStart": 4131.72,
+                         "distanceRoundLapEnd": 4411, "isCommonOvertakingSpot": False},
+                        {"landmarkName": "canada_corner", "distanceRoundLapStart": 5017.59,
+                         "distanceRoundLapEnd": 5156.97, "isCommonOvertakingSpot": True},
+                        {"landmarkName": "thunder_valley", "distanceRoundLapStart": 5172.14,
+                         "distanceRoundLapEnd": 5334.57, "isCommonOvertakingSpot": False},
+                        {"landmarkName": "bill_mitchell_bend", "distanceRoundLapStart": 5343.98,
+                         "distanceRoundLapEnd": 5563, "isCommonOvertakingSpot": False},
+                        {"landmarkName": "turn14", "distanceRoundLapStart": 5652.12,
+                         "distanceRoundLapEnd": 5862, "isCommonOvertakingSpot": False},
+                    ],
+                }
+            ]
+        }
+        cache_path.write_text(json.dumps(cc_data), encoding="utf-8")
+
+        db = TrackDB(db_path)
+        seed_track_by_id(db, "18", cache_path=cache_path)
+
+        analysis = analyze_session(multilap_ibt_path, db_path=db_path)
+        prompt = build_coaching_prompt(analysis)
+
+        assert "corner_name" in prompt

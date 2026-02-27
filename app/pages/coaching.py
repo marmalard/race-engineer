@@ -1,12 +1,15 @@
 """Lap Coaching page — post-session telemetry analysis and coaching."""
 
 import os
+from pathlib import Path
 
 import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
 from core.coaching.analyzer import CoachingAnalysis, analyze_session
+
+DB_PATH = Path("data/tracks.db")
 from core.coaching.synthesizer import Synthesizer
 
 
@@ -55,6 +58,7 @@ def render_coaching_page() -> None:
             analysis = analyze_session(
                 ibt_data=bytes(uploaded_file.getbuffer()),
                 track_type=track_type,
+                db_path=DB_PATH,
             )
         except ValueError as e:
             st.error(str(e))
@@ -102,12 +106,13 @@ def render_coaching_page() -> None:
         for i, pc in enumerate(analysis.priority_corners, 1):
             delta_str = f"+{pc.time_lost:.3f}s" if pc.time_lost > 0 else f"{pc.time_lost:.3f}s"
             seg = corner_segments.get(pc.corner_number)
+            corner_label = pc.corner_name or f"Corner {pc.corner_number}"
             if seg and analysis.segmentation.track_length > 0:
                 pct = seg.apex_distance / analysis.segmentation.track_length * 100
                 pos_str = f" — {pct:.0f}% into lap ({seg.apex_distance:.0f}m)"
             else:
                 pos_str = ""
-            st.markdown(f"**#{i} — Corner {pc.corner_number}{pos_str}** ({delta_str})")
+            st.markdown(f"**#{i} — {corner_label}{pos_str}** ({delta_str})")
 
             cols = st.columns(4)
             cols[0].metric("Issue", pc.issue_type.title())
@@ -188,12 +193,13 @@ def _speed_trace_plot(analysis: CoachingAnalysis) -> go.Figure:
 
     # Corner shading
     for corner in analysis.segmentation.corners:
+        label = analysis.corner_names.get(corner.corner_number, f"C{corner.corner_number}")
         fig.add_vrect(
             x0=corner.distance_start,
             x1=corner.distance_end,
             fillcolor="rgba(100,100,100,0.1)",
             line_width=0,
-            annotation_text=f"C{corner.corner_number}",
+            annotation_text=label,
             annotation_position="top left",
             annotation_font_size=9,
         )
@@ -252,10 +258,11 @@ def _time_delta_plot(analysis: CoachingAnalysis) -> go.Figure:
 
     # Corner apex markers
     for corner in analysis.segmentation.corners:
+        label = analysis.corner_names.get(corner.corner_number, f"C{corner.corner_number}")
         fig.add_vline(
             x=corner.apex_distance,
             line=dict(color="rgba(150,150,150,0.4)", width=1, dash="dot"),
-            annotation_text=f"C{corner.corner_number}",
+            annotation_text=label,
             annotation_position="top",
             annotation_font_size=9,
         )

@@ -249,7 +249,7 @@ streamlit run app/streamlit_app.py
 - [x] Lap time accuracy — uses `LapCurrentLapTime[-1]` (not `.max()`, which picks up stale previous-lap values)
 - [x] Disrupted lap filtering — 10% pace threshold instead of zero-incident filter
 - [x] Corner position data in AI prompt (lap_position_percent, distance_from_start)
-- [ ] Track database seeding — corner names matched to detected corners
+- [x] Track database seeding — Crew Chief data import, corner name matching
 - [ ] Pace context from iRacing API integrated into scouting reports
 - [ ] Unit toggle (metric/imperial) in coaching UI
 
@@ -287,12 +287,22 @@ streamlit run app/streamlit_app.py
 - Presets for road/street/oval via `CornerDetector.for_track_type()`
 - Detected corner numbers are sequential IDs, NOT official track turn numbers
 
+### Crew Chief Track Seeder
+- Imports corner names and distances from Crew Chief's open-source `trackLandmarksData.json` (GitLab)
+- `IRACING_TRACK_MAP` maps Crew Chief `irTrackName` strings to iRacing numeric track IDs (verified from IBT files)
+- Covers 21 iRacing tracks including Bathurst, Spa, Road America, Monza, Laguna Seca, Sebring
+- Lazy-seeds on first use: when coaching pipeline processes an IBT file, automatically seeds if no named corners exist
+- `format_corner_name()` converts snake_case to display names with overrides for proper names (Eau Rouge, Raidillon, McPhillamy Park)
+- `CornerRegistry.match_corners()` maps detected telemetry corners to named DB corners by distance overlap + apex proximity fallback (50m tolerance)
+- Corner names flow into `PriorityCorner.corner_name`, `ConsistencyAnalysis.corner_name`, AI prompt `corner_name` field, and UI/plot labels
+- Graceful fallback: tracks without Crew Chief data continue to use position-based descriptions
+
 ### Coaching Analyzer
-- Full pipeline: parse → normalize → filter disrupted laps → detect corners → compare laps → rank priority corners
+- Full pipeline: parse → normalize → filter disrupted laps → detect corners → match corner names → compare laps → rank priority corners
 - Disrupted lap filter: 10% pace threshold (not incident count — minor 1x off-tracks don't corrupt telemetry)
 - Compares best lap vs median-pace lap for coaching contrast
 - Priority corners ranked by abs(time_lost), top 3
-- AI prompt includes lap_position_percent and distance_from_start so Claude can identify corners by position rather than guessing names
+- AI prompt includes corner_name (when available), lap_position_percent, and distance_from_start
 
 ### Lap Comparator
 - Braking onset search starts 200m before corner entry (not at corner start, which is already the braking point)
@@ -307,9 +317,9 @@ streamlit run app/streamlit_app.py
 - Implemented endpoints: `get_member_info()`, `get_member_summary()`, `get_tracks()`, `get_cars()`, `get_series()`, `get_season_results()`
 
 ### Test Suite
-- 123 tests passing, 3 skipped (need multi-lap IBT for two-lap comparison tests)
+- 153 tests passing, 3 skipped (need multi-lap IBT for two-lap comparison tests)
 - Test fixtures: `tests/fixtures/sample.ibt` (Spa, BMW M2 CS Racing, 2 laps — gitignored)
 - Multi-lap fixture from `C:\Users\antho\Documents\iRacing\telemetry\` (Road America F4, 7 laps)
 - Bathurst fixture also available for corner detection tuning tests
 - Tests skip gracefully when no IBT file is available
-- Test files: test_ibt_parser, test_normalizer, test_corner_detector, test_corner_detection_tuning, test_lap_comparator, test_multilap_comparator, test_track_db, test_iracing_api, test_synthesizer, test_analyzer
+- Test files: test_ibt_parser, test_normalizer, test_corner_detector, test_corner_detection_tuning, test_lap_comparator, test_multilap_comparator, test_track_db, test_iracing_api, test_synthesizer, test_analyzer, test_crew_chief_seeder

@@ -26,6 +26,7 @@ class PriorityCorner:
     """A corner ranked by coaching priority (most time available)."""
 
     corner_number: int
+    corner_name: str | None  # From TrackDB via CornerRegistry (None if unmatched)
     time_lost: float  # seconds lost vs best lap (positive = slower)
     issue_type: str  # "consistency", "technique", or "both"
     braking_delta: float  # meters (positive = brakes later)
@@ -52,6 +53,7 @@ class CoachingAnalysis:
     theoretical_best: TheoreticalBest
     consistency: list[ConsistencyAnalysis]
     priority_corners: list[PriorityCorner]
+    corner_names: dict[int, str]  # corner_number -> name (for UI/plots)
     all_laps: list[NormalizedLap]
     lap_times: list[tuple[int, float]]  # (lap_number, lap_time) for all valid laps
 
@@ -59,12 +61,14 @@ class CoachingAnalysis:
 def analyze_session(
     ibt_data: bytes | Path,
     track_type: str = "road",
+    db_path: Path | None = None,
 ) -> CoachingAnalysis:
     """Run the full coaching analysis pipeline on an IBT file.
 
     Args:
         ibt_data: Raw IBT file bytes (from upload) or Path to file.
         track_type: Track type for corner detection tuning ('road', 'street', 'oval').
+        db_path: Path to tracks.db for corner name lookup. If None, names are omitted.
 
     Returns:
         CoachingAnalysis with all structured data needed for coaching.
@@ -109,6 +113,13 @@ def analyze_session(
     detector = CornerDetector.for_track_type(track_type)
     segmentation = detector.detect(best_lap)
 
+    # 4b. Match detected corners to named corners from database
+    corner_names: dict[int, str] = {}
+    if db_path is not None:
+        corner_names = _match_corner_names(
+            db_path, str(ibt.session.track_id), segmentation.corners
+        )
+
     # 5. Compare best vs comparison
     comparator = LapComparator()
     lap_comparison = comparator.compare_laps(best_lap, comparison_lap, segmentation)
@@ -117,9 +128,13 @@ def analyze_session(
     theoretical = comparator.theoretical_best(all_laps, segmentation)
     consistency = comparator.consistency_analysis(all_laps, segmentation)
 
+    # 6b. Populate corner names on consistency entries
+    for ca in consistency:
+        ca.corner_name = corner_names.get(ca.corner_number)
+
     # 7. Build priority corners — rank by time lost
     consistency_map = {c.corner_number: c for c in consistency}
-    priority_corners = _rank_priority_corners(lap_comparison, consistency_map)
+    priority_corners = _rank_priority_corners(lap_comparison, consistency_map, corner_names)
 
     # 8. Lap times for display
     lap_times = [(l.lap_number, l.lap_time) for l in sorted_laps]
@@ -139,6 +154,7 @@ def analyze_session(
         theoretical_best=theoretical,
         consistency=consistency,
         priority_corners=priority_corners,
+        corner_names=corner_names,
         all_laps=all_laps,
         lap_times=lap_times,
     )
@@ -147,8 +163,10 @@ def analyze_session(
 def _rank_priority_corners(
     comparison: LapComparison,
     consistency_map: dict[int, ConsistencyAnalysis],
+    corner_names: dict[int, str] | None = None,
 ) -> list[PriorityCorner]:
     """Rank corners by how much time is available, taking the top 3."""
+    names = corner_names or {}
     corners: list[PriorityCorner] = []
 
     for cd in comparison.corner_deltas:
@@ -168,6 +186,7 @@ def _rank_priority_corners(
         corners.append(
             PriorityCorner(
                 corner_number=cn,
+                corner_name=names.get(cn),
                 time_lost=cd.time_delta,
                 issue_type=issue_type,
                 braking_delta=cd.braking_point_delta,
@@ -196,3 +215,53 @@ def _filter_disrupted_laps(laps: list[NormalizedLap]) -> list[NormalizedLap]:
     fastest = min(l.lap_time for l in laps)
     threshold = fastest * 1.10  # 10% slower = likely a spin or stall
     return [l for l in laps if l.lap_time <= threshold]
+
+
+def _match_corner_names(
+    db_path: Path,
+    track_id: str,
+    detected_corners: list,
+) -> dict[int, str]:
+    """Match detected corners to named corners in the database.
+
+    Lazy-seeds from Crew Chief data if the track has no named corners yet.
+    Returns a dict of corner_number -> corner_name for matched corners.
+    """
+    import logging
+
+    from core.track.corner_registry import CornerRegistry
+    from core.track.crew_chief_seeder import seed_track_by_id
+    from core.track.track_db import TrackDB
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        db = TrackDB(db_path)
+
+        # Lazy-seed from Crew Chief if no named corners exist
+        existing = db.get_corners(track_id)
+        if not existing or not any(c.name for c in existing):
+            cache_path = db_path.parent / "crew_chief_cache.json"
+            seed_track_by_id(db, track_id, cache_path)
+
+        # Match detected corners to DB corners
+        registry = CornerRegistry(db)
+        matches = registry.match_corners(track_id, detected_corners)
+
+        corner_names: dict[int, str] = {}
+        for detected, db_corner in matches:
+            if db_corner and db_corner.name:
+                corner_names[detected.corner_number] = db_corner.name
+
+        if corner_names:
+            logger.info(
+                "Matched %d/%d corners to named corners for track %s",
+                len(corner_names),
+                len(detected_corners),
+                track_id,
+            )
+        return corner_names
+
+    except Exception as exc:
+        logger.warning("Corner name matching failed: %s", exc)
+        return {}

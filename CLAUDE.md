@@ -33,18 +33,13 @@ race-engineer/
 │   │   └── lap_comparator.py     # Lap-to-lap and benchmark comparison logic
 │   ├── track/
 │   │   ├── track_db.py           # Track database CRUD operations
-│   │   ├── corner_registry.py    # Corner names, types, characteristics
+│   │   ├── corner_registry.py    # Match detected corners to DB corners
+│   │   ├── crew_chief_seeder.py  # Crew Chief corner name import and seeding
 │   │   └── models.py             # Track and corner data models
 │   ├── benchmark/
-│   │   ├── iracing_api.py        # iRacing Data API client
-│   │   ├── pace_context.py       # Pace target calculation from API data
-│   │   └── garage61_import.py    # Garage 61 CSV ingestion and alignment
-│   ├── profile/
-│   │   ├── driver_profile.py     # Driver profile accumulation and queries
-│   │   ├── session_history.py    # Session storage and retrieval
-│   │   └── models.py             # Driver and session data models
+│   │   └── iracing_api.py        # iRacing Data API client
 │   └── coaching/
-│       ├── analyzer.py           # Core analysis: gaps, consistency, patterns
+│       ├── analyzer.py           # Coaching analysis orchestrator
 │       ├── synthesizer.py        # AI coaching synthesis (Claude API)
 │       ├── scouting.py           # Scouting report generation
 │       └── prompts/              # Prompt templates for AI synthesis
@@ -57,7 +52,14 @@ race-engineer/
     ├── test_ibt_parser.py
     ├── test_normalizer.py
     ├── test_corner_detector.py
-    └── test_lap_comparator.py
+    ├── test_corner_detection_tuning.py
+    ├── test_lap_comparator.py
+    ├── test_multilap_comparator.py
+    ├── test_track_db.py
+    ├── test_crew_chief_seeder.py
+    ├── test_iracing_api.py
+    ├── test_synthesizer.py
+    └── test_analyzer.py
 ```
 
 ## Key Technical Concepts
@@ -289,10 +291,11 @@ streamlit run app/streamlit_app.py
 
 ### Crew Chief Track Seeder
 - Imports corner names and distances from Crew Chief's open-source `trackLandmarksData.json` (GitLab)
-- `IRACING_TRACK_MAP` maps Crew Chief `irTrackName` strings to iRacing numeric track IDs (verified from IBT files)
-- Covers 21 iRacing tracks including Bathurst, Spa, Road America, Monza, Laguna Seca, Sebring
+- `IRACING_TRACK_MAP`: 30 entries mapping to iRacing numeric track IDs — 21 direct iRacing matches + 9 cross-sim matched
+- Cross-sim matching (`CROSS_SIM_MAP`): CC entries without `irTrackName` are matched by `pcarsTrackName`, `acTrackNames`, `rf1TrackNames` etc. Canonical keys prefixed `xsim_` (e.g., `xsim_brands_gp`, `xsim_suzuka`)
+- Verified track IDs from IBT files: bathurst=219, spa=523, roadamerica=18, lagunaseca=47, monza=239, sebring=95, brands_hatch=145
 - Lazy-seeds on first use: when coaching pipeline processes an IBT file, automatically seeds if no named corners exist
-- `format_corner_name()` converts snake_case to display names with overrides for proper names (Eau Rouge, Raidillon, McPhillamy Park)
+- `format_corner_name()` converts snake_case to display names with ~40 overrides for proper names (Eau Rouge, Raidillon, McPhillamy Park, Paddock Hill Bend, Tertre Rouge, Craner Curves, 130R, etc.)
 - `CornerRegistry.match_corners()` maps detected telemetry corners to named DB corners by distance overlap + apex proximity fallback (50m tolerance)
 - Corner names flow into `PriorityCorner.corner_name`, `ConsistencyAnalysis.corner_name`, AI prompt `corner_name` field, and UI/plot labels
 - Graceful fallback: tracks without Crew Chief data continue to use position-based descriptions
@@ -317,7 +320,7 @@ streamlit run app/streamlit_app.py
 - Implemented endpoints: `get_member_info()`, `get_member_summary()`, `get_tracks()`, `get_cars()`, `get_series()`, `get_season_results()`
 
 ### Test Suite
-- 153 tests passing, 3 skipped (need multi-lap IBT for two-lap comparison tests)
+- 161 tests passing, 3 skipped (need multi-lap IBT for two-lap comparison tests)
 - Test fixtures: `tests/fixtures/sample.ibt` (Spa, BMW M2 CS Racing, 2 laps — gitignored)
 - Multi-lap fixture from `C:\Users\antho\Documents\iRacing\telemetry\` (Road America F4, 7 laps)
 - Bathurst fixture also available for corner detection tuning tests

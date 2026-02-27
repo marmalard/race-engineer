@@ -9,16 +9,19 @@ This is not a data visualization tool — it's a coaching system that tells you 
 ### Scouting Report (working)
 Pre-session briefing for any car/track combo. Powered by Claude AI with live web search for community knowledge — track character, key corners, car-specific notes, and pace context.
 
-### Lap Coaching (pipeline complete, UI in progress)
-Post-session analysis that compares your laps to your own best performance. Identifies the 2-3 corners where you're leaving the most time and delivers prioritized, actionable coaching.
+### Lap Coaching (working)
+Post-session analysis that compares your laps to your own best performance. Identifies the 2-3 corners where you're leaving the most time and delivers prioritized, actionable coaching with AI-generated tips.
 
-**Telemetry pipeline:**
+**Pipeline:**
 - IBT binary file parsing (iRacing telemetry)
 - Distance-based normalization (1 meter intervals)
 - Automated corner detection (speed trace heuristics)
+- Corner name matching from Crew Chief track database (30 tracks)
 - Lap-to-lap comparison with per-corner time deltas
 - Theoretical best lap calculation
 - Consistency vs. technique issue classification
+- AI coaching synthesis (Claude API)
+- Interactive speed trace and time delta plots (Plotly)
 
 ## Architecture
 
@@ -38,15 +41,17 @@ race-engineer/
 │   ├── track/                    # Track database
 │   │   ├── models.py             # Track & corner data models
 │   │   ├── track_db.py           # SQLite CRUD
-│   │   └── corner_registry.py    # Match detected corners to DB
+│   │   ├── corner_registry.py    # Match detected corners to DB
+│   │   └── crew_chief_seeder.py  # Crew Chief corner name import
 │   ├── benchmark/
-│   │   └── iracing_api.py        # iRacing Data API client (interface + stub)
+│   │   └── iracing_api.py        # iRacing Data API client
 │   └── coaching/
+│       ├── analyzer.py           # Coaching analysis orchestrator
 │       ├── synthesizer.py        # Claude API integration
 │       ├── scouting.py           # Scouting report orchestrator
 │       └── prompts/              # Prompt templates
 ├── data/                         # SQLite databases (created at runtime)
-├── tests/                        # Test suite (42 tests)
+├── tests/                        # Test suite (161 tests)
 └── docs/
     └── prd.md                    # Product requirements document
 ```
@@ -124,12 +129,16 @@ print(f"Theoretical best: {theoretical.theoretical_time:.3f}s")
 - [x] Track database
 - [x] Basic Streamlit shell
 - [x] Scouting reports (Claude API + web search)
+- [x] iRacing Data API client (Password Limited OAuth)
 
-### Phase 2: Core Features (next)
-- [ ] Full coaching pipeline wired into Streamlit
-- [ ] iRacing Data API integration (pace context)
-- [ ] Corner detection tuning per track type
-- [ ] Track database seeding
+### Phase 2: Core Features (in progress)
+- [x] Coaching analysis orchestrator
+- [x] Coaching AI synthesis (Claude API)
+- [x] Speed trace and time delta plots (Plotly)
+- [x] Corner detection tuning per track type
+- [x] Track database seeding — Crew Chief corner names (30 tracks)
+- [ ] Pace context from iRacing API in scouting reports
+- [ ] Unit toggle (metric/imperial)
 
 ### Phase 3: Intelligence
 - [ ] Driver profile accumulation

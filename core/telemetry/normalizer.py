@@ -112,8 +112,9 @@ class Normalizer:
         brake = np.clip(brake, 0.0, 1.0)
         speed = np.maximum(speed, 0.0)
 
-        # Compute lap time from elapsed time
-        lap_time = float(elapsed_time[-1]) if len(elapsed_time) > 0 else 0.0
+        # Prefer iRacing's official lap time if available (more accurate),
+        # otherwise fall back to elapsed time at end of distance grid.
+        lap_time = self._get_lap_time(lap_df, elapsed_time)
 
         return NormalizedLap(
             lap_number=lap_number,
@@ -273,6 +274,29 @@ class Normalizer:
         return self._interpolate_channel(
             raw_dist, lap_df[column].values[mask], distance_grid, kind=kind
         )
+
+    def _get_lap_time(
+        self, lap_df: pd.DataFrame, elapsed_time: np.ndarray
+    ) -> float:
+        """Get the most accurate lap time available.
+
+        Uses iRacing's LapCurrentLapTime channel. We take the *last*
+        value, not the max, because the Lap channel transitions a few
+        ticks before LCT resets — so the first ~30 samples of a lap
+        group may still contain the *previous* lap's final LCT value,
+        inflating the max by a full lap time.
+        """
+        if "LapCurrentLapTime" in lap_df.columns:
+            lct = lap_df["LapCurrentLapTime"].values
+            last_lct = float(lct[-1])
+            if last_lct > 0:
+                return last_lct
+
+        # Fallback: elapsed time at end of distance grid
+        if len(elapsed_time) > 0:
+            return float(elapsed_time[-1])
+
+        return 0.0
 
     def _empty_lap(
         self, lap_number: int, track_length: float, is_valid: bool = False

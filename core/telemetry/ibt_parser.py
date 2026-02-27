@@ -146,6 +146,10 @@ class IBTParser:
         "SessionTick",
         "RPM",
         "Gear",
+        # Lap validity channels
+        "PlayerTrackSurface",
+        "PlayerCarMyIncidentCount",
+        "OnPitRoad",
     ]
 
     def parse(
@@ -452,7 +456,10 @@ class IBTParser:
             for lap_num, group in ibt.telemetry.groupby("Lap"):
                 if lap_num <= 0:
                     continue
-                lap_time = group["LapCurrentLapTime"].max()
+                # Use last value, not max — the Lap channel transitions
+                # before LCT resets, so early samples may contain the
+                # previous lap's stale LCT value.
+                lap_time = group["LapCurrentLapTime"].iloc[-1]
                 if lap_time > 0:
                     results.append((int(lap_num), float(lap_time)))
         elif "SessionTime" in ibt.telemetry.columns:

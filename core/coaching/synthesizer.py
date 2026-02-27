@@ -4,11 +4,18 @@ Handles scouting report generation (with web search) and coaching
 narrative synthesis (from structured analysis data).
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import anthropic
 
+if TYPE_CHECKING:
+    from core.coaching.analyzer import CoachingAnalysis
+
 from core.coaching.prompts.scouting import SCOUTING_SYSTEM_PROMPT, build_scouting_prompt
+from core.coaching.prompts.coaching import COACHING_SYSTEM_PROMPT, build_coaching_prompt
 
 
 @dataclass
@@ -29,6 +36,18 @@ class ScoutingReport:
     track_config: str | None
     report_text: str
     citations: list[Citation] = field(default_factory=list)
+    model_used: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
+@dataclass
+class CoachingReport:
+    """Generated coaching report with metadata."""
+
+    track: str
+    car: str
+    report_text: str
     model_used: str = ""
     input_tokens: int = 0
     output_tokens: int = 0
@@ -87,6 +106,35 @@ class Synthesizer:
             track_config=track_config,
             report_text=report_text,
             citations=citations,
+            model_used=response.model,
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+        )
+
+    def generate_coaching_narrative(
+        self,
+        analysis: "CoachingAnalysis",
+    ) -> "CoachingReport":
+        """Generate a coaching narrative from structured analysis data.
+
+        Unlike scouting reports, this does NOT use web search — the coaching
+        is based entirely on the deterministic telemetry analysis.
+        """
+        user_message = build_coaching_prompt(analysis)
+
+        response = self.client.messages.create(
+            model=self.model,
+            max_tokens=1024,
+            system=COACHING_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_message}],
+        )
+
+        report_text = self._extract_text(response)
+
+        return CoachingReport(
+            track=analysis.track_name,
+            car=analysis.car_name,
+            report_text=report_text,
             model_used=response.model,
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,

@@ -98,12 +98,18 @@ class LapComparator:
             if delta is not None:
                 corner_deltas.append(delta)
 
+        # Use official lap times for display, but derive the total delta
+        # from cumulative (SessionTime-based) so it's consistent with the
+        # per-distance delta trace. The small discrepancy (~0.03s) between
+        # iRacing's official timer and SessionTime span is negligible.
+        total_delta = float(cum_delta[-1]) if len(cum_delta) > 0 else 0.0
+
         return LapComparison(
             reference_lap=reference.lap_number,
             comparison_lap=comparison.lap_number,
             reference_time=reference.lap_time,
             comparison_time=comparison.lap_time,
-            total_time_delta=comparison.lap_time - reference.lap_time,
+            total_time_delta=total_delta,
             corner_deltas=corner_deltas,
             cumulative_time_delta=cum_delta,
             speed_delta=speed_delta,
@@ -230,7 +236,13 @@ class LapComparator:
         if exit_idx <= entry_idx:
             return None
 
-        return float(elapsed[exit_idx] - elapsed[entry_idx])
+        corner_time = float(elapsed[exit_idx] - elapsed[entry_idx])
+
+        # Guard against corrupted data (e.g., incident laps with non-monotonic time)
+        if corner_time <= 0:
+            return None
+
+        return corner_time
 
     def _cumulative_time_delta(
         self,
@@ -257,12 +269,15 @@ class LapComparator:
         if ref_time is None or comp_time is None:
             return None
 
-        # Find braking points in both laps for this corner
+        # Find braking points in both laps for this corner.
+        # Search from 200m before the corner entry so we can detect
+        # differences in brake initiation point between laps.
+        brake_search_start = max(0.0, corner.distance_start - 200.0)
         ref_brake_dist = self._find_brake_onset(
-            reference, corner.distance_start, corner.apex_distance
+            reference, brake_search_start, corner.apex_distance
         )
         comp_brake_dist = self._find_brake_onset(
-            comparison, corner.distance_start, corner.apex_distance
+            comparison, brake_search_start, corner.apex_distance
         )
 
         # Find throttle application in both laps

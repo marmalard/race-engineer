@@ -240,13 +240,18 @@ streamlit run app/streamlit_app.py
 - [x] Scouting reports — Claude API with web search (`core/coaching/synthesizer.py`)
 - [x] iRacing Data API client — Password Limited OAuth (`core/benchmark/iracing_api.py`)
 
-**Phase 2: Core Features** (next)
-- [ ] Wire coaching pipeline into Streamlit UI (IBT upload → analysis → coaching display)
+**Phase 2: Core Features** (in progress)
+- [x] Coaching analysis orchestrator (`core/coaching/analyzer.py`)
+- [x] Coaching AI synthesis — structured analysis → Claude → coaching narrative
+- [x] Speed trace comparison plots (Plotly) in coaching page
+- [x] Cumulative time delta plot in coaching page
+- [x] Corner detection tuning — road preset lowered to 3.0 m/s (was 5.0)
+- [x] Lap time accuracy — uses `LapCurrentLapTime[-1]` (not `.max()`, which picks up stale previous-lap values)
+- [x] Disrupted lap filtering — 10% pace threshold instead of zero-incident filter
+- [x] Corner position data in AI prompt (lap_position_percent, distance_from_start)
+- [ ] Track database seeding — corner names matched to detected corners
 - [ ] Pace context from iRacing API integrated into scouting reports
-- [ ] Lap coaching AI synthesis — structured analysis → Claude → coaching narrative
-- [ ] Corner detection tuning — lower thresholds for fast flowing circuits (only catches 3 at Spa currently)
-- [ ] Track database seeding — initial set of tracks with corner names
-- [ ] Speed trace comparison plots (plotly) in coaching page
+- [ ] Unit toggle (metric/imperial) in coaching UI
 
 **Phase 3: Intelligence**
 - [ ] Driver profile — accumulate across sessions
@@ -265,7 +270,7 @@ streamlit run app/streamlit_app.py
 - Reads the binary format: header (112 bytes) → disk sub-header (32 bytes) → session info YAML → variable headers (144 bytes each) → sample data
 - Uses numpy strides for fast channel extraction (no Python per-sample loop)
 - Accepts both `Path` and `bytes` input (supports Streamlit file uploads)
-- Extracts 15 core channels: Speed, Throttle, Brake, SteeringWheelAngle, Lat, Lon, Alt, Lap, LapCurrentLapTime, LapDist, LapDistPct, SessionTime, SessionTick, RPM, Gear
+- Extracts 18 core channels: Speed, Throttle, Brake, SteeringWheelAngle, Lat, Lon, Alt, Lap, LapCurrentLapTime, LapDist, LapDistPct, SessionTime, SessionTick, RPM, Gear, PlayerTrackSurface, PlayerCarMyIncidentCount, OnPitRoad
 - Session info parsed from embedded YAML: track name/ID/length, car name/ID, driver name/ID
 
 ### Distance Normalizer
@@ -274,11 +279,25 @@ streamlit run app/streamlit_app.py
 - Validates 90% track coverage, rejects laps with distance jumps while moving
 - Deduplicates same-distance samples (stationary/low speed)
 - Linear interpolation for continuous channels, nearest for discrete (gear)
+- Lap time from `LapCurrentLapTime[-1]` (last value), NOT `.max()` — the Lap channel transitions ~30 ticks before LCT resets, so `.max()` picks up the previous lap's stale value
 
 ### Corner Detector
 - Savitzky-Golay smoothing → `find_peaks` on inverted speed → walk backward for braking → walk forward for exit → merge chicanes → filter false positives
-- Default `min_corner_speed_drop=5.0 m/s` only catches big braking zones — needs lowering for fast circuits
+- Road preset: `min_corner_speed_drop=3.0 m/s` (was 5.0, which missed fast sweepers)
 - Presets for road/street/oval via `CornerDetector.for_track_type()`
+- Detected corner numbers are sequential IDs, NOT official track turn numbers
+
+### Coaching Analyzer
+- Full pipeline: parse → normalize → filter disrupted laps → detect corners → compare laps → rank priority corners
+- Disrupted lap filter: 10% pace threshold (not incident count — minor 1x off-tracks don't corrupt telemetry)
+- Compares best lap vs median-pace lap for coaching contrast
+- Priority corners ranked by abs(time_lost), top 3
+- AI prompt includes lap_position_percent and distance_from_start so Claude can identify corners by position rather than guessing names
+
+### Lap Comparator
+- Braking onset search starts 200m before corner entry (not at corner start, which is already the braking point)
+- Negative corner times rejected (guard against incident laps with non-monotonic elapsed time)
+- `total_time_delta` derived from cumulative SessionTime delta (not official lap time difference) for consistency with the per-distance delta trace
 
 ### iRacing Data API
 - Password Limited OAuth with SHA-256 credential masking: `base64(SHA-256(secret + lowercase(identifier)))`
@@ -288,6 +307,9 @@ streamlit run app/streamlit_app.py
 - Implemented endpoints: `get_member_info()`, `get_member_summary()`, `get_tracks()`, `get_cars()`, `get_series()`, `get_season_results()`
 
 ### Test Suite
-- 42 tests passing, 3 skipped (need multi-lap IBT for two-lap comparison tests)
-- Test fixture: `tests/fixtures/sample.ibt` (Spa, BMW M2 CS Racing, 2 laps — not committed, gitignored)
+- 123 tests passing, 3 skipped (need multi-lap IBT for two-lap comparison tests)
+- Test fixtures: `tests/fixtures/sample.ibt` (Spa, BMW M2 CS Racing, 2 laps — gitignored)
+- Multi-lap fixture from `C:\Users\antho\Documents\iRacing\telemetry\` (Road America F4, 7 laps)
+- Bathurst fixture also available for corner detection tuning tests
 - Tests skip gracefully when no IBT file is available
+- Test files: test_ibt_parser, test_normalizer, test_corner_detector, test_corner_detection_tuning, test_lap_comparator, test_multilap_comparator, test_track_db, test_iracing_api, test_synthesizer, test_analyzer

@@ -284,7 +284,7 @@ class CornerDetector:
         """
         presets: dict[str, DetectionParams] = {
             "road": DetectionParams(
-                min_corner_speed_drop=5.0,
+                min_corner_speed_drop=3.0,
                 min_corner_distance=50,
             ),
             "street": DetectionParams(

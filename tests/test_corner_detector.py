@@ -107,7 +107,7 @@ class TestDetectionParams:
     def test_for_track_type_road(self):
         """Road preset should create a valid detector."""
         det = CornerDetector.for_track_type("road")
-        assert det.params.min_corner_speed_drop == 5.0
+        assert det.params.min_corner_speed_drop == 3.0
 
     def test_for_track_type_street(self):
         """Street preset should be more sensitive."""

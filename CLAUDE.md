@@ -230,18 +230,23 @@ streamlit run app/streamlit_app.py
 
 ## Current Status
 
-**Phase 1: Foundation** (current)
-- [ ] IBT parser — read and extract telemetry channels
-- [ ] Distance normalizer — resample to distance-based
-- [ ] Corner detector — automated segmentation
-- [ ] Lap comparator — self-referential comparison
-- [ ] Track database — schema and basic CRUD
-- [ ] Basic Streamlit shell
+**Phase 1: Foundation** (complete)
+- [x] IBT parser — read and extract telemetry channels (`core/telemetry/ibt_parser.py`)
+- [x] Distance normalizer — resample to distance-based (`core/telemetry/normalizer.py`)
+- [x] Corner detector — automated segmentation (`core/telemetry/corner_detector.py`)
+- [x] Lap comparator — self-referential comparison (`core/telemetry/lap_comparator.py`)
+- [x] Track database — schema and basic CRUD (`core/track/track_db.py`)
+- [x] Basic Streamlit shell (`app/streamlit_app.py`)
+- [x] Scouting reports — Claude API with web search (`core/coaching/synthesizer.py`)
+- [x] iRacing Data API client — Password Limited OAuth (`core/benchmark/iracing_api.py`)
 
-**Phase 2: Core Features**
-- [ ] Scouting report — pace context from iRacing API + web knowledge synthesis
-- [ ] Lap coaching — full pipeline from IBT to AI-generated coaching
+**Phase 2: Core Features** (next)
+- [ ] Wire coaching pipeline into Streamlit UI (IBT upload → analysis → coaching display)
+- [ ] Pace context from iRacing API integrated into scouting reports
+- [ ] Lap coaching AI synthesis — structured analysis → Claude → coaching narrative
+- [ ] Corner detection tuning — lower thresholds for fast flowing circuits (only catches 3 at Spa currently)
 - [ ] Track database seeding — initial set of tracks with corner names
+- [ ] Speed trace comparison plots (plotly) in coaching page
 
 **Phase 3: Intelligence**
 - [ ] Driver profile — accumulate across sessions
@@ -253,3 +258,36 @@ streamlit run app/streamlit_app.py
 - [ ] Between-lap coaching
 - [ ] Crew Chief integration or TTS output
 - [ ] Real-time session monitoring
+
+## Implementation Notes
+
+### IBT Parser
+- Reads the binary format: header (112 bytes) → disk sub-header (32 bytes) → session info YAML → variable headers (144 bytes each) → sample data
+- Uses numpy strides for fast channel extraction (no Python per-sample loop)
+- Accepts both `Path` and `bytes` input (supports Streamlit file uploads)
+- Extracts 15 core channels: Speed, Throttle, Brake, SteeringWheelAngle, Lat, Lon, Alt, Lap, LapCurrentLapTime, LapDist, LapDistPct, SessionTime, SessionTick, RPM, Gear
+- Session info parsed from embedded YAML: track name/ID/length, car name/ID, driver name/ID
+
+### Distance Normalizer
+- Resamples to 1 meter intervals using `scipy.interpolate.interp1d`
+- Trims trailing stationary data (car stopped at end of session)
+- Validates 90% track coverage, rejects laps with distance jumps while moving
+- Deduplicates same-distance samples (stationary/low speed)
+- Linear interpolation for continuous channels, nearest for discrete (gear)
+
+### Corner Detector
+- Savitzky-Golay smoothing → `find_peaks` on inverted speed → walk backward for braking → walk forward for exit → merge chicanes → filter false positives
+- Default `min_corner_speed_drop=5.0 m/s` only catches big braking zones — needs lowering for fast circuits
+- Presets for road/street/oval via `CornerDetector.for_track_type()`
+
+### iRacing Data API
+- Password Limited OAuth with SHA-256 credential masking: `base64(SHA-256(secret + lowercase(identifier)))`
+- Token endpoint: `POST https://oauth.iracing.com/oauth2/token` with `scope=iracing.auth`
+- Access tokens expire in 600s, refresh tokens are single-use (up to 7 days)
+- Data API: `GET https://members-ng.iracing.com/data/...` returns a signed S3 link, follow it (no auth header) for actual data
+- Implemented endpoints: `get_member_info()`, `get_member_summary()`, `get_tracks()`, `get_cars()`, `get_series()`, `get_season_results()`
+
+### Test Suite
+- 42 tests passing, 3 skipped (need multi-lap IBT for two-lap comparison tests)
+- Test fixture: `tests/fixtures/sample.ibt` (Spa, BMW M2 CS Racing, 2 laps — not committed, gitignored)
+- Tests skip gracefully when no IBT file is available

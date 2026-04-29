@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0",
+  "slug": "race-engineer",
+  "name": "Race Engineer",
+  "description": "Personal racing engineer for iRacing — analyzes telemetry, sources community knowledge, and delivers opinionated AI coaching.",
+  "status": "active",
+  "tags": ["iracing", "telemetry", "ai-coaching", "python", "streamlit", "personal"],
+  "repo": {
+    "path": "C:/Users/antho/Documents/Coding/personal-race-engineer",
+    "remote": "https://github.com/marmalard/race-engineer.git"
+  },
+  "docs": {
+    "vision": "docs/prd.md",
+    "agent_instructions": "CLAUDE.md"
+  },
+  "stack": {
+    "language": "Python",
+    "framework": "Streamlit",
+    "ui": "Streamlit + Plotly",
+    "database": "SQLite",
+    "notable_deps": ["pandas", "numpy", "scipy", "anthropic", "pydantic", "httpx", "pyyaml"]
+  },
+  "deployment": {
+    "target": "local"
+  },
+  "anthropic_api": {
+    "in_use": true,
+    "models_used": ["claude-sonnet-4-5-20250929"]
+  },
+  "state": {
+    "current_phase": "Phase 3 kickoff — Phases 1 & 2 complete (telemetry pipeline, scouting, coaching synthesis, unit toggle, pace context). Starting on intelligence layer: driver profile accumulation and session history.",
+    "last_session": {
+      "at": "2026-04-29T14:05:54Z",
+      "summary": "Initialized Atlas tracking."
+    },
+    "next_actions": [
+      "Improve corner detection — Road America catches only 7 of ~14 turns (fast kinks still missed)",
+      "Add population-level pace data via iRacing result_search_series (practice/quali/race by iRating bracket)",
+      "Phase 3: driver profile that accumulates across sessions",
+      "Phase 3: session history with progression tracking per car/track",
+      "Phase 3: cross-session coaching ('you've improved here, still struggling there')"
+    ],
+    "blockers": [],
+    "roadmap": [
+      "Phase 3 — Intelligence: driver profile, session history, cross-session coaching, season/series calendar awareness",
+      "Phase 4 — Live Awareness: between-lap coaching, Crew Chief integration or TTS output, real-time session monitoring",
+      "Corner detection v2 — catch fast kinks and flowing sections currently missed by speed-drop heuristics",
+      "Population pace benchmarking — compare driver to iRating-bracket peers using result_search_series"
+    ]
+  },
+  "created_at": "2026-04-29T14:05:54Z",
+  "updated_at": "2026-04-29T14:05:54Z"
+}

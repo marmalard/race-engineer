@@ -33,3 +33,6 @@ Desktop.ini
 
 # Claude
 .claude/
+
+# Atlas (offline reconciliation queue is local; manifest itself is committed)
+.atlas/.pending-resolutions.json

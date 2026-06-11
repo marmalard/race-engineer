@@ -68,6 +68,12 @@ def test_single_row_csv_raises_import_error():
         import_g61_csv(bad, track_length_m=2000.0)
 
 
+def test_unparseable_csv_raises_import_error():
+    bad = StringIO('"unterminated quote\nnonsense')
+    with pytest.raises(G61ImportError, match="parse"):
+        import_g61_csv(bad, track_length_m=2000.0)
+
+
 @pytest.mark.skipif(not FIXTURE.exists(), reason="real G61 export not available")
 def test_real_g61_export_imports():
     with open(FIXTURE) as f:

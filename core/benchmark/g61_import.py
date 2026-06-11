@@ -92,7 +92,10 @@ def import_g61_csv(
     Raises:
         G61ImportError: If required columns (distance, speed) cannot be found.
     """
-    df = pd.read_csv(source)
+    try:
+        df = pd.read_csv(source)
+    except Exception as exc:
+        raise G61ImportError(f"Could not parse CSV: {exc}") from exc
     cols = _map_columns(df)
 
     if len(df) < 2:

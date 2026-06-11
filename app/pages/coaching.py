@@ -68,11 +68,25 @@ def render_coaching_page() -> None:
         )
         return
 
+    # --- Stale-analysis guard (Fix 2) ---
+    # Track the identity of the uploaded file. When the user swaps to a
+    # different IBT, clear any cached analysis and coaching report so the
+    # previous session's results do not bleed through.
+    file_identity = (uploaded_file.name, uploaded_file.size)
+    if st.session_state.get("_uploaded_file_identity") != file_identity:
+        st.session_state["_uploaded_file_identity"] = file_identity
+        st.session_state.pop("coaching_analysis", None)
+        st.session_state.pop("coaching_report", None)
+        st.session_state.pop("_coaching_report_key", None)
+
     # --- Analysis ---
     # Results are kept in session state so widgets in the sections below
     # (e.g. the reference-lap import) can trigger reruns without losing
     # the analysis.
     if st.button("Analyze Session", type="primary"):
+        # A new analysis invalidates any cached AI report.
+        st.session_state.pop("coaching_report", None)
+        st.session_state.pop("_coaching_report_key", None)
         with st.spinner("Parsing telemetry and analyzing laps..."):
             try:
                 st.session_state["coaching_analysis"] = analyze_session(
@@ -82,9 +96,12 @@ def render_coaching_page() -> None:
                 )
             except ValueError as e:
                 st.error(str(e))
+                # Clear stale analysis so previous results don't reappear.
+                st.session_state.pop("coaching_analysis", None)
                 return
             except Exception as e:
                 st.error(f"Analysis failed: {e}")
+                st.session_state.pop("coaching_analysis", None)
                 return
 
     analysis: CoachingAnalysis | None = st.session_state.get("coaching_analysis")
@@ -162,21 +179,46 @@ def render_coaching_page() -> None:
                 help="Positive = comparison faster at exit",
             )
 
-    # --- AI Coaching ---
+    # --- AI Coaching (Fix 1) ---
+    # The synthesis call is expensive (paid Claude API). Cache the result in
+    # session state keyed to a stable fingerprint of the current analysis so
+    # that subsequent reruns (unit toggle, CSV upload, widget interaction)
+    # reuse the already-generated report instead of calling the API again.
+    # The cache is cleared whenever a new Analyze run completes (above) or
+    # when a different IBT is uploaded (stale-analysis guard above).
     if run_ai:
         api_key = os.environ.get("ANTHROPIC_API_KEY", "")
         if not api_key:
             st.warning("Set ANTHROPIC_API_KEY in .env to enable AI coaching tips.")
         else:
             st.subheader("AI Coaching")
-            with st.spinner("Generating coaching tips..."):
-                try:
-                    synthesizer = Synthesizer(api_key=api_key)
-                    report = synthesizer.generate_coaching_narrative(analysis)
-                except Exception as e:
-                    st.error(f"AI coaching generation failed: {e}")
-                    return
 
+            # Build a fingerprint that uniquely identifies this analysis result.
+            # Using track + car + best lap time (to ms) + valid lap count is
+            # sufficient — two analyses of the same file always produce the same
+            # fingerprint, and a new file or a new Analyze run clears the cache.
+            analysis_key = (
+                analysis.track_name,
+                analysis.car_name,
+                round(analysis.best_lap_time, 3),
+                analysis.valid_lap_count,
+            )
+
+            cached_report = st.session_state.get("coaching_report")
+            cached_key = st.session_state.get("_coaching_report_key")
+
+            if cached_report is None or cached_key != analysis_key:
+                with st.spinner("Generating coaching tips..."):
+                    try:
+                        synthesizer = Synthesizer(api_key=api_key)
+                        cached_report = synthesizer.generate_coaching_narrative(analysis)
+                        st.session_state["coaching_report"] = cached_report
+                        st.session_state["_coaching_report_key"] = analysis_key
+                    except Exception as e:
+                        st.error(f"AI coaching generation failed: {e}")
+                        return
+
+            report = cached_report
             st.markdown(report.report_text)
 
             with st.expander("AI Metadata"):

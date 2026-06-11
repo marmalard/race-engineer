@@ -85,6 +85,11 @@ class IRacingAPIClient(ABC):
         """Get the member's recent race results."""
         ...
 
+    @abstractmethod
+    def get_track_assets(self) -> dict:
+        """Get track map/asset metadata for all tracks, keyed by track_id."""
+        ...
+
 
 # --- OAuth helpers ---
 
@@ -407,3 +412,6 @@ class StubIRacingAPI(IRacingAPIClient):
         self, cust_id: int | None = None
     ) -> list[RecentRace]:
         return []  # Graceful fallback: no data, not an error
+
+    def get_track_assets(self) -> dict:
+        return {}  # Graceful fallback: no assets, not an error

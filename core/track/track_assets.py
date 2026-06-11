@@ -8,6 +8,7 @@ use, never redistribute.
 """
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Callable
 
@@ -50,7 +51,7 @@ class TrackAssetCache:
         return self._assets
 
     def get_map_layers(
-        self, track_id: str, layers: list[str] = ("active", "turns", "start-finish")
+        self, track_id: str, layers: Sequence[str] = ("active", "turns", "start-finish")
     ) -> dict[str, Path]:
         """Local SVG paths per requested layer; downloads on first access."""
         track_dir = self._track_dir(track_id)

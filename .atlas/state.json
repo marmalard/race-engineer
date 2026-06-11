@@ -28,16 +28,16 @@
     "models_used": ["claude-sonnet-4-5-20250929"]
   },
   "state": {
-    "current_phase": "Stage 1 Trust Rebuild — 9 of 13 tasks done. Telemetry oracle, distance alignment, loss regions, G61 importer, reference lap store, lovely-track seeder, loss annotation, debrief orchestrator, and track map asset cache all complete. Remaining: GPS map component, G61 validation gate, wire debrief into coaching page, CLAUDE.md update.",
+    "current_phase": "Stage 1 Trust Rebuild — COMPLETE on branch stage1-trust-rebuild (13/13 tasks, 21 commits, 273 tests passing, final whole-branch review passed). Awaiting merge decision and real G61 fixtures to activate the validation gate.",
     "last_session": {
-      "at": "2026-06-11T00:00:00Z",
-      "summary": "Implemented official iRacing track map SVG fetch and cache (Task 9): added get_track_assets() to LiveIRacingAPI, created TrackAssetCache with lazy disk cache, verified real API response shape (466 tracks, turns layer confirmed), 265 tests passing."
+      "at": "2026-06-11T14:00:00Z",
+      "summary": "Completed Stage 1 trust rebuild end-to-end via subagent-driven development: reference-lap delta analysis replaces corner detection (alignment, loss regions, G61 import, reference store, lovely-track-data seeder wired as primary, debrief orchestrator, official track maps, GPS loss map, validation gate plumbing round-trip verified on real Porsche Cup Spa IBT, coaching page wiring)."
     },
     "next_actions": [
-      "Task 10: GPS track map Streamlit component using cached SVG layers",
-      "Task 11: G61 validation gate — automated lap-time agreement check",
-      "Task 12: wire debrief orchestrator into coaching page UI",
-      "Task 13: update CLAUDE.md with stage1 architecture and implementation notes"
+      "Merge stage1-trust-rebuild to master (user decision)",
+      "Activate G61 validation gate: user supplies paired_session.ibt + paired_lap.csv + G61-displayed lap time; verify CHANNEL_ALIASES against real export headers",
+      "Stage 2 plan: briefing (corner cards from reference lap + scouting synthesis grounded with track detail_copy + iracingdataapi swap + manual corner-name edit path)",
+      "Stage 3 plan: watcher process (folder scan, auto-debrief, personal-best auto-promotion to ReferenceStore)"
     ],
     "blockers": [],
     "roadmap": [
@@ -49,5 +49,5 @@
     ]
   },
   "created_at": "2026-04-29T14:05:54Z",
-  "updated_at": "2026-06-11T00:00:00Z"
+  "updated_at": "2026-06-11T14:00:00Z"
 }

@@ -28,6 +28,9 @@ page = st.sidebar.selectbox(
     ["Scouting Report", "Lap Coaching"],
 )
 
+st.sidebar.divider()
+st.sidebar.radio("Units", ["Metric", "Imperial"], key="unit_system")
+
 if page == "Scouting Report":
     from app.pages.scouting import render_scouting_page
 

@@ -25,6 +25,7 @@ race-engineer/
 │   │   ├── scouting.py           # Scouting report UI
 │   │   └── coaching.py           # Lap coaching UI
 │   └── components/               # Shared Streamlit components
+│       └── units.py              # Unit conversion helpers (metric/imperial)
 ├── core/
 │   ├── telemetry/
 │   │   ├── ibt_parser.py         # IBT file reading and extraction
@@ -59,7 +60,9 @@ race-engineer/
     ├── test_crew_chief_seeder.py
     ├── test_iracing_api.py
     ├── test_synthesizer.py
-    └── test_analyzer.py
+    ├── test_analyzer.py
+    ├── test_scouting.py
+    └── test_unit_helpers.py
 ```
 
 ## Key Technical Concepts
@@ -242,7 +245,7 @@ streamlit run app/streamlit_app.py
 - [x] Scouting reports — Claude API with web search (`core/coaching/synthesizer.py`)
 - [x] iRacing Data API client — Password Limited OAuth (`core/benchmark/iracing_api.py`)
 
-**Phase 2: Core Features** (in progress)
+**Phase 2: Core Features** (complete)
 - [x] Coaching analysis orchestrator (`core/coaching/analyzer.py`)
 - [x] Coaching AI synthesis — structured analysis → Claude → coaching narrative
 - [x] Speed trace comparison plots (Plotly) in coaching page
@@ -252,8 +255,8 @@ streamlit run app/streamlit_app.py
 - [x] Disrupted lap filtering — 10% pace threshold instead of zero-incident filter
 - [x] Corner position data in AI prompt (lap_position_percent, distance_from_start)
 - [x] Track database seeding — Crew Chief data import, corner name matching
-- [ ] Pace context from iRacing API integrated into scouting reports
-- [ ] Unit toggle (metric/imperial) in coaching UI
+- [x] Pace context from iRacing API integrated into scouting reports
+- [x] Unit toggle (metric/imperial) in coaching UI
 
 **Phase 3: Intelligence**
 - [ ] Driver profile — accumulate across sessions
@@ -317,12 +320,29 @@ streamlit run app/streamlit_app.py
 - Token endpoint: `POST https://oauth.iracing.com/oauth2/token` with `scope=iracing.auth`
 - Access tokens expire in 600s, refresh tokens are single-use (up to 7 days)
 - Data API: `GET https://members-ng.iracing.com/data/...` returns a signed S3 link, follow it (no auth header) for actual data
-- Implemented endpoints: `get_member_info()`, `get_member_summary()`, `get_tracks()`, `get_cars()`, `get_series()`, `get_season_results()`
+- Implemented endpoints: `get_member_info()`, `get_member_summary()`, `get_tracks()`, `get_cars()`, `get_series()`, `get_season_results()`, `get_member_recent_races()`
+- `get_member_recent_races()` returns driver's recent official race results with lap times, qualifying times, finish positions, SOF
+- `RecentRace` dataclass for parsed results; `_parse_lap_time()` handles both seconds and 1/10000s format (values > 600 assumed sub-second)
+- `StubIRacingAPI.get_member_recent_races()` returns empty list (graceful fallback, not an error)
+
+### Scouting Report Pace Context
+- Orchestrator in `core/coaching/scouting.py` enriches scouting reports with driver's own race history
+- `_try_fetch_pace_context(car_name, track_name)` → `PaceContext | None`: fetches recent races, filters by car/track substring match
+- Falls back to track-only match when car+track has no match; returns `None` on any error (missing creds, API failure)
+- `PaceContext` dataclass: matching_races, driver_best_lap, driver_best_qual, avg_finish_position, avg_sof, race_count
+- Pace data injected into prompt as `--- DRIVER'S OWN RACE HISTORY ---` section with structured JSON
+- Scouting reports work identically when API credentials are missing or the API is unavailable
+
+### Unit Toggle (Metric/Imperial)
+- Sidebar radio toggle in `streamlit_app.py` stored in `st.session_state["unit_system"]`
+- Pure conversion functions in `app/components/units.py`: `speed_value()`, `distance_value()`, `fmt_speed()`, `fmt_distance()`
+- All core analysis stays in SI units (m/s, meters); conversion happens only at display time in `coaching.py`
+- Converts: speed deltas, braking deltas, position text, plot axes (both X and Y), corner shading coordinates
 
 ### Test Suite
-- 161 tests passing, 3 skipped (need multi-lap IBT for two-lap comparison tests)
+- 209 tests passing, 3 skipped (need multi-lap IBT for two-lap comparison tests)
 - Test fixtures: `tests/fixtures/sample.ibt` (Spa, BMW M2 CS Racing, 2 laps — gitignored)
 - Multi-lap fixture from `C:\Users\antho\Documents\iRacing\telemetry\` (Road America F4, 7 laps)
 - Bathurst fixture also available for corner detection tuning tests
 - Tests skip gracefully when no IBT file is available
-- Test files: test_ibt_parser, test_normalizer, test_corner_detector, test_corner_detection_tuning, test_lap_comparator, test_multilap_comparator, test_track_db, test_iracing_api, test_synthesizer, test_analyzer, test_crew_chief_seeder
+- Test files: test_ibt_parser, test_normalizer, test_corner_detector, test_corner_detection_tuning, test_lap_comparator, test_multilap_comparator, test_track_db, test_iracing_api, test_synthesizer, test_analyzer, test_crew_chief_seeder, test_scouting, test_unit_helpers

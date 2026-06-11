@@ -117,7 +117,7 @@ class TestCornerNames:
             assert pc.corner_name is None
         assert analysis.corner_names == {}
 
-    def test_corner_names_with_db(self, multilap_ibt_path: Path, tmp_path: Path):
+    def test_corner_names_with_db(self, roadamerica_ibt_path: Path, tmp_path: Path):
         """With db_path and Crew Chief data, corner names should be populated."""
         import json
         from core.track.crew_chief_seeder import seed_track_by_id
@@ -170,7 +170,7 @@ class TestCornerNames:
         seed_track_by_id(db, "18", cache_path=cache_path)
 
         # Run analysis with DB
-        analysis = analyze_session(multilap_ibt_path, db_path=db_path)
+        analysis = analyze_session(roadamerica_ibt_path, db_path=db_path)
 
         # At least some corners should have names
         assert len(analysis.corner_names) > 0
@@ -210,7 +210,7 @@ class TestBuildCoachingPrompt:
         assert "theoretical_best_seconds" in prompt
         assert "time_lost_seconds" in prompt
 
-    def test_prompt_includes_corner_names(self, multilap_ibt_path: Path, tmp_path: Path):
+    def test_prompt_includes_corner_names(self, roadamerica_ibt_path: Path, tmp_path: Path):
         """When corner names exist, prompt should include corner_name fields."""
         import json
         from core.coaching.prompts.coaching import build_coaching_prompt
@@ -259,7 +259,7 @@ class TestBuildCoachingPrompt:
         db = TrackDB(db_path)
         seed_track_by_id(db, "18", cache_path=cache_path)
 
-        analysis = analyze_session(multilap_ibt_path, db_path=db_path)
+        analysis = analyze_session(roadamerica_ibt_path, db_path=db_path)
         prompt = build_coaching_prompt(analysis)
 
         assert "corner_name" in prompt

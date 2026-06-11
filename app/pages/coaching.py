@@ -7,10 +7,23 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
+from app.components.units import (
+    distance_unit,
+    distance_value,
+    fmt_distance,
+    fmt_speed,
+    speed_unit,
+    speed_value,
+)
 from core.coaching.analyzer import CoachingAnalysis, analyze_session
 
 DB_PATH = Path("data/tracks.db")
 from core.coaching.synthesizer import Synthesizer
+
+
+def _is_imperial() -> bool:
+    """Check if the user has selected imperial units."""
+    return st.session_state.get("unit_system", "Metric") == "Imperial"
 
 
 def render_coaching_page() -> None:
@@ -89,11 +102,12 @@ def render_coaching_page() -> None:
         f"Best lap ({analysis.best_lap.lap_number}) vs "
         f"comparison lap ({analysis.comparison_lap.lap_number})"
     )
-    st.plotly_chart(_speed_trace_plot(analysis), use_container_width=True)
+    imp = _is_imperial()
+    st.plotly_chart(_speed_trace_plot(analysis, imp), use_container_width=True)
 
     # --- Time Delta Plot ---
     st.subheader("Cumulative Time Delta")
-    st.plotly_chart(_time_delta_plot(analysis), use_container_width=True)
+    st.plotly_chart(_time_delta_plot(analysis, imp), use_container_width=True)
 
     # --- Priority Corners ---
     st.subheader("Priority Corners")
@@ -109,7 +123,7 @@ def render_coaching_page() -> None:
             corner_label = pc.corner_name or f"Corner {pc.corner_number}"
             if seg and analysis.segmentation.track_length > 0:
                 pct = seg.apex_distance / analysis.segmentation.track_length * 100
-                pos_str = f" — {pct:.0f}% into lap ({seg.apex_distance:.0f}m)"
+                pos_str = f" — {pct:.0f}% into lap ({fmt_distance(seg.apex_distance, _is_imperial())})"
             else:
                 pos_str = ""
             st.markdown(f"**#{i} — {corner_label}{pos_str}** ({delta_str})")
@@ -118,17 +132,17 @@ def render_coaching_page() -> None:
             cols[0].metric("Issue", pc.issue_type.title())
             cols[1].metric(
                 "Braking",
-                f"{pc.braking_delta:+.1f}m",
+                fmt_distance(pc.braking_delta, _is_imperial(), signed=True),
                 help="Positive = comparison brakes later",
             )
             cols[2].metric(
                 "Apex Speed",
-                f"{pc.apex_speed_delta * 3.6:+.1f} km/h",
+                fmt_speed(pc.apex_speed_delta, _is_imperial()),
                 help="Positive = comparison faster at apex",
             )
             cols[3].metric(
                 "Exit Speed",
-                f"{pc.exit_speed_delta * 3.6:+.1f} km/h",
+                fmt_speed(pc.exit_speed_delta, _is_imperial()),
                 help="Positive = comparison faster at exit",
             )
 
@@ -167,7 +181,7 @@ def _fmt_time(seconds: float) -> str:
     return f"{mins}:{secs:06.3f}"
 
 
-def _speed_trace_plot(analysis: CoachingAnalysis) -> go.Figure:
+def _speed_trace_plot(analysis: CoachingAnalysis, imperial: bool) -> go.Figure:
     """Build a Plotly speed comparison chart."""
     best = analysis.best_lap
     comp = analysis.comparison_lap
@@ -175,18 +189,21 @@ def _speed_trace_plot(analysis: CoachingAnalysis) -> go.Figure:
 
     fig = go.Figure()
 
+    x_best = distance_value(best.distance[:min_len], imperial)
+    x_comp = distance_value(comp.distance[:min_len], imperial)
+
     # Best lap
     fig.add_trace(go.Scatter(
-        x=best.distance[:min_len],
-        y=best.speed[:min_len] * 3.6,  # m/s → km/h
+        x=x_best,
+        y=speed_value(best.speed[:min_len], imperial),
         name=f"Lap {best.lap_number} (best)",
         line=dict(color="#00cc66", width=1.5),
     ))
 
     # Comparison lap
     fig.add_trace(go.Scatter(
-        x=comp.distance[:min_len],
-        y=comp.speed[:min_len] * 3.6,
+        x=x_comp,
+        y=speed_value(comp.speed[:min_len], imperial),
         name=f"Lap {comp.lap_number} (comparison)",
         line=dict(color="#ff4444", width=1.5),
     ))
@@ -195,8 +212,8 @@ def _speed_trace_plot(analysis: CoachingAnalysis) -> go.Figure:
     for corner in analysis.segmentation.corners:
         label = analysis.corner_names.get(corner.corner_number, f"C{corner.corner_number}")
         fig.add_vrect(
-            x0=corner.distance_start,
-            x1=corner.distance_end,
+            x0=distance_value(corner.distance_start, imperial),
+            x1=distance_value(corner.distance_end, imperial),
             fillcolor="rgba(100,100,100,0.1)",
             line_width=0,
             annotation_text=label,
@@ -205,8 +222,8 @@ def _speed_trace_plot(analysis: CoachingAnalysis) -> go.Figure:
         )
 
     fig.update_layout(
-        xaxis_title="Distance (m)",
-        yaxis_title="Speed (km/h)",
+        xaxis_title=f"Distance ({distance_unit(imperial)})",
+        yaxis_title=f"Speed ({speed_unit(imperial)})",
         height=400,
         margin=dict(l=40, r=20, t=20, b=40),
         legend=dict(yanchor="top", y=0.99, xanchor="right", x=0.99),
@@ -216,11 +233,11 @@ def _speed_trace_plot(analysis: CoachingAnalysis) -> go.Figure:
     return fig
 
 
-def _time_delta_plot(analysis: CoachingAnalysis) -> go.Figure:
+def _time_delta_plot(analysis: CoachingAnalysis, imperial: bool) -> go.Figure:
     """Build a Plotly cumulative time delta chart."""
     comp = analysis.lap_comparison
     min_len = len(comp.cumulative_time_delta)
-    distance = analysis.best_lap.distance[:min_len]
+    distance = distance_value(analysis.best_lap.distance[:min_len], imperial)
     delta = comp.cumulative_time_delta
 
     # Split into positive (slower) and negative (faster) for coloring
@@ -260,7 +277,7 @@ def _time_delta_plot(analysis: CoachingAnalysis) -> go.Figure:
     for corner in analysis.segmentation.corners:
         label = analysis.corner_names.get(corner.corner_number, f"C{corner.corner_number}")
         fig.add_vline(
-            x=corner.apex_distance,
+            x=distance_value(corner.apex_distance, imperial),
             line=dict(color="rgba(150,150,150,0.4)", width=1, dash="dot"),
             annotation_text=label,
             annotation_position="top",
@@ -268,7 +285,7 @@ def _time_delta_plot(analysis: CoachingAnalysis) -> go.Figure:
         )
 
     fig.update_layout(
-        xaxis_title="Distance (m)",
+        xaxis_title=f"Distance ({distance_unit(imperial)})",
         yaxis_title="Time Delta (s)",
         height=300,
         margin=dict(l=40, r=20, t=20, b=40),

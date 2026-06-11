@@ -4,6 +4,7 @@ import os
 
 import streamlit as st
 
+from core.coaching.scouting import generate_scouting_report
 from core.coaching.synthesizer import Synthesizer
 
 
@@ -53,7 +54,8 @@ def render_scouting_page() -> None:
 
         with st.spinner("Researching and generating scouting report..."):
             try:
-                report = synthesizer.generate_scouting_report(
+                report = generate_scouting_report(
+                    synthesizer=synthesizer,
                     car_name=car,
                     track_name=track,
                     track_config=track_config or None,

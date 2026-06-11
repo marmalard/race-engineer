@@ -28,6 +28,28 @@ class PaceData:
 
 
 @dataclass
+class RecentRace:
+    """A recent race result for the authenticated member."""
+
+    session_id: int
+    series_name: str
+    track_name: str
+    track_id: int
+    car_name: str
+    car_id: int
+    start_position: int
+    finish_position: int
+    incidents: int
+    best_lap_time: float  # seconds (0 if not available)
+    best_qual_lap_time: float  # seconds (0 if not available)
+    strength_of_field: int
+    field_size: int
+    session_start_time: str  # ISO timestamp
+    irating_new: int
+    irating_old: int
+
+
+@dataclass
 class DriverStats:
     """Basic driver statistics from iRacing."""
 
@@ -54,6 +76,13 @@ class IRacingAPIClient(ABC):
     @abstractmethod
     def get_driver_stats(self, driver_id: int) -> DriverStats:
         """Get driver statistics."""
+        ...
+
+    @abstractmethod
+    def get_member_recent_races(
+        self, cust_id: int | None = None
+    ) -> list[RecentRace]:
+        """Get the member's recent race results."""
         ...
 
 
@@ -279,6 +308,73 @@ class LiveIRacingAPI(IRacingAPIClient):
             season=season or "",
         )
 
+    def get_member_recent_races(
+        self, cust_id: int | None = None
+    ) -> list[RecentRace]:
+        """Get the member's recent race results.
+
+        Returns the last ~10 official race results with lap times,
+        finishing positions, and strength of field data.
+        """
+        params: dict = {}
+        if cust_id is not None:
+            params["cust_id"] = cust_id
+        data = self._api_get(
+            "/data/stats/member_recent_races", params or None
+        )
+
+        # Handle both list responses and {"races": [...]} wrapper
+        if isinstance(data, list):
+            races_list = data
+        elif isinstance(data, dict):
+            races_list = data.get("races", [])
+        else:
+            return []
+
+        results = []
+        for race in races_list:
+            # Track may be nested dict or flat field
+            if isinstance(race.get("track"), dict):
+                track_name = race["track"].get("track_name", "")
+                track_id = race["track"].get("track_id", 0)
+            else:
+                track_name = race.get("track_name", "")
+                track_id = race.get("track_id", 0)
+
+            results.append(RecentRace(
+                session_id=race.get("subsession_id", 0),
+                series_name=race.get("series_name", ""),
+                track_name=track_name,
+                track_id=track_id,
+                car_name=race.get("car_name", ""),
+                car_id=race.get("car_id", 0),
+                start_position=race.get("start_position", 0),
+                finish_position=race.get("finish_position", 0),
+                incidents=race.get("incidents", 0),
+                best_lap_time=_parse_lap_time(race.get("best_lap_time", 0)),
+                best_qual_lap_time=_parse_lap_time(
+                    race.get("best_qual_lap_time", 0)
+                ),
+                strength_of_field=race.get("strength_of_field", 0),
+                field_size=race.get("field_size", 0),
+                session_start_time=race.get("session_start_time", ""),
+                irating_new=race.get("newi_rating", 0),
+                irating_old=race.get("oldi_rating", 0),
+            ))
+        return results
+
+
+def _parse_lap_time(value: int | float) -> float:
+    """Parse a lap time value from the iRacing API.
+
+    The API may return lap times in 1/10000th of a second (e.g. 1234567
+    means 123.4567s). Values over 600 are assumed to be in this format
+    since no lap time in iRacing exceeds 10 minutes.
+    """
+    if isinstance(value, (int, float)) and value > 600:
+        return value / 10000.0
+    return float(value)
+
 
 class StubIRacingAPI(IRacingAPIClient):
     """Stub implementation for when credentials are not configured."""
@@ -298,3 +394,8 @@ class StubIRacingAPI(IRacingAPIClient):
         raise NotImplementedError(
             "iRacing Data API credentials not configured."
         )
+
+    def get_member_recent_races(
+        self, cust_id: int | None = None
+    ) -> list[RecentRace]:
+        return []  # Graceful fallback: no data, not an error

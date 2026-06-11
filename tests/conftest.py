@@ -48,6 +48,20 @@ def multilap_ibt_path() -> Path:
 
 
 @pytest.fixture
+def roadamerica_ibt_path() -> Path:
+    """Path to a Road America IBT file, for tests that seed Road America
+    corner data and therefore need that specific track (not any large file)."""
+    if not TELEMETRY_DIR.exists():
+        pytest.skip("iRacing telemetry directory not found")
+
+    for p in TELEMETRY_DIR.glob("*roadamerica*.ibt"):
+        if p.stat().st_size > 30_000_000:
+            return p
+
+    pytest.skip("No Road America IBT file found in telemetry directory")
+
+
+@pytest.fixture
 def bathurst_ibt_path() -> Path:
     """Path to a Bathurst IBT file for track-variety tests."""
     if not TELEMETRY_DIR.exists():

@@ -13,6 +13,7 @@ import anthropic
 
 if TYPE_CHECKING:
     from core.coaching.analyzer import CoachingAnalysis
+    from core.coaching.scouting import PaceContext
 
 from core.coaching.prompts.scouting import SCOUTING_SYSTEM_PROMPT, build_scouting_prompt
 from core.coaching.prompts.coaching import COACHING_SYSTEM_PROMPT, build_coaching_prompt
@@ -70,17 +71,20 @@ class Synthesizer:
         track_name: str,
         track_config: str | None = None,
         irating: int | None = None,
+        pace_context: PaceContext | None = None,
     ) -> ScoutingReport:
         """Generate a scouting report using Claude with web search.
 
         Uses the web_search tool to find current community knowledge
-        about the car/track combination.
+        about the car/track combination. When pace_context is provided,
+        injects the driver's own race history into the prompt.
         """
         user_message = build_scouting_prompt(
             car_name=car_name,
             track_name=track_name,
             track_config=track_config,
             irating=irating,
+            pace_context=pace_context,
         )
 
         response = self.client.messages.create(

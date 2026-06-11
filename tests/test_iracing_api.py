@@ -12,11 +12,13 @@ import pytest
 
 from core.benchmark.iracing_api import (
     _mask_secret,
+    _parse_lap_time,
     _TokenData,
     LiveIRacingAPI,
     StubIRacingAPI,
     PaceData,
     DriverStats,
+    RecentRace,
 )
 
 
@@ -320,6 +322,170 @@ class TestLiveIRacingAPIData:
         assert params["race_week_num"] == 3
 
 
+class TestParseLapTime:
+    """Test lap time format detection and conversion."""
+
+    def test_seconds_format(self):
+        """Values <= 600 are assumed to be in seconds."""
+        assert _parse_lap_time(123.456) == pytest.approx(123.456)
+
+    def test_tenths_format(self):
+        """Values > 600 are assumed to be in 1/10000s."""
+        # 1414567 / 10000 = 141.4567
+        assert _parse_lap_time(1414567) == pytest.approx(141.4567)
+
+    def test_zero(self):
+        assert _parse_lap_time(0) == 0.0
+
+    def test_negative(self):
+        """Negative values should pass through as-is (invalid marker)."""
+        assert _parse_lap_time(-1) == -1.0
+
+
+class TestMemberRecentRaces:
+    """Tests for the member_recent_races endpoint."""
+
+    @pytest.fixture
+    def authed_api(self):
+        """Create an API client with a pre-set valid token."""
+        with patch("core.benchmark.iracing_api.httpx.Client") as MockClient:
+            mock_client = MagicMock()
+            MockClient.return_value = mock_client
+
+            client = LiveIRacingAPI(
+                client_id="test",
+                client_secret="secret",
+                username="user@example.com",
+                password="pass",
+            )
+            client._token = _TokenData(
+                access_token="valid_token",
+                refresh_token="ref",
+                expires_at=time.time() + 300,
+            )
+            yield client, mock_client
+
+    def test_parses_races_with_nested_track(self, authed_api):
+        """Should handle nested track dict in API response."""
+        client, mock_http = authed_api
+
+        link_resp = MagicMock()
+        link_resp.json.return_value = {"link": "https://s3/data"}
+
+        data_resp = MagicMock()
+        data_resp.json.return_value = {
+            "races": [{
+                "subsession_id": 12345,
+                "series_name": "IMSA Michelin Pilot Challenge",
+                "track": {"track_name": "Road America", "track_id": 18},
+                "car_name": "BMW M4 GT4",
+                "car_id": 72,
+                "start_position": 5,
+                "finish_position": 3,
+                "incidents": 2,
+                "best_lap_time": 1414567,
+                "best_qual_lap_time": 1410234,
+                "strength_of_field": 1850,
+                "field_size": 20,
+                "session_start_time": "2026-02-20T19:00:00Z",
+                "newi_rating": 1600,
+                "oldi_rating": 1550,
+            }],
+        }
+        mock_http.get.side_effect = [link_resp, data_resp]
+
+        races = client.get_member_recent_races()
+        assert len(races) == 1
+        assert races[0].track_name == "Road America"
+        assert races[0].track_id == 18
+        assert races[0].finish_position == 3
+        assert races[0].best_lap_time == pytest.approx(141.4567)
+
+    def test_parses_races_flat_track(self, authed_api):
+        """Should handle flat track_name field in API response."""
+        client, mock_http = authed_api
+
+        link_resp = MagicMock()
+        link_resp.json.return_value = {"link": "https://s3/data"}
+
+        data_resp = MagicMock()
+        data_resp.json.return_value = {
+            "races": [{
+                "subsession_id": 1,
+                "series_name": "Test Series",
+                "track_name": "Spa",
+                "track_id": 523,
+                "car_name": "MX-5",
+                "car_id": 1,
+                "start_position": 1,
+                "finish_position": 1,
+                "incidents": 0,
+                "best_lap_time": 130.5,
+                "best_qual_lap_time": 129.8,
+                "strength_of_field": 2000,
+                "field_size": 15,
+                "session_start_time": "2026-02-25T20:00:00Z",
+                "newi_rating": 1700,
+                "oldi_rating": 1680,
+            }],
+        }
+        mock_http.get.side_effect = [link_resp, data_resp]
+
+        races = client.get_member_recent_races()
+        assert len(races) == 1
+        assert races[0].track_name == "Spa"
+        assert races[0].best_lap_time == pytest.approx(130.5)
+
+    def test_handles_list_response(self, authed_api):
+        """Should handle direct list response (no 'races' wrapper)."""
+        client, mock_http = authed_api
+
+        link_resp = MagicMock()
+        link_resp.json.return_value = {"link": "https://s3/data"}
+
+        data_resp = MagicMock()
+        data_resp.json.return_value = [{
+            "subsession_id": 1,
+            "series_name": "Test",
+            "track_name": "Monza",
+            "track_id": 239,
+            "car_name": "Formula iR-04",
+            "car_id": 2,
+            "best_lap_time": 0,
+            "best_qual_lap_time": 0,
+        }]
+        mock_http.get.side_effect = [link_resp, data_resp]
+
+        races = client.get_member_recent_races()
+        assert len(races) == 1
+        assert races[0].track_name == "Monza"
+
+    def test_empty_response(self, authed_api):
+        """Should return empty list for empty response."""
+        client, mock_http = authed_api
+
+        resp = MagicMock()
+        resp.json.return_value = {"races": []}
+        mock_http.get.return_value = resp
+
+        races = client.get_member_recent_races()
+        assert races == []
+
+    def test_passes_cust_id_param(self, authed_api):
+        """Should pass cust_id as query parameter when provided."""
+        client, mock_http = authed_api
+
+        resp = MagicMock()
+        resp.json.return_value = {"races": []}
+        mock_http.get.return_value = resp
+
+        client.get_member_recent_races(cust_id=1226848)
+
+        call_kwargs = mock_http.get.call_args
+        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params")
+        assert params["cust_id"] == 1226848
+
+
 class TestStubIRacingAPI:
     def test_get_pace_data_raises(self):
         """Stub should raise NotImplementedError."""
@@ -332,6 +498,11 @@ class TestStubIRacingAPI:
         stub = StubIRacingAPI()
         with pytest.raises(NotImplementedError):
             stub.get_driver_stats(123)
+
+    def test_get_member_recent_races_returns_empty(self):
+        """Stub should return empty list (graceful fallback)."""
+        stub = StubIRacingAPI()
+        assert stub.get_member_recent_races() == []
 
 
 class TestContextManager:

@@ -30,7 +30,7 @@ core/coaching/debrief.py           # NEW: debrief orchestrator (replaces corner-
 core/benchmark/iracing_api.py      # MODIFY: add get_track_assets()
 app/components/track_map.py        # NEW: GPS outline plot colored by loss regions
 app/pages/coaching.py              # MODIFY: reference import + debrief display
-requirements.txt                   # MODIFY: add pyirsdk
+pyproject.toml                     # MODIFY: add pyirsdk to [dependency-groups] dev
 tests/test_alignment.py            # NEW
 tests/test_loss_regions.py         # NEW
 tests/test_g61_import.py           # NEW

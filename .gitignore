@@ -24,6 +24,9 @@ data/track_maps/
 
 # Test fixtures (large telemetry files)
 tests/fixtures/*.ibt
+# G61 validation gate fixtures (user-supplied, not committed)
+tests/fixtures/g61/*.ibt
+tests/fixtures/g61/*.csv
 
 # IDE
 .vscode/

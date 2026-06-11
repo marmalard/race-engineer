@@ -16,31 +16,40 @@ See `docs/prd.md` for the full product requirements document.
 race-engineer/
 ├── CLAUDE.md
 ├── README.md
-├── requirements.txt
+├── pyproject.toml                # uv-managed dependencies (no requirements.txt)
 ├── docs/
 │   └── prd.md                    # Product requirements document
 ├── app/
 │   ├── streamlit_app.py          # Main Streamlit entry point
 │   ├── pages/
 │   │   ├── scouting.py           # Scouting report UI
-│   │   └── coaching.py           # Lap coaching UI
+│   │   └── coaching.py           # Lap coaching UI (debrief wired in)
 │   └── components/               # Shared Streamlit components
-│       └── units.py              # Unit conversion helpers (metric/imperial)
+│       ├── units.py              # Unit conversion helpers (metric/imperial)
+│       └── track_map.py          # GPS track outline with colored loss regions
 ├── core/
 │   ├── telemetry/
 │   │   ├── ibt_parser.py         # IBT file reading and extraction
 │   │   ├── normalizer.py         # Distance-based normalization and resampling
-│   │   ├── corner_detector.py    # Automated corner segmentation from telemetry
-│   │   └── lap_comparator.py     # Lap-to-lap and benchmark comparison logic
+│   │   ├── corner_detector.py    # Fallback annotator (demoted from analysis path)
+│   │   ├── lap_comparator.py     # Lap-to-lap and benchmark comparison logic
+│   │   ├── alignment.py          # Cross-correlation distance-offset alignment
+│   │   └── loss_regions.py       # Loss-region extraction from cumulative delta
 │   ├── track/
 │   │   ├── track_db.py           # Track database CRUD operations
 │   │   ├── corner_registry.py    # Match detected corners to DB corners
 │   │   ├── crew_chief_seeder.py  # Crew Chief corner name import and seeding
+│   │   ├── lovely_seeder.py      # lovely-track-data seeder (185 iRacing configs)
+│   │   ├── segment_annotator.py  # Annotate loss regions with corner names
+│   │   ├── track_assets.py       # Official iRacing SVG track maps + detail_copy
 │   │   └── models.py             # Track and corner data models
 │   ├── benchmark/
-│   │   └── iracing_api.py        # iRacing Data API client
+│   │   ├── iracing_api.py        # iRacing Data API client
+│   │   ├── g61_import.py         # Garage 61 CSV import → NormalizedLap
+│   │   └── reference_store.py    # SQLite store of reference laps (npz blobs)
 │   └── coaching/
-│       ├── analyzer.py           # Coaching analysis orchestrator
+│       ├── analyzer.py           # Legacy coaching analysis orchestrator
+│       ├── debrief.py            # Debrief orchestrator (align→loss regions→diagnose)
 │       ├── synthesizer.py        # AI coaching synthesis (Claude API)
 │       ├── scouting.py           # Scouting report generation
 │       └── prompts/              # Prompt templates for AI synthesis
@@ -48,7 +57,8 @@ race-engineer/
 │           └── scouting.py
 ├── data/
 │   ├── tracks.db                 # SQLite track database
-│   └── profiles.db               # SQLite driver profile and session history
+│   ├── profiles.db               # SQLite driver profile and session history
+│   └── reference_laps.db         # SQLite reference lap store (npz-compressed blobs)
 └── tests/
     ├── test_ibt_parser.py
     ├── test_normalizer.py
@@ -62,7 +72,18 @@ race-engineer/
     ├── test_synthesizer.py
     ├── test_analyzer.py
     ├── test_scouting.py
-    └── test_unit_helpers.py
+    ├── test_unit_helpers.py
+    ├── test_parser_cross_validation.py
+    ├── test_alignment.py
+    ├── test_loss_regions.py
+    ├── test_reference_store.py
+    ├── test_lovely_seeder.py
+    ├── test_segment_annotator.py
+    ├── test_debrief.py
+    ├── test_track_assets.py
+    ├── test_track_map.py
+    ├── test_g61_import.py
+    └── test_g61_validation_gate.py
 ```
 
 ## Key Technical Concepts
@@ -220,10 +241,11 @@ ANTHROPIC_API_KEY=         # Claude API for coaching synthesis
 ## Quick Start
 
 ```bash
-# Clone and install
+# Clone and install (uses uv; no requirements.txt)
 git clone <repo>
 cd race-engineer
-pip install -r requirements.txt
+uv sync        # creates .venv and installs all dependencies
+# or: python -m pip install -e .
 
 # Set up environment
 cp .env.example .env
@@ -231,6 +253,9 @@ cp .env.example .env
 
 # Run the app
 streamlit run app/streamlit_app.py
+
+# Run tests
+.venv/Scripts/python.exe -m pytest -q
 ```
 
 ## Current Status
@@ -257,6 +282,22 @@ streamlit run app/streamlit_app.py
 - [x] Track database seeding — Crew Chief data import, corner name matching
 - [x] Pace context from iRacing API integrated into scouting reports
 - [x] Unit toggle (metric/imperial) in coaching UI
+
+**Stage 1: Trust Rebuild — reference-lap redesign** (complete, branch stage1-trust-rebuild)
+- [x] pyirsdk parser cross-validation oracle (`tests/test_parser_cross_validation.py`)
+- [x] Distance-offset alignment — circular cross-correlation, ±150m bounded (`core/telemetry/alignment.py`)
+- [x] Loss-region extraction from cumulative delta trace (`core/telemetry/loss_regions.py`)
+- [x] G61 CSV import → NormalizedLap, unit heuristics, column alias table (`core/benchmark/g61_import.py`)
+- [x] Reference lap store — npz-compressed blobs in SQLite, g61 preferred over personal_best (`core/benchmark/reference_store.py`)
+- [x] lovely-track-data seeder — 185 iRacing track configs, fraction→meters (`core/track/lovely_seeder.py`)
+- [x] Loss-region annotation — corner name or position fallback (`core/track/segment_annotator.py`)
+- [x] Debrief orchestrator — corner detection removed from analysis path (`core/coaching/debrief.py`)
+- [x] Official iRacing track map assets — turns layer, detail_copy HTML (`core/track/track_assets.py`)
+- [x] GPS loss map component — Plotly track outline with colored loss regions (`app/components/track_map.py`)
+- [x] G61 validation gate — plumbing round-trip verified; awaiting real paired fixtures (`tests/test_g61_validation_gate.py`)
+- [x] Coaching page wiring — debrief section + reference expander; AI synthesis cached per analysis
+- [ ] Activate validation gate with real G61 fixtures (Spa / Road America paired IBT + CSV)
+- [ ] Verify real G61 export headers against CHANNEL_ALIASES in `g61_import.py`
 
 **Phase 3: Intelligence**
 - [ ] Driver profile — accumulate across sessions
@@ -291,6 +332,7 @@ streamlit run app/streamlit_app.py
 - Road preset: `min_corner_speed_drop=3.0 m/s` (was 5.0, which missed fast sweepers)
 - Presets for road/street/oval via `CornerDetector.for_track_type()`
 - Detected corner numbers are sequential IDs, NOT official track turn numbers
+- **Demoted to fallback annotator** — the coaching analysis path no longer uses it; see Debrief Orchestrator
 
 ### Crew Chief Track Seeder
 - Imports corner names and distances from Crew Chief's open-source `trackLandmarksData.json` (GitLab)
@@ -339,10 +381,73 @@ streamlit run app/streamlit_app.py
 - All core analysis stays in SI units (m/s, meters); conversion happens only at display time in `coaching.py`
 - Converts: speed deltas, braking deltas, position text, plot axes (both X and Y), corner shading coordinates
 
+### Alignment
+- Circular cross-correlation (bounded ±150m, default) finds the integer offset that maximises `dot(ref, roll(comp, -lag))` over mean-centred speed traces
+- `shift_lap` rolls all telemetry channels and rebuilds `elapsed_time` from rolled per-sample dt deltas — rolling a cumulative array directly breaks monotonicity
+- Seam dt estimate for the wrap-around point: `interval / max(speed[0], 1.0)` — prevents a zero-speed divide; keeps elapsed_time strictly increasing after rolling
+- `ValueError` raised when trace length < `2 * max_lag + 1`; callers should catch and fall back (no alignment applied) rather than crash
+
+### Loss Regions
+- Savitzky-Golay smoothed slope > 0.0005 s/m threshold identifies "losing time" samples; contiguous True spans become candidate regions
+- Adjacent regions separated by < 30 m are merged (handles chicanes / linked corners)
+- Regions with < 0.05 s time lost are discarded as noise
+- `time_lost` is taken from the raw (unsmoothed) delta at the span's boundary indices, not from the smoothed trace — the smoother is for detection only
+- Output sorted descending by time_lost; `find_loss_regions()[:top_n]` gives the priority list
+
+### G61 Import
+- `CHANNEL_ALIASES` table maps logical channels (distance, speed, throttle, brake, gear, rpm, steering, time, lat, lon) to acceptable G61 column names — **not yet verified against a real G61 export**; extend as needed
+- Speed unit heuristic: `max > 130` → km/h → divide by 3.6 (no production car reaches 130 m/s)
+- Pedal unit heuristic: `max > 1.5` → percent scale → divide by 100
+- Elapsed time: use time column when present; otherwise integrate `dt = ds / max(v, 1.0)` over the output grid
+- `G61ImportError` is raised on parse failure or missing required columns; the error message lists the found columns for easy CHANNEL_ALIASES extension
+
+### Reference Store
+- `data/reference_laps.db` — separate SQLite DB from `tracks.db`; table `reference_laps` with `UNIQUE(track_id, car, source)`
+- Telemetry arrays stored as `npz`-compressed blobs in the `channels` column; scalar metadata stored in typed columns for cheap list queries
+- `save()` upserts — calling it twice for the same combo replaces the previous lap
+- `get(track_id, car)` returns the best available lap: g61 preferred over personal_best (ORDER BY CASE in SQL); returns `None` when no reference exists
+- `list_all()` returns `ReferenceLapMeta` objects only (no arrays) for the UI reference expander
+
+### lovely-track-data Seeder
+- Source: `https://raw.githubusercontent.com/Lovely-Sim-Racing/lovely-track-data/main/data/iracing/{slug}.json`
+- Track slug derived from IBT session YAML name: spaces → hyphens, lowercase (e.g. "spa 2024 up" → "spa-2024-up")
+- Real JSON key is `"turn"` (not `"turns"`); `"straight"` and `"sector"` arrays are intentionally ignored — only turn entries produce Corner rows
+- Corner positions are fractions (0–1); converted to meters by `fraction × track_length_m`
+- `corner_number` is positional (sorted by start fraction), NOT the official turn number
+- Returns 0 on 404 or network failure; callers fall back to Crew Chief seeder or heuristic detection
+
+### Segment Annotator
+- Strict overlap wins: a corner overlapping the loss region is always preferred over a proximity match
+- Proximity fallback (50 m tolerance): attributes a braking-zone region to the corner whose entry is up to 50 m ahead of the region's end
+- Multiple overlapping corners are slash-joined ("Eau Rouge / Raidillon"); dict.fromkeys preserves order and deduplicates
+- Position fallback when no corner matches: `"~4.4 km from start/finish"` — never invents a turn number
+- Watch item: brake-onset window may mis-attribute time loss at chicane-dense tracks where the 50 m tolerance spans multiple corners
+
+### Debrief Orchestrator
+- Pipeline: `find_distance_offset` → `shift_lap(reference, -offset)` → rebased cumulative delta → `find_loss_regions` → `annotate_region` → `_diagnose_region` per top-N region
+- Sign conventions: positive `cum_delta` = driver slower; negative `braking_delta_m` = driver brakes earlier; positive `throttle_delta_m` = driver back on power later
+- No corner detection in the analysis path; `diagnoses` are anchored to loss regions, not detected corners
+- `_diagnose_region` searches 200 m before region start for brake onset, and 100 m past region end for throttle-on — same window logic as the legacy comparator
+- Watch item: brake-onset search window may mis-attribute at chicane-dense tracks if two corners share a braking zone
+
+### Track Assets
+- `TrackAssetCache` wraps the iRacing Data API `get_track_assets()` call; assets index cached to `data/track_maps/assets_index.json` (gitignored) after the first download
+- Per-track layer SVGs cached to `data/track_maps/{track_id}/{layer}.svg`; layers include `active`, `start-finish`, and `turns` (official turn numbers)
+- `get_detail_copy(track_id)` returns the official track description HTML; injected into the scouting prompt as grounding text
+- Assets dict is keyed by track_id as a string (match IBT session YAML numeric ID)
+
+### Coaching Page (Stage 1 wiring)
+- AI synthesis result cached in `st.session_state` keyed by a hash of the analysis inputs — one Claude call per analysis, not per Streamlit rerun
+- Stale cached state cleared on new file upload to prevent displaying the wrong debrief
+- Reference lap expander shows `ReferenceLapMeta` (source, lap_time, driver_name, imported_at) and the reference speed trace
+- Debrief section: loss map (GPS outline + colored regions), per-region diagnosis cards (label, time lost, braking delta, speed delta, throttle delta), then AI narrative
+
 ### Test Suite
-- 209 tests passing, 3 skipped (need multi-lap IBT for two-lap comparison tests)
+- 270 tests passing, 10 skipped (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`)
 - Test fixtures: `tests/fixtures/sample.ibt` (Spa, BMW M2 CS Racing, 2 laps — gitignored)
 - Multi-lap fixture from `C:\Users\antho\Documents\iRacing\telemetry\` (Road America F4, 7 laps)
 - Bathurst fixture also available for corner detection tuning tests
 - Tests skip gracefully when no IBT file is available
-- Test files: test_ibt_parser, test_normalizer, test_corner_detector, test_corner_detection_tuning, test_lap_comparator, test_multilap_comparator, test_track_db, test_iracing_api, test_synthesizer, test_analyzer, test_crew_chief_seeder, test_scouting, test_unit_helpers
+- 3 gate tests in `test_g61_validation_gate.py` skip pending real paired G61 fixtures
+- Stage 1 new test files: test_parser_cross_validation, test_alignment, test_loss_regions, test_reference_store, test_lovely_seeder, test_segment_annotator, test_debrief, test_track_assets, test_track_map, test_g61_import, test_g61_validation_gate
+- Legacy test files: test_ibt_parser, test_normalizer, test_corner_detector, test_corner_detection_tuning, test_lap_comparator, test_multilap_comparator, test_track_db, test_iracing_api, test_synthesizer, test_analyzer, test_crew_chief_seeder, test_scouting, test_unit_helpers

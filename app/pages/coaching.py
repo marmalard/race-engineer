@@ -7,6 +7,7 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
+from app.components.track_map import build_loss_map
 from app.components.units import (
     distance_unit,
     distance_value,
@@ -15,9 +16,14 @@ from app.components.units import (
     speed_unit,
     speed_value,
 )
+from core.benchmark.g61_import import G61ImportError, import_g61_csv
+from core.benchmark.reference_store import ReferenceLap, ReferenceStore
 from core.coaching.analyzer import CoachingAnalysis, analyze_session
+from core.coaching.debrief import build_debrief
+from core.track.track_db import TrackDB
 
 DB_PATH = Path("data/tracks.db")
+REFERENCE_DB = Path("data") / "reference_laps.db"
 from core.coaching.synthesizer import Synthesizer
 
 
@@ -62,23 +68,28 @@ def render_coaching_page() -> None:
         )
         return
 
-    if not st.button("Analyze Session", type="primary"):
-        return
-
     # --- Analysis ---
-    with st.spinner("Parsing telemetry and analyzing laps..."):
-        try:
-            analysis = analyze_session(
-                ibt_data=bytes(uploaded_file.getbuffer()),
-                track_type=track_type,
-                db_path=DB_PATH,
-            )
-        except ValueError as e:
-            st.error(str(e))
-            return
-        except Exception as e:
-            st.error(f"Analysis failed: {e}")
-            return
+    # Results are kept in session state so widgets in the sections below
+    # (e.g. the reference-lap import) can trigger reruns without losing
+    # the analysis.
+    if st.button("Analyze Session", type="primary"):
+        with st.spinner("Parsing telemetry and analyzing laps..."):
+            try:
+                st.session_state["coaching_analysis"] = analyze_session(
+                    ibt_data=bytes(uploaded_file.getbuffer()),
+                    track_type=track_type,
+                    db_path=DB_PATH,
+                )
+            except ValueError as e:
+                st.error(str(e))
+                return
+            except Exception as e:
+                st.error(f"Analysis failed: {e}")
+                return
+
+    analysis: CoachingAnalysis | None = st.session_state.get("coaching_analysis")
+    if analysis is None:
+        return
 
     # --- Session Summary ---
     st.markdown("---")
@@ -95,6 +106,11 @@ def render_coaching_page() -> None:
         for lap_num, lap_time in analysis.lap_times:
             marker = " **[best]**" if lap_time == analysis.best_lap_time else ""
             st.markdown(f"- Lap {lap_num}: {_fmt_time(lap_time)}{marker}")
+
+    # --- Reference Lap (import + debrief) ---
+    reference = _render_reference_section(analysis)
+    if reference is not None:
+        _render_debrief_section(analysis, reference, _is_imperial())
 
     # --- Speed Trace Plot ---
     st.subheader("Speed Comparison")
@@ -179,6 +195,128 @@ def _fmt_time(seconds: float) -> str:
     mins = int(seconds // 60)
     secs = seconds % 60
     return f"{mins}:{secs:06.3f}"
+
+
+def _combo_key(analysis: CoachingAnalysis) -> str:
+    """Stable ReferenceStore key for the session's track.
+
+    Prefers the iRacing numeric track ID; falls back to the track name
+    when the IBT file did not carry an ID (the store just needs keys
+    that are consistent across sessions).
+    """
+    return analysis.track_id or analysis.track_name
+
+
+def _render_reference_section(analysis: CoachingAnalysis) -> ReferenceLap | None:
+    """Reference lap status and Garage 61 CSV import. Returns the stored
+    reference for this car/track combo, or None if there isn't one."""
+    store = ReferenceStore(REFERENCE_DB)
+    reference = store.get(_combo_key(analysis), analysis.car_name)
+
+    with st.expander("Reference Lap", expanded=reference is None):
+        if reference is not None:
+            driver = f" by {reference.meta.driver_name}" if reference.meta.driver_name else ""
+            st.markdown(
+                f"Current reference: **{_fmt_time(reference.meta.lap_time)}**"
+                f"{driver} (source: {reference.meta.source})"
+            )
+        else:
+            st.markdown(
+                "No reference lap stored for this car/track combo yet. "
+                "Import a Garage 61 lap CSV to enable the reference debrief."
+            )
+
+        csv_file = st.file_uploader("Garage 61 lap CSV", type=["csv"], key="g61_csv")
+        driver_name = st.text_input(
+            "Reference driver name (optional)", key="g61_driver_name"
+        )
+        if csv_file is not None and st.button("Save as reference"):
+            try:
+                csv_file.seek(0)
+                lap = import_g61_csv(
+                    csv_file, track_length_m=analysis.best_lap.track_length
+                )
+            except G61ImportError as e:
+                st.error(str(e))
+            else:
+                store.save(
+                    _combo_key(analysis),
+                    analysis.car_name,
+                    lap,
+                    source="g61",
+                    driver_name=driver_name or None,
+                )
+                st.rerun()
+
+    return reference
+
+
+def _render_debrief_section(
+    analysis: CoachingAnalysis, reference: ReferenceLap, imperial: bool
+) -> None:
+    """Debrief the driver's best lap against the stored reference lap."""
+    st.subheader("Reference Debrief")
+
+    corners = (
+        TrackDB(DB_PATH).get_corners(analysis.track_id) if analysis.track_id else []
+    )
+
+    try:
+        result = build_debrief(analysis.best_lap, reference.lap, corners)
+    except Exception as e:
+        st.error(f"Debrief failed: {e}")
+        return
+
+    st.caption(
+        f"Your lap {_fmt_time(result.driver_lap_time)} vs reference "
+        f"{_fmt_time(result.reference_lap_time)} "
+        f"(gap {result.total_time_delta:+.3f}s, alignment offset "
+        f"{fmt_distance(result.alignment_offset_m, imperial, signed=True)})"
+    )
+
+    best = analysis.best_lap
+    if np.any(best.lat) and np.any(best.lon):
+        # The debrief grid is truncated to the shorter of driver/reference;
+        # slice GPS to match so the region masks line up.
+        n = len(result.distance)
+        st.plotly_chart(
+            build_loss_map(
+                best.lat[:n],
+                best.lon[:n],
+                result.distance,
+                [d.region for d in result.diagnoses],
+                labels=[d.label for d in result.diagnoses],
+            ),
+            use_container_width=True,
+        )
+
+    if not result.diagnoses:
+        st.info("No significant loss regions found against the reference.")
+        return
+
+    for diag in result.diagnoses:
+        with st.container(border=True):
+            st.markdown(f"**{diag.label}** — +{diag.region.time_lost:.2f}s lost")
+            c1, c2, c3 = st.columns(3)
+            c1.metric(
+                "Braking Point",
+                fmt_distance(diag.braking_delta_m, imperial, signed=True)
+                if diag.braking_delta_m is not None
+                else "—",
+                help="Negative = you brake earlier than the reference",
+            )
+            c2.metric(
+                "Min Speed",
+                fmt_speed(diag.min_speed_delta_ms, imperial),
+                help="Negative = you over-slow the corner",
+            )
+            c3.metric(
+                "Back to Power",
+                fmt_distance(diag.throttle_delta_m, imperial, signed=True)
+                if diag.throttle_delta_m is not None
+                else "—",
+                help="Positive = you pick up throttle later than the reference",
+            )
 
 
 def _speed_trace_plot(analysis: CoachingAnalysis, imperial: bool) -> go.Figure:

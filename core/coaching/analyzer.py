@@ -56,6 +56,7 @@ class CoachingAnalysis:
     corner_names: dict[int, str]  # corner_number -> name (for UI/plots)
     all_laps: list[NormalizedLap]
     lap_times: list[tuple[int, float]]  # (lap_number, lap_time) for all valid laps
+    track_id: str = ""  # iRacing numeric track ID as string (e.g. "523"); "" if unknown
 
 
 def analyze_session(
@@ -157,6 +158,7 @@ def analyze_session(
         corner_names=corner_names,
         all_laps=all_laps,
         lap_times=lap_times,
+        track_id=str(ibt.session.track_id) if ibt.session.track_id else "",
     )
 
 

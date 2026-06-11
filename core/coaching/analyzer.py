@@ -118,7 +118,11 @@ def analyze_session(
     corner_names: dict[int, str] = {}
     if db_path is not None:
         corner_names = _match_corner_names(
-            db_path, str(ibt.session.track_id), segmentation.corners
+            db_path,
+            str(ibt.session.track_id),
+            segmentation.corners,
+            ibt_track_name=ibt.session.track_name,
+            track_length_m=track_length_m,
         )
 
     # 5. Compare best vs comparison
@@ -223,16 +227,25 @@ def _match_corner_names(
     db_path: Path,
     track_id: str,
     detected_corners: list,
+    ibt_track_name: str = "",
+    track_length_m: float = 0.0,
 ) -> dict[int, str]:
     """Match detected corners to named corners in the database.
 
-    Lazy-seeds from Crew Chief data if the track has no named corners yet.
+    Lazy-seeds corner names when none exist yet.  Priority order:
+      1. lovely-track-data (185 iRacing configs, fraction→meters)
+      2. Crew Chief (fallback; ~30 configs)
+
+    If lovely returns 0 corners OR raises, the Crew Chief path fires
+    instead — network failures must never break analysis.
+
     Returns a dict of corner_number -> corner_name for matched corners.
     """
     import logging
 
     from core.track.corner_registry import CornerRegistry
     from core.track.crew_chief_seeder import seed_track_by_id
+    from core.track.lovely_seeder import seed_track_from_lovely
     from core.track.track_db import TrackDB
 
     logger = logging.getLogger(__name__)
@@ -240,11 +253,31 @@ def _match_corner_names(
     try:
         db = TrackDB(db_path)
 
-        # Lazy-seed from Crew Chief if no named corners exist
+        # Lazy-seed when no named corners exist yet
         existing = db.get_corners(track_id)
         if not existing or not any(c.name for c in existing):
-            cache_path = db_path.parent / "crew_chief_cache.json"
-            seed_track_by_id(db, track_id, cache_path)
+            # 1. Try lovely-track-data first (broader coverage)
+            seeded = 0
+            if ibt_track_name and track_length_m > 0:
+                try:
+                    seeded = seed_track_from_lovely(
+                        db,
+                        track_id=track_id,
+                        ibt_track_name=ibt_track_name,
+                        track_length_m=track_length_m,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "lovely-track-data seeding failed for track %s, "
+                        "falling back to Crew Chief: %s",
+                        track_id,
+                        exc,
+                    )
+
+            # 2. Fall back to Crew Chief when lovely had no data or failed
+            if seeded == 0:
+                cache_path = db_path.parent / "crew_chief_cache.json"
+                seed_track_by_id(db, track_id, cache_path)
 
         # Match detected corners to DB corners
         registry = CornerRegistry(db)

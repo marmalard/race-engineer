@@ -182,6 +182,136 @@ class TestCornerNames:
         )
 
 
+class TestLovelySeederPriority:
+    """Verify that _match_corner_names tries lovely-seeder first, CC second."""
+
+    def test_lovely_tried_first(self, tmp_path: Path):
+        """seed_track_from_lovely should be called before Crew Chief when no
+        named corners exist. Uses mocks so no IBT file is required."""
+        from unittest.mock import MagicMock, patch, call
+        from core.coaching.analyzer import _match_corner_names
+
+        # Build a minimal in-memory DB with one track but no corners
+        from core.track.track_db import TrackDB
+        from core.track.models import Track
+
+        db_path = tmp_path / "tracks.db"
+        db = TrackDB(db_path)
+        db.upsert_track(
+            Track(
+                track_id="523",
+                name="Circuit de Spa-Francorchamps",
+                config="Grand Prix",
+                length_meters=7004.0,
+                track_type=None,
+                character=None,
+            )
+        )
+
+        # No detected corners needed — we're testing the seeder call order,
+        # not the matching result.
+        detected_corners: list = []
+
+        with (
+            patch("core.track.lovely_seeder.seed_track_from_lovely") as mock_lovely,
+            patch("core.track.crew_chief_seeder.seed_track_by_id") as mock_cc,
+        ):
+            # lovely returns 13 corners — CC should NOT be called
+            mock_lovely.return_value = 13
+
+            _match_corner_names(
+                db_path,
+                "523",
+                detected_corners,
+                ibt_track_name="spa 2024 up",
+                track_length_m=7004.0,
+            )
+
+        mock_lovely.assert_called_once()
+        mock_cc.assert_not_called()
+
+    def test_cc_fallback_when_lovely_returns_zero(self, tmp_path: Path):
+        """When lovely returns 0 (no data / 404), Crew Chief seeder fires."""
+        from unittest.mock import patch
+        from core.coaching.analyzer import _match_corner_names
+
+        from core.track.track_db import TrackDB
+        from core.track.models import Track
+
+        db_path = tmp_path / "tracks.db"
+        db = TrackDB(db_path)
+        db.upsert_track(
+            Track(
+                track_id="999",
+                name="Unknown Track",
+                config=None,
+                length_meters=3000.0,
+                track_type=None,
+                character=None,
+            )
+        )
+
+        detected_corners: list = []
+
+        with (
+            patch("core.track.lovely_seeder.seed_track_from_lovely") as mock_lovely,
+            patch("core.track.crew_chief_seeder.seed_track_by_id") as mock_cc,
+        ):
+            mock_lovely.return_value = 0  # lovely has no data for this track
+
+            _match_corner_names(
+                db_path,
+                "999",
+                detected_corners,
+                ibt_track_name="unknown track full",
+                track_length_m=3000.0,
+            )
+
+        mock_lovely.assert_called_once()
+        mock_cc.assert_called_once()
+
+    def test_lovely_exception_falls_back_to_cc(self, tmp_path: Path):
+        """If lovely raises an exception, CC seeder still fires (no crash)."""
+        from unittest.mock import patch
+        from core.coaching.analyzer import _match_corner_names
+
+        from core.track.track_db import TrackDB
+        from core.track.models import Track
+
+        db_path = tmp_path / "tracks.db"
+        db = TrackDB(db_path)
+        db.upsert_track(
+            Track(
+                track_id="523",
+                name="Circuit de Spa-Francorchamps",
+                config="Grand Prix",
+                length_meters=7004.0,
+                track_type=None,
+                character=None,
+            )
+        )
+
+        detected_corners: list = []
+
+        with (
+            patch("core.track.lovely_seeder.seed_track_from_lovely") as mock_lovely,
+            patch("core.track.crew_chief_seeder.seed_track_by_id") as mock_cc,
+        ):
+            mock_lovely.side_effect = RuntimeError("network blew up")
+
+            # Should not raise — lovely exception must degrade gracefully
+            _match_corner_names(
+                db_path,
+                "523",
+                detected_corners,
+                ibt_track_name="spa 2024 up",
+                track_length_m=7004.0,
+            )
+
+        mock_lovely.assert_called_once()
+        mock_cc.assert_called_once()
+
+
 class TestBuildCoachingPrompt:
     """Test the prompt builder."""
 

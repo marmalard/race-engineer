@@ -289,7 +289,7 @@ streamlit run app/streamlit_app.py
 - [x] Loss-region extraction from cumulative delta trace (`core/telemetry/loss_regions.py`)
 - [x] G61 CSV import → NormalizedLap, unit heuristics, column alias table (`core/benchmark/g61_import.py`)
 - [x] Reference lap store — npz-compressed blobs in SQLite, g61 preferred over personal_best (`core/benchmark/reference_store.py`)
-- [x] lovely-track-data seeder — 185 iRacing track configs, fraction→meters (`core/track/lovely_seeder.py`)
+- [x] lovely-track-data seeder — 185 iRacing track configs, fraction→meters (`core/track/lovely_seeder.py`); wired as primary corner seeder in `_match_corner_names` with Crew Chief as fallback
 - [x] Loss-region annotation — corner name or position fallback (`core/track/segment_annotator.py`)
 - [x] Debrief orchestrator — corner detection removed from analysis path (`core/coaching/debrief.py`)
 - [x] Official iRacing track map assets — turns layer, detail_copy HTML (`core/track/track_assets.py`)
@@ -415,6 +415,7 @@ streamlit run app/streamlit_app.py
 - Corner positions are fractions (0–1); converted to meters by `fraction × track_length_m`
 - `corner_number` is positional (sorted by start fraction), NOT the official turn number
 - Returns 0 on 404 or network failure; callers fall back to Crew Chief seeder or heuristic detection
+- **Wired as primary seeder**: `_match_corner_names` in `analyzer.py` calls `seed_track_from_lovely` first; Crew Chief fires only when lovely returns 0 or raises. `ibt_track_name` (IBT session YAML field) and `track_length_m` are passed through from `analyze_session`. Any exception from lovely degrades silently to CC (network failures must never break analysis).
 
 ### Segment Annotator
 - Strict overlap wins: a corner overlapping the loss region is always preferred over a proximity match
@@ -433,13 +434,13 @@ streamlit run app/streamlit_app.py
 ### Track Assets
 - `TrackAssetCache` wraps the iRacing Data API `get_track_assets()` call; assets index cached to `data/track_maps/assets_index.json` (gitignored) after the first download
 - Per-track layer SVGs cached to `data/track_maps/{track_id}/{layer}.svg`; layers include `active`, `start-finish`, and `turns` (official turn numbers)
-- `get_detail_copy(track_id)` returns the official track description HTML; injected into the scouting prompt as grounding text
+- `get_detail_copy(track_id)` returns the official track description HTML; available for Stage 2 scouting-prompt grounding but not yet wired into the scouting prompt
 - Assets dict is keyed by track_id as a string (match IBT session YAML numeric ID)
 
 ### Coaching Page (Stage 1 wiring)
 - AI synthesis result cached in `st.session_state` keyed by a hash of the analysis inputs — one Claude call per analysis, not per Streamlit rerun
 - Stale cached state cleared on new file upload to prevent displaying the wrong debrief
-- Reference lap expander shows `ReferenceLapMeta` (source, lap_time, driver_name, imported_at) and the reference speed trace
+- Reference lap expander shows `ReferenceLapMeta` fields: source, lap_time, driver_name (no speed trace plot, no imported_at display)
 - Debrief section: loss map (GPS outline + colored regions), per-region diagnosis cards (label, time lost, braking delta, speed delta, throttle delta), then AI narrative
 
 ### Test Suite

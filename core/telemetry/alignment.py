@@ -35,10 +35,16 @@ def find_distance_offset(
         Integer offset in samples. Apply np.roll(comparison, -offset) to align.
     """
     n = min(len(reference_speed), len(comparison_speed))
+    max_lag = int(max_offset_m / interval_m)
+    if n < 2 * max_lag + 1:
+        raise ValueError(
+            f"Trace length ({n} samples) is shorter than the alignment search "
+            f"window ({2 * max_lag + 1} samples); reduce max_offset_m."
+        )
+
     ref = reference_speed[:n] - reference_speed[:n].mean()
     comp = comparison_speed[:n] - comparison_speed[:n].mean()
 
-    max_lag = int(max_offset_m / interval_m)
     lags = np.arange(-max_lag, max_lag + 1)
     # Circular cross-correlation at each candidate lag (a lap is a loop)
     scores = np.array([np.dot(ref, np.roll(comp, -lag)) for lag in lags])
@@ -67,8 +73,13 @@ def shift_lap(lap: NormalizedLap, offset_samples: int) -> NormalizedLap:
     def roll(arr: np.ndarray) -> np.ndarray:
         return np.roll(arr, offset_samples)
 
-    dt = np.diff(lap.elapsed_time, prepend=lap.elapsed_time[0])
-    dt[0] = lap.elapsed_time[0]
+    # Per-sample time deltas. The interval "before" sample 0 (the wrap-around
+    # across start/finish) is not recorded — elapsed_time[0] is just the origin —
+    # so estimate it from local speed. This keeps the rebuilt elapsed_time
+    # strictly monotonic wherever the seam lands after rolling.
+    interval = float(lap.distance[1] - lap.distance[0])
+    seam_dt = interval / max(float(lap.speed[0]), 1.0)
+    dt = np.concatenate([[seam_dt], np.diff(lap.elapsed_time)])
     rolled_dt = np.roll(dt, offset_samples)
     new_elapsed = np.cumsum(rolled_dt)
 
@@ -83,4 +94,5 @@ def shift_lap(lap: NormalizedLap, offset_samples: int) -> NormalizedLap:
         lat=roll(lap.lat),
         lon=roll(lap.lon),
         elapsed_time=new_elapsed,
+        # distance is intentionally NOT rolled — it is the common grid/axis, not a channel
     )

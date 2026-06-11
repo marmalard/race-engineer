@@ -1,5 +1,7 @@
 """Tests for distance-offset alignment between laps from different sources."""
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
@@ -82,3 +84,21 @@ def test_shift_zero_is_identity():
     shifted = shift_lap(lap, 0)
     np.testing.assert_allclose(shifted.speed, lap.speed)
     np.testing.assert_allclose(shifted.elapsed_time, lap.elapsed_time)
+
+
+def test_shift_lap_monotonic_with_zero_start_elapsed():
+    """Real Normalizer laps have elapsed_time[0] == 0; the seam interval
+    must still be strictly positive after shifting."""
+    speed = _speed_profile()
+    lap = _make_lap(speed)
+    # Rebase elapsed to start at 0 exactly like Normalizer output
+    lap = replace(lap, elapsed_time=lap.elapsed_time - lap.elapsed_time[0])
+    for offset in (1, 12, -8, 500):
+        shifted = shift_lap(lap, offset)
+        assert np.all(np.diff(shifted.elapsed_time) > 0), f"offset={offset}"
+
+
+def test_short_trace_raises():
+    short = _speed_profile(200)
+    with pytest.raises(ValueError, match="search"):
+        find_distance_offset(short, short, max_offset_m=150)

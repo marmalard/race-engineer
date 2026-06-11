@@ -101,3 +101,27 @@ def test_seed_missing_track_returns_zero(tmp_path: Path):
             track_length_m=1000.0,
         )
     assert count == 0
+
+
+def test_malformed_entries_do_not_create_numbering_gaps():
+    data = {
+        "turn": [
+            {"start": 0.01, "end": 0.02},  # malformed: no name
+            {"start": 0.10, "end": 0.12, "name": "First Real"},
+            {"start": 0.50, "name": "No End"},  # malformed: no end
+            {"start": 0.80, "end": 0.85, "name": "Second Real"},
+        ]
+    }
+    corners = parse_lovely_corners(data, track_id="1", track_length_m=1000.0)
+    assert [c.corner_number for c in corners] == [1, 2]
+    assert [c.name for c in corners] == ["First Real", "Second Real"]
+
+
+def test_seed_without_track_row_returns_zero(tmp_path: Path):
+    db = TrackDB(tmp_path / "tracks.db")  # no upsert_track call
+    with patch("core.track.lovely_seeder._fetch_lovely_json",
+               return_value=SAMPLE_LOVELY_JSON):
+        count = seed_track_from_lovely(db, track_id="523",
+                                       ibt_track_name="spa 2024 up",
+                                       track_length_m=6930.0)
+    assert count == 0

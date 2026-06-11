@@ -19,8 +19,8 @@ Real JSON shape (verified against live repo):
     "straight": [{"start": ..., "marker": ..., "end": ..., "name": "..."}, ...]
   }
 
-The key for corners is "turn" (not "turns"). Straights are in a separate
-"straight" list and are intentionally ignored here.
+The key for corners is "turn" (not "turns"). The "straight" and "sector"
+lists are intentionally ignored — only turn entries produce Corner rows.
 """
 
 import logging
@@ -85,21 +85,24 @@ def parse_lovely_corners(
         Entries missing a name, start, or end are skipped.
     """
     turns = data.get("turn", [])
+    # Filter to valid entries first, then sort, so corner_number is dense
+    # (no gaps from skipped malformed entries).
+    valid_turns = [
+        t for t in turns
+        if t.get("name") is not None and "start" in t and "end" in t
+    ]
     corners: list[Corner] = []
     # Sort by start position so corner_number is always positional, never
     # based on arbitrary source ordering.
     for i, turn in enumerate(
-        sorted(turns, key=lambda t: t.get("start", 0.0)), start=1
+        sorted(valid_turns, key=lambda t: t.get("start", 0.0)), start=1
     ):
-        name = turn.get("name")
-        if name is None or "start" not in turn or "end" not in turn:
-            continue
         corners.append(
             Corner(
                 corner_id=None,
                 track_id=track_id,
                 corner_number=i,  # positional ordering — NOT official turn number
-                name=name,
+                name=turn["name"],
                 distance_start_meters=turn["start"] * track_length_m,
                 distance_end_meters=turn["end"] * track_length_m,
                 corner_type=None,
@@ -127,6 +130,11 @@ def seed_track_from_lovely(
         failed — callers should fall back to Crew Chief seeding or heuristic
         corner detection.
     """
+    if db.get_track(track_id) is None:
+        logger.warning(
+            "lovely_seeder: track %s not found in DB — seed skipped", track_id
+        )
+        return 0
     data = _fetch_lovely_json(lovely_track_slug(ibt_track_name))
     if data is None:
         return 0

@@ -22,9 +22,11 @@ def annotate_region(
         corners: Named corners from the track database.
         track_length: Full track length in meters (reserved for future
             wrap-around handling at the start/finish line).
-        tolerance_m: Expand each corner's boundary by this many meters when
-            testing overlap, so braking zones that start just before the
-            DB corner entry are still matched.
+        tolerance_m: Used only when no corner strictly overlaps the region:
+            a corner whose entry lies up to this many meters AHEAD of the
+            region's end is matched (braking zone attribution). Strict
+            overlaps always win, so a region inside one corner is never
+            also attributed to the next corner just because it is close.
 
     Returns:
         Corner name, slash-joined names for multi-corner spans, or a

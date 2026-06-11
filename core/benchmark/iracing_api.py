@@ -252,6 +252,14 @@ class LiveIRacingAPI(IRacingAPIClient):
         """Get all tracks."""
         return self._api_get("/data/track/get")
 
+    def get_track_assets(self) -> dict:
+        """Get track map/asset metadata for all tracks, keyed by track_id.
+
+        Includes track_map (base URL), track_map_layers (SVG layer filenames
+        incl. the official 'turns' layer), and detail_copy (description HTML).
+        """
+        return self._api_get("/data/track/assets")
+
     def get_cars(self) -> list[dict]:
         """Get all cars."""
         return self._api_get("/data/car/get")

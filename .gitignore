@@ -19,6 +19,9 @@ wheels/
 *.ibt
 data/*.db
 
+# Track map SVG cache (iRacing copyright — local use only)
+data/track_maps/
+
 # Test fixtures (large telemetry files)
 tests/fixtures/*.ibt
 

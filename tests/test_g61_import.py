@@ -56,6 +56,18 @@ def test_unknown_columns_raise_with_found_headers():
         import_g61_csv(bad, track_length_m=2000.0)
 
 
+def test_empty_csv_raises_import_error():
+    bad = StringIO("Distance,Speed\n")
+    with pytest.raises(G61ImportError, match="fewer than 2"):
+        import_g61_csv(bad, track_length_m=2000.0)
+
+
+def test_single_row_csv_raises_import_error():
+    bad = StringIO("Distance,Speed\n0.0,50.0\n")
+    with pytest.raises(G61ImportError, match="fewer than 2"):
+        import_g61_csv(bad, track_length_m=2000.0)
+
+
 @pytest.mark.skipif(not FIXTURE.exists(), reason="real G61 export not available")
 def test_real_g61_export_imports():
     with open(FIXTURE) as f:

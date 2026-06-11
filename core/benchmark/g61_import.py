@@ -95,6 +95,11 @@ def import_g61_csv(
     df = pd.read_csv(source)
     cols = _map_columns(df)
 
+    if len(df) < 2:
+        raise G61ImportError(
+            "CSV has fewer than 2 data rows; cannot resample a lap from it."
+        )
+
     raw_dist = df[cols["distance"]].to_numpy(dtype=float)
     raw_speed = df[cols["speed"]].to_numpy(dtype=float)
 

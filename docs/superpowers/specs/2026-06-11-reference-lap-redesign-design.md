@@ -36,7 +36,7 @@ The spine connecting them is the **reference lap per car/track combo**, stored o
 ## Analysis rebuild — delta trace first, corners as annotation
 
 - **Primary primitive: the time-delta trace.** Driver lap and reference lap are resampled to the same 1 m distance grid (existing normalizer). Cumulative time delta is computed; **loss regions** are contiguous spans where the delta grows. Time lost per region is arithmetic on the trace — correct regardless of corner detection.
-- **Corners are labels, not foundations.** Loss regions are annotated with names from the track DB. Crew Chief landmarks (already imported for 30 tracks) are the primary segmentation — their distance ranges define named segments directly. The heuristic corner detector is demoted to a fallback annotator for unmapped tracks. A small manual edit path lets the user correct a name/extent once, persistently.
+- **Corners are labels, not foundations.** Loss regions are annotated with names from the track DB, seeded from two open sources: **lovely-track-data** (CC BY-NC-SA; 185 iRacing track configs with named corner ranges as track-position fractions; track IDs align with IBT session YAML naming) and **Crew Chief landmarks** (already imported, 30 tracks, distance ranges in meters). Where both exist, prefer whichever has been manually verified; the heuristic corner detector is demoted to a fallback annotator for tracks in neither source. A small manual edit path lets the user correct a name/extent once, persistently.
 - **Numbering policy:** turn numbers are shown only where landmark data actually provides them. The system never invents numbering (sequential detected-corner IDs presented as turn numbers is what destroyed trust before).
 - **Diagnosis stays deterministic.** Within a loss region: braking onset delta, minimum speed delta, throttle-on delta vs the reference — existing comparator logic anchored to real segments. AI synthesis narrates only numbers that exist; the prompt cites them and the UI displays them so every claim is auditable.
 
@@ -47,10 +47,12 @@ The spine connecting them is the **reference lap per car/track combo**, stored o
 
 ## Track map — making "turn 12" mean something
 
-GPS lat/lon is already extracted by the IBT parser. From any lap the track outline is drawn (Plotly):
+Two complementary map sources:
 
-- **Debrief:** track map with loss regions colored by time lost — spatial answer before prose. Hover/click for detail.
-- **Briefing:** each corner card includes a mini-map with the corner highlighted, plus a verbal anchor chain: name + turn number (when real) + position ("~4.4 km in") + what-comes-before ("after the back-section esses"). On day one at an unfamiliar track the map and anchors carry the reference; as the track is learned, names take over.
+- **Official iRacing track maps** via the Data API `track/assets` endpoint: layered SVGs (`active`, `start-finish`, and a dedicated `turns` layer with official turn numbers), fetched once per track and cached locally. This is the briefing map — professionally drawn, official numbering, every track iRacing sells. The endpoint also returns official track-description HTML (`detail_copy`), which is injected into the scouting prompt as grounding text.
+- **GPS-derived outline** from lap telemetry (lat/lon already parsed): used on the debrief to color loss regions by time lost — spatial answer before prose. (Projecting telemetry onto the official SVG requires per-track offset calibration; the GPS outline avoids that for v1.)
+
+Briefing corner cards include the mini-map with the corner highlighted, plus a verbal anchor chain: name + official turn number (from the `turns` layer / track data) + position ("~4.4 km in") + what-comes-before ("after the back-section esses"). On day one at an unfamiliar track the map and anchors carry the reference; as the track is learned, names take over.
 
 ## Briefing format ("Prep this combo")
 
@@ -61,10 +63,21 @@ Per-corner cards built from the reference lap's telemetry — braking point, gea
 
 ## Ingestion — the watcher
 
-- v1: scan `C:\Users\antho\Documents\iRacing\telemetry\` for new IBT files on app launch (true background daemon deferred).
+- The watcher is a **separate process** (`watcher.py`), not in-UI code: it watches/scans `C:\Users\antho\Documents\iRacing\telemetry\` for new IBT files, runs the analysis core, and writes results to SQLite. This makes it UI-framework-independent, immune to UI reruns, and the natural home for live telemetry later. v1 may start as scan-on-launch invoked by the same entry point.
 - For each new file: read car/track from session YAML → find matching reference lap → run debrief → store result.
-- Streamlit becomes the **viewer** (session history, debriefs, briefings). The upload form remains only as a manual fallback.
+- The UI becomes a read-only **viewer** polling SQLite (session history, debriefs, briefings). The upload form remains only as a manual fallback.
 - Live between-lap coaching via pyirsdk is explicitly deferred to a later phase, after the prep/debrief loop proves itself in weekly use.
+
+## Tech choices — OSS-first, nothing sacred
+
+Principle (user-stated): no loyalty to past tech or surfaces; borrow from existing open-source work and open data wherever it's better. Decisions from the 2026-06-11 ecosystem survey:
+
+- **Keep our IBT parser** (numpy-strided, faster than alternatives, tested on real files) — but add **pyirsdk** (MIT, actively maintained) as a cross-validation oracle in tests (assert our channels match `irsdk.IBT.get_all()` on fixtures) and as the live-telemetry bridge for the later phase.
+- **Replace `core/benchmark/iracing_api.py` with the `iracingdataapi` package** (MIT, maintained, v1.4.4 Mar 2026): covers everything ours does plus `result_search_series` (population pace by iRating bracket), rate-limit tracking, and maintained auth.
+- **UI: stay on Streamlit for now.** With the watcher as a separate process, Streamlit + `st.fragment(run_every=…)` polling covers between-lap cadence. **NiceGUI is the named successor**, migrated to only when a concrete trigger fires: wanting watcher+UI in one process, push notifications, sub-second live updates, or Streamlit state-juggling eating real time. FastAPI+React, Tauri/Electron, and TUI options were evaluated and rejected for a single-user local tool.
+- **Adopt lovely-track-data + iRacing `track/assets`** as open data sources (see Analysis and Track map sections).
+- **Repos to read, not port:** POWERRRRRRRR/simracing-ai-coach (MIT — LLM provider abstraction, reference-lap file format), SeriousOldMan/Simulator-Controller (NC license — coaching delivery design only), tariknz/irdashies (sector-delta UI conventions, live-attach architecture), Crew Chief source (between-lap "record → compare → speak" loop).
+- **Confirmed dead ends:** no open repository of fast-lap telemetry exists (G61 manual CSV is the community standard); VRS datapacks are paywalled/proprietary; OSM raceway geometry is unlabeled and worse than our GPS traces.
 
 ## Deleted / demoted / kept
 
@@ -72,7 +85,8 @@ Per-corner cards built from the reference lap's telemetry — braking point, gea
 |---|---|
 | Deleted as foundation | Corner detection driving analysis (replaced by loss regions) |
 | Demoted | Corner detector → fallback annotator; upload form → manual fallback |
-| Kept | IBT parser, normalizer, comparator internals, track DB, Crew Chief seeder, scouting web-synthesis, pace context, unit toggle |
+| Replaced | Hand-rolled `iracing_api.py` → `iracingdataapi` package |
+| Kept | IBT parser (+ pyirsdk validation oracle), normalizer, comparator internals, track DB, Crew Chief seeder (joined by lovely-track-data), scouting web-synthesis, pace context, unit toggle, Streamlit (as viewer) |
 
 This is a re-plumbing, not a rewrite.
 
@@ -82,9 +96,9 @@ Before building features on the new analysis: take real laps (Spa, Road America)
 
 ## Staging
 
-1. **Trust rebuild** — reference lap store, delta-trace loss regions, G61 import + alignment, validation gate, landmark-based annotation, track map.
-2. **Briefing** — corner cards from reference lap + existing scouting synthesis + pace context.
-3. **Watcher** — folder scan on launch, auto-debrief, Streamlit as viewer.
+1. **Trust rebuild** — reference lap store, delta-trace loss regions, G61 import + alignment, validation gate, segment annotation (lovely-track-data + Crew Chief), pyirsdk parser cross-validation, track maps (official SVG + GPS outline).
+2. **Briefing** — corner cards from reference lap + existing scouting synthesis (grounded with official track `detail_copy`) + pace context via `iracingdataapi`.
+3. **Watcher** — separate `watcher.py` process, auto-debrief to SQLite, Streamlit as polling viewer.
 4. **(Later)** Live between-lap coaching via pyirsdk.
 
 ## Out of scope
@@ -92,3 +106,5 @@ Before building features on the new analysis: take real laps (Spa, Road America)
 - Garage 61 API automation (API too limited).
 - Real-time mid-corner coaching, setup optimization, social features (per PRD "What This Is Not").
 - Phase 3 longitudinal features (driver profile, cross-session "did you fix it") — designed-for but not part of this redesign.
+- UI framework migration (NiceGUI) — deferred until a named trigger fires.
+- VRS datapacks, OSM track geometry, TUMFTM racing lines — evaluated, rejected or deferred.

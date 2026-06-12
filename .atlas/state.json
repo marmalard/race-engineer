@@ -28,18 +28,19 @@
     "models_used": ["claude-sonnet-4-5-20250929"]
   },
   "state": {
-    "current_phase": "Stage 1 Trust Rebuild — COMPLETE on branch stage1-trust-rebuild (13/13 tasks, 21 commits, 273 tests passing, final whole-branch review passed). Awaiting merge decision and real G61 fixtures to activate the validation gate.",
+    "current_phase": "Stage 1 Trust Rebuild merged to master and pushed to GitHub (13/13 tasks, 273 tests passing). Validation gate awaiting real G61 fixtures; user beginning hands-on validation.",
     "last_session": {
-      "at": "2026-06-11T14:00:00Z",
-      "summary": "Completed Stage 1 trust rebuild end-to-end via subagent-driven development: reference-lap delta analysis replaces corner detection (alignment, loss regions, G61 import, reference store, lovely-track-data seeder wired as primary, debrief orchestrator, official track maps, GPS loss map, validation gate plumbing round-trip verified on real Porsche Cup Spa IBT, coaching page wiring)."
+      "at": "2026-06-12T00:18:58Z",
+      "summary": "Completed Stage 1 trust rebuild (reference-lap delta analysis replaces corner detection: alignment, loss regions, G61 import, reference store, lovely seeder, debrief orchestrator, track maps, coaching page wiring), merged 21 commits to master, and pushed to GitHub; identified non-working ANTHROPIC_API_KEY for rotation."
     },
     "next_actions": [
-      "Merge stage1-trust-rebuild to master (user decision)",
       "Activate G61 validation gate: user supplies paired_session.ibt + paired_lap.csv + G61-displayed lap time; verify CHANNEL_ALIASES against real export headers",
       "Stage 2 plan: briefing (corner cards from reference lap + scouting synthesis grounded with track detail_copy + iracingdataapi swap + manual corner-name edit path)",
       "Stage 3 plan: watcher process (folder scan, auto-debrief, personal-best auto-promotion to ReferenceStore)"
     ],
-    "blockers": [],
+    "blockers": [
+      "ANTHROPIC_API_KEY in .env not working — user rotating credentials (blocks scouting reports + AI coaching narrative; deterministic debrief unaffected)"
+    ],
     "roadmap": [
       "Stage 1 Trust Rebuild (in progress) — pyirsdk oracle, distance alignment, loss regions, G61 importer, reference lap store, lovely-track seeder, loss annotation, debrief orchestrator, track map cache, GPS component, G61 gate, coaching page wiring",
       "Corner detection v2 — catch fast kinks and flowing sections currently missed by speed-drop heuristics",
@@ -49,5 +50,5 @@
     ]
   },
   "created_at": "2026-04-29T14:05:54Z",
-  "updated_at": "2026-06-11T14:00:00Z"
+  "updated_at": "2026-06-12T00:18:58Z"
 }

@@ -28,27 +28,29 @@
     "models_used": ["claude-sonnet-4-5-20250929"]
   },
   "state": {
-    "current_phase": "Stage 1 Trust Rebuild merged to master and pushed to GitHub (13/13 tasks, 273 tests passing). Validation gate awaiting real G61 fixtures; user beginning hands-on validation.",
+    "current_phase": "Live between-lap coaching spike merged to master and pushed (5/5 tasks, 303 tests passing). Terminal coach reuses the loss-region engine on live pyirsdk laps; awaits hands-on driving validation before the iPad HUD (Plan 2) is built.",
     "last_session": {
-      "at": "2026-06-12T00:18:58Z",
-      "summary": "Completed Stage 1 trust rebuild (reference-lap delta analysis replaces corner detection: alignment, loss regions, G61 import, reference store, lovely seeder, debrief orchestrator, track maps, coaching page wiring), merged 21 commits to master, and pushed to GitHub; identified non-working ANTHROPIC_API_KEY for rotation."
+      "at": "2026-06-12T16:49:08Z",
+      "summary": "Built and merged the live between-lap coaching de-risk spike: pyirsdk reader, pure LapBoundaryTracker state machine (pit/reset/tow/Lap-0/too-short gating), deterministic nudges from RegionDiagnosis, terminal entry point; also added a self-debrief loss-region view to the Streamlit coaching page (catches flat-corner/exit-bleed losses corner detection misses)."
     },
     "next_actions": [
+      "DRIVE the live coach: `.venv/Scripts/python.exe scripts/live_coach.py` with iRacing on track — validate lap-boundary detection across pits/resets and tune nudge thresholds (8m braking / 2 m/s apex / 20m throttle) for signal-not-noise",
       "Activate G61 validation gate: user supplies paired_session.ibt + paired_lap.csv + G61-displayed lap time; verify CHANNEL_ALIASES against real export headers",
-      "Stage 2 plan: briefing (corner cards from reference lap + scouting synthesis grounded with track detail_copy + iracingdataapi swap + manual corner-name edit path)",
-      "Stage 3 plan: watcher process (folder scan, auto-debrief, personal-best auto-promotion to ReferenceStore)"
+      "Plan 2 (after driving validates the spike): iPad HUD — NiceGUI LAN web service (0.0.0.0, LAN + tailnet), chat-feed surface, Web Speech voice checkbox",
+      "Follow-up fix: offline analyzer lovely-slug bug (passes TrackDisplayName instead of directory TrackName; see memory) — also a CLAUDE.md Quick Start refresh to uv",
+      "Stage 2: briefing (corner cards from reference lap + scouting synthesis + iracingdataapi swap)"
     ],
     "blockers": [
-      "ANTHROPIC_API_KEY in .env not working — user rotating credentials (blocks scouting reports + AI coaching narrative; deterministic debrief unaffected)"
+      "ANTHROPIC_API_KEY in .env not working — user rotating credentials (blocks scouting reports + AI coaching narrative; deterministic debrief + live nudges unaffected, no AI on that path)"
     ],
     "roadmap": [
-      "Stage 1 Trust Rebuild (in progress) — pyirsdk oracle, distance alignment, loss regions, G61 importer, reference lap store, lovely-track seeder, loss annotation, debrief orchestrator, track map cache, GPS component, G61 gate, coaching page wiring",
-      "Corner detection v2 — catch fast kinks and flowing sections currently missed by speed-drop heuristics",
-      "Population pace benchmarking — compare driver to iRating-bracket peers using result_search_series",
-      "Phase 3 — Intelligence: driver profile, session history, cross-session coaching, season/series calendar awareness",
-      "Phase 4 — Live Awareness: between-lap coaching, Crew Chief integration or TTS output, real-time session monitoring"
+      "Live coaching HUD (Plan 2) — iPad/LAN NiceGUI web service, between-lap chat feed, optional browser Web Speech voice; gated on the terminal spike's driving results",
+      "Strategic boundary: stay in the technique-coaching lane; tire data as a coaching INPUT not a strategy readout; let Crew Chief own awareness/strategy and potentially deliver voice",
+      "Stage 2 — Briefing: reference-lap corner cards + scouting synthesis grounded with track detail_copy + iracingdataapi swap + manual corner-name edit path",
+      "Stage 3 — Watcher: folder scan, auto-debrief, personal-best auto-promotion to ReferenceStore",
+      "Phase 3 — Intelligence: driver profile, session history, cross-session coaching"
     ]
   },
   "created_at": "2026-04-29T14:05:54Z",
-  "updated_at": "2026-06-12T00:18:58Z"
+  "updated_at": "2026-06-12T16:49:08Z"
 }

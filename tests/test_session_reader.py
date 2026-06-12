@@ -113,6 +113,23 @@ def test_too_short_lap_suppressed():
     assert out is None
 
 
+def test_lap_zero_is_not_emitted():
+    """iRacing reports Lap 0 pre-green; it is never a real flying lap."""
+    tracker = LapBoundaryTracker(min_lap_samples=100)
+    # Drive a full, clean, non-pit Lap 0 (>= min_lap_samples ticks)
+    for i in range(300):
+        tracker.feed(_tick(0, float(i), i * 0.02))
+    # Crossing to Lap 1 must NOT emit the garbage Lap 0
+    out = tracker.feed(_tick(1, 0.0, 6.0))
+    assert out is None
+    # ...but the real Lap 1 that follows emits normally
+    for i in range(1, 300):
+        tracker.feed(_tick(1, float(i), 6.0 + i * 0.02))
+    closed = tracker.feed(_tick(2, 0.0, 12.0))
+    assert isinstance(closed, CompletedLap)
+    assert closed.lap_number == 1
+
+
 def test_emitted_dataframe_is_normalizer_shaped():
     from core.live.lap_buffer import SAMPLE_CHANNELS
     tracker = LapBoundaryTracker(min_lap_samples=100)

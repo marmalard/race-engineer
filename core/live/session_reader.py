@@ -5,9 +5,10 @@ whether the completed lap is worth analyzing. It owns no pyirsdk and no
 I/O, so the whole risk surface (pits, resets, tows, out/in-laps) is
 unit-testable against synthetic tick streams.
 
-Validity here is deliberately coarse: suppress laps that touched pit road,
-laps too short to be real, and discard the buffer on a backward Lap jump
-(reset/tow). Finer validity (distance coverage, distance jumps) is left to
+Validity here is deliberately coarse: suppress non-positive (pre-green) laps,
+laps that touched pit road, laps too short to be real, and discard the buffer
+on a backward Lap jump (reset/tow). Finer validity (distance coverage,
+distance jumps) is left to
 `Normalizer.normalize_lap`, whose `is_valid` flag the consumer checks
 downstream — this keeps the state machine simple and its responsibility
 single.
@@ -72,6 +73,8 @@ class LapBoundaryTracker:
         self._buffer.add(first_sample)
 
     def _close_current_lap(self) -> CompletedLap | None:
+        if self._current_lap is None or self._current_lap < 1:
+            return None
         if self._touched_pit:
             return None
         if len(self._buffer) < self.min_lap_samples:

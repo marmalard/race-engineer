@@ -47,14 +47,20 @@ race-engineer/
 │   │   ├── iracing_api.py        # iRacing Data API client
 │   │   ├── g61_import.py         # Garage 61 CSV import → NormalizedLap
 │   │   └── reference_store.py    # SQLite store of reference laps (npz blobs)
-│   └── coaching/
-│       ├── analyzer.py           # Legacy coaching analysis orchestrator
-│       ├── debrief.py            # Debrief orchestrator (align→loss regions→diagnose)
-│       ├── synthesizer.py        # AI coaching synthesis (Claude API)
-│       ├── scouting.py           # Scouting report generation
-│       └── prompts/              # Prompt templates for AI synthesis
-│           ├── coaching.py
-│           └── scouting.py
+│   ├── coaching/
+│   │   ├── analyzer.py           # Legacy coaching analysis orchestrator
+│   │   ├── debrief.py            # Debrief orchestrator (align→loss regions→diagnose)
+│   │   ├── synthesizer.py        # AI coaching synthesis (Claude API)
+│   │   ├── scouting.py           # Scouting report generation
+│   │   └── prompts/              # Prompt templates for AI synthesis
+│   │       ├── coaching.py
+│   │       └── scouting.py
+│   └── live/
+│       ├── lap_buffer.py         # Accumulate live ticks into normalizer-ready DataFrame
+│       ├── session_reader.py     # LapBoundaryTracker pure state machine
+│       └── nudges.py             # RegionDiagnosis → terse nudge
+├── scripts/
+│   └── live_coach.py             # Terminal entry point (pyirsdk driver)
 ├── data/
 │   ├── tracks.db                 # SQLite track database
 │   ├── profiles.db               # SQLite driver profile and session history
@@ -83,7 +89,11 @@ race-engineer/
     ├── test_track_assets.py
     ├── test_track_map.py
     ├── test_g61_import.py
-    └── test_g61_validation_gate.py
+    ├── test_g61_validation_gate.py
+    ├── test_lap_buffer.py
+    ├── test_session_reader.py
+    ├── test_nudges.py
+    └── test_live_coach_helpers.py
 ```
 
 ## Key Technical Concepts
@@ -299,6 +309,14 @@ streamlit run app/streamlit_app.py
 - [ ] Activate validation gate with real G61 fixtures (Spa / Road America paired IBT + CSV)
 - [ ] Verify real G61 export headers against CHANNEL_ALIASES in `g61_import.py`
 
+**Live Coaching Spike (between-lap, terminal)** (complete, branch live-coaching-spike)
+- [x] LapBuffer — live ticks → normalizer-ready DataFrame (`core/live/lap_buffer.py`)
+- [x] LapBoundaryTracker state machine — pit/reset/tow/Lap-0/too-short gating (`core/live/session_reader.py`)
+- [x] Deterministic nudges — salience: min-speed > braking > throttle; no AI, no API key on critical path (`core/live/nudges.py`)
+- [x] Terminal entry point — pyirsdk driver, prints nudges after each flying lap (`scripts/live_coach.py`)
+- [ ] Live driving validation — lap-boundary reliability + nudge naturalness across real sessions
+- Note: reuses `build_debrief` / `Normalizer` unchanged; no edits to core analysis engine
+
 **Phase 3: Intelligence**
 - [ ] Driver profile — accumulate across sessions
 - [ ] Session history — track progression over time
@@ -443,12 +461,21 @@ streamlit run app/streamlit_app.py
 - Reference lap expander shows `ReferenceLapMeta` fields: source, lap_time, driver_name (no speed trace plot, no imported_at display)
 - Debrief section: loss map (GPS outline + colored regions), per-region diagnosis cards (label, time lost, braking delta, speed delta, throttle delta), then AI narrative
 
+### Live Coaching Spike
+- **Reused-engine principle**: `LapBuffer.to_dataframe()` produces the exact DataFrame shape `Normalizer.normalize_lap` consumes (same columns as `IBTParser.get_laps()`), so `build_debrief` runs on live laps unchanged — zero edits to the core analysis engine.
+- **LapBoundaryTracker** is a pure state machine (no pyirsdk, no I/O); fed one sample dict per tick. Coarse gating only: suppresses pre-green laps (Lap < 1), pit-touch laps, laps too short to be real (< `min_lap_samples` ticks), and discards the buffer on a backward Lap jump (reset/tow). Fine validity (90% distance coverage, distance jumps) is left to `Normalizer.is_valid`, checked by the consumer in `live_coach.py` before debriefing.
+- **Nudge salience order and thresholds**: min-speed deficit (>= 2.0 m/s) wins — "carry it flat, you lifted" when reference apex >= 50 m/s, else "carry more apex speed"; braking error (>= 8 m) second — "brake later" or "brake earlier"; late throttle (>= 20 m) third — "back to power earlier". Deterministic, no AI.
+- **Track slug for lovely-track-data**: live path reads `WeekendInfo:TrackName` (the directory string, e.g. "spa 2024 up") to build the slug, NOT `TrackDisplayName`. Using `TrackDisplayName` was a known bug in the offline path — the live path avoids it deliberately.
+- **Run command**: `.venv/Scripts/python.exe scripts/live_coach.py` with iRacing open and a session loaded. Prints "Connected: <track>. Drive a lap to set baseline." on startup; prints nudges after each flying lap.
+- **Deferred to Plan 2 (HUD)**: NiceGUI LAN web service (binds 0.0.0.0, reachable on LAN + tailnet), iPad chat-feed HUD, Web Speech voice. AI nudge rewrite and Streamlit cleanup are separate tracks.
+
 ### Test Suite
-- 270 tests passing, 10 skipped (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`)
+- 303 tests passing, 10 skipped (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`)
 - Test fixtures: `tests/fixtures/sample.ibt` (Spa, BMW M2 CS Racing, 2 laps — gitignored)
 - Multi-lap fixture from `C:\Users\antho\Documents\iRacing\telemetry\` (Road America F4, 7 laps)
 - Bathurst fixture also available for corner detection tuning tests
 - Tests skip gracefully when no IBT file is available
 - 3 gate tests in `test_g61_validation_gate.py` skip pending real paired G61 fixtures
 - Stage 1 new test files: test_parser_cross_validation, test_alignment, test_loss_regions, test_reference_store, test_lovely_seeder, test_segment_annotator, test_debrief, test_track_assets, test_track_map, test_g61_import, test_g61_validation_gate
+- Live coaching spike new test files: test_lap_buffer, test_session_reader, test_nudges, test_live_coach_helpers
 - Legacy test files: test_ibt_parser, test_normalizer, test_corner_detector, test_corner_detection_tuning, test_lap_comparator, test_multilap_comparator, test_track_db, test_iracing_api, test_synthesizer, test_analyzer, test_crew_chief_seeder, test_scouting, test_unit_helpers

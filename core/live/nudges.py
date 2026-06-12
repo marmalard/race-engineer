@@ -78,7 +78,7 @@ def format_lap_block(
     """The terminal block printed after one completed lap."""
     header = f"Lap {lap_number}  ({_fmt_lap_time(lap_time)}, {total_delta:+.1f}s)"
     if is_baseline:
-        return f"{header}\n  baseline set — drive a faster lap for nudges"
+        return f"{header}\n  baseline set - drive a faster lap for nudges"
 
     nudges = []
     for diag in diagnoses[:top_n]:
@@ -87,9 +87,9 @@ def format_lap_block(
             nudges.append(n)
 
     if not nudges:
-        return f"{header}\n  clean lap — nothing to flag"
+        return f"{header}\n  clean lap - nothing to flag"
 
     lines = [header]
     for n in nudges:
-        lines.append(f"  {n.corner} — {n.message}  ({n.detail})")
+        lines.append(f"  {n.corner} - {n.message}  ({n.detail})")
     return "\n".join(lines)

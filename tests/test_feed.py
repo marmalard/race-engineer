@@ -79,3 +79,34 @@ def test_server_unknown_path_404():
             assert e.code == 404
     finally:
         server.shutdown()
+
+
+def test_feed_route_does_not_overmatch():
+    """/feedback is not the /feed route — it must 404, not return JSON."""
+    f = NudgeFeed()
+    server = start_web_display(f, host="127.0.0.1", port=0)
+    try:
+        port = server.server_address[1]
+        try:
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/feedback", timeout=5)
+            assert False, "expected 404"
+        except urllib.error.HTTPError as e:
+            assert e.code == 404
+    finally:
+        server.shutdown()
+
+
+def test_feed_route_accepts_query_string():
+    """The poll uses a cache-busting query string; /feed?t=1 still serves JSON."""
+    f = NudgeFeed()
+    f.add("lap entry")
+    server = start_web_display(f, host="127.0.0.1", port=0)
+    try:
+        port = server.server_address[1]
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/feed?t=123", timeout=5
+        ) as r:
+            data = json.loads(r.read())
+        assert data["entries"] == ["lap entry"]
+    finally:
+        server.shutdown()

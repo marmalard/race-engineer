@@ -80,20 +80,27 @@ def render_page() -> str:
 def _make_handler(feed: NudgeFeed):
     class _Handler(BaseHTTPRequestHandler):
         def do_GET(self):
-            if self.path.startswith("/feed"):
+            # Match the route exactly (an optional query string aside) so
+            # paths like /feedback fall through to 404.
+            route = self.path.split("?", 1)[0]
+            if route == "/feed":
                 body = json.dumps({"entries": feed.snapshot()}).encode("utf-8")
-                self._respond(200, "application/json", body)
-            elif self.path == "/" or self.path.startswith("/index"):
+                self._respond(200, "application/json", body, no_store=True)
+            elif route == "/" or route.startswith("/index"):
                 self._respond(
                     200, "text/html; charset=utf-8", render_page().encode("utf-8")
                 )
             else:
                 self._respond(404, "text/plain; charset=utf-8", b"not found")
 
-        def _respond(self, status: int, ctype: str, body: bytes) -> None:
+        def _respond(
+            self, status: int, ctype: str, body: bytes, no_store: bool = False
+        ) -> None:
             self.send_response(status)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
+            if no_store:
+                self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(body)
 

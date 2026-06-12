@@ -120,7 +120,8 @@ def main() -> None:
 
             completed = tracker.feed(sample)
             if completed is not None:
-                _, track_length_m, _, _ = _session_meta(ir)
+                # track_length_m was captured at connect time and is stable
+                # for the session, so reuse it rather than re-reading the YAML.
                 nlap = normalizer.normalize_lap(
                     completed.dataframe, completed.lap_number, track_length_m
                 )

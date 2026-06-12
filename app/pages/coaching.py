@@ -124,6 +124,12 @@ def render_coaching_page() -> None:
             marker = " **[best]**" if lap_time == analysis.best_lap_time else ""
             st.markdown(f"- Lap {lap_num}: {_fmt_time(lap_time)}{marker}")
 
+    # --- Self debrief: loss regions vs your own best lap ---
+    # Always available (no external reference needed). Catches losses the
+    # detected-corner priority list cannot see — flat-out corners and exit
+    # bleed onto straights have no speed minimum to detect.
+    _render_self_debrief_section(analysis, _is_imperial())
+
     # --- Reference Lap (import + debrief) ---
     reference = _render_reference_section(analysis)
     if reference is not None:
@@ -293,47 +299,63 @@ def _render_reference_section(analysis: CoachingAnalysis) -> ReferenceLap | None
     return reference
 
 
-def _render_debrief_section(
-    analysis: CoachingAnalysis, reference: ReferenceLap, imperial: bool
-) -> None:
-    """Debrief the driver's best lap against the stored reference lap."""
-    st.subheader("Reference Debrief")
-
-    corners = (
+def _track_corners(analysis: CoachingAnalysis) -> list:
+    """Named corners for the session's track (empty when no track ID)."""
+    return (
         TrackDB(DB_PATH).get_corners(analysis.track_id) if analysis.track_id else []
     )
 
+
+def _render_loss_analysis(
+    driver_lap,
+    reference_lap,
+    corners: list,
+    imperial: bool,
+    *,
+    title: str,
+    driver_label: str,
+    versus_label: str,
+    map_key: str,
+) -> None:
+    """Shared loss-region renderer: delta vs a reference, map, region cards.
+
+    Used for both the self-debrief (slower lap vs your own best — catches
+    losses corner detection can't see, like a flat-out Eau Rouge exit) and
+    the external-reference debrief (your best vs an imported G61 lap).
+    """
+    st.subheader(title)
+
     try:
-        result = build_debrief(analysis.best_lap, reference.lap, corners)
+        result = build_debrief(driver_lap, reference_lap, corners)
     except Exception as e:
         st.error(f"Debrief failed: {e}")
         return
 
     st.caption(
-        f"Your lap {_fmt_time(result.driver_lap_time)} vs reference "
+        f"{driver_label} {_fmt_time(result.driver_lap_time)} vs {versus_label} "
         f"{_fmt_time(result.reference_lap_time)} "
         f"(gap {result.total_time_delta:+.3f}s, alignment offset "
         f"{fmt_distance(result.alignment_offset_m, imperial, signed=True)})"
     )
 
-    best = analysis.best_lap
-    if np.any(best.lat) and np.any(best.lon):
+    if np.any(driver_lap.lat) and np.any(driver_lap.lon):
         # The debrief grid is truncated to the shorter of driver/reference;
         # slice GPS to match so the region masks line up.
         n = len(result.distance)
         st.plotly_chart(
             build_loss_map(
-                best.lat[:n],
-                best.lon[:n],
+                driver_lap.lat[:n],
+                driver_lap.lon[:n],
                 result.distance,
                 [d.region for d in result.diagnoses],
                 labels=[d.label for d in result.diagnoses],
             ),
             use_container_width=True,
+            key=map_key,
         )
 
     if not result.diagnoses:
-        st.info("No significant loss regions found against the reference.")
+        st.info("No significant loss regions found.")
         return
 
     for diag in result.diagnoses:
@@ -359,6 +381,41 @@ def _render_debrief_section(
                 else "—",
                 help="Positive = you pick up throttle later than the reference",
             )
+
+
+def _render_self_debrief_section(analysis: CoachingAnalysis, imperial: bool) -> None:
+    """Loss regions of the comparison lap vs the session's best lap.
+
+    Needs no external reference. Unlike the detected-corner priority list,
+    this catches losses anywhere on track — including flat-out corners and
+    exit bleed onto straights, which corner detection cannot see.
+    """
+    _render_loss_analysis(
+        analysis.comparison_lap,
+        analysis.best_lap,
+        _track_corners(analysis),
+        imperial,
+        title="Where You Lose Time vs Your Best Lap",
+        driver_label=f"Lap {analysis.comparison_lap.lap_number}",
+        versus_label=f"your best (lap {analysis.best_lap.lap_number})",
+        map_key="self_debrief_map",
+    )
+
+
+def _render_debrief_section(
+    analysis: CoachingAnalysis, reference: ReferenceLap, imperial: bool
+) -> None:
+    """Debrief the driver's best lap against the stored reference lap."""
+    _render_loss_analysis(
+        analysis.best_lap,
+        reference.lap,
+        _track_corners(analysis),
+        imperial,
+        title="Reference Debrief",
+        driver_label="Your best",
+        versus_label="reference",
+        map_key="reference_debrief_map",
+    )
 
 
 def _speed_trace_plot(analysis: CoachingAnalysis, imperial: bool) -> go.Figure:

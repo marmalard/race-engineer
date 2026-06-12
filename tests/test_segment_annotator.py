@@ -48,3 +48,26 @@ def test_no_corners_at_all_falls_back_to_position():
     region = LossRegion(distance_start=1000.0, distance_end=1080.0, time_lost=0.3)
     label = annotate_region(region, [], track_length=7004.0)
     assert "1.0 km" in label
+
+
+def test_exit_bleed_region_attributed_to_preceding_corner():
+    """A bad corner exit bleeds time down the following straight: the region
+    starts past the corner's end (Raidillon exit onto Kemmel at Spa)."""
+    region = LossRegion(distance_start=1300.0, distance_end=2300.0, time_lost=2.0)
+    assert annotate_region(region, CORNERS, track_length=7004.0) == (
+        "after Raidillon"
+    )
+
+
+def test_trailing_attribution_respects_window():
+    # Nearest preceding corner ends 3+ km back: too far to blame the exit
+    region = LossRegion(distance_start=4400.0, distance_end=4500.0, time_lost=0.2)
+    label = annotate_region(region, CORNERS, track_length=7004.0,
+                            trailing_window_m=300.0)
+    assert "4.4 km" in label
+
+
+def test_strict_overlap_beats_trailing_attribution():
+    # Region inside Eau Rouge, with La Source ending well behind it
+    region = LossRegion(distance_start=1000.0, distance_end=1080.0, time_lost=0.3)
+    assert annotate_region(region, CORNERS, track_length=7004.0) == "Eau Rouge"

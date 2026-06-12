@@ -14,6 +14,7 @@ def annotate_region(
     corners: list[Corner],
     track_length: float,
     tolerance_m: float = 50.0,
+    trailing_window_m: float = 300.0,
 ) -> str:
     """Human label for a loss region: corner name(s) or position fallback.
 
@@ -27,11 +28,16 @@ def annotate_region(
             region's end is matched (braking zone attribution). Strict
             overlaps always win, so a region inside one corner is never
             also attributed to the next corner just because it is close.
+        trailing_window_m: Last resort before the position fallback: a region
+            starting up to this many meters AFTER a corner's end is labeled
+            "after <corner>" — a bad exit bleeds time down the following
+            straight, outside any corner's extent (e.g. a botched Raidillon
+            exit losing time all the way down Kemmel).
 
     Returns:
-        Corner name, slash-joined names for multi-corner spans, or a
-        position string like "~4.4 km from start/finish" when no named
-        corner overlaps.
+        Corner name, slash-joined names for multi-corner spans, "after
+        <corner>" for exit-bleed regions, or a position string like
+        "~4.4 km from start/finish" when nothing matches.
     """
     def _strictly_overlaps(c: Corner) -> bool:
         return (
@@ -54,6 +60,16 @@ def annotate_region(
     if overlapping:
         overlapping.sort(key=lambda c: c.distance_start_meters)
         return " / ".join(dict.fromkeys(c.name for c in overlapping))
+
+    preceding = [
+        c for c in corners
+        if c.name
+        and c.distance_end_meters <= region.distance_start
+        and region.distance_start - c.distance_end_meters <= trailing_window_m
+    ]
+    if preceding:
+        nearest = max(preceding, key=lambda c: c.distance_end_meters)
+        return f"after {nearest.name}"
 
     km = region.distance_start / 1000.0
     return f"~{km:.1f} km from start/finish"

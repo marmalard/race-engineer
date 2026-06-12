@@ -13,6 +13,7 @@ quality before any HUD is built. All real logic lives in tested modules
 under core/live/ and core/coaching/; this file only drives pyirsdk.
 """
 
+import socket
 import sys
 import time
 from pathlib import Path
@@ -25,6 +26,7 @@ if _ROOT not in sys.path:
 import irsdk  # noqa: E402
 
 from core.coaching.debrief import build_debrief  # noqa: E402
+from core.live.feed import NudgeFeed, start_web_display  # noqa: E402
 from core.live.lap_buffer import SAMPLE_CHANNELS  # noqa: E402
 from core.live.nudges import format_lap_block  # noqa: E402
 from core.live.session_reader import LapBoundaryTracker  # noqa: E402
@@ -37,6 +39,18 @@ DB_PATH = Path("data/tracks.db")
 # boundary/validity flags the state machine reads.
 READ_CHANNELS = SAMPLE_CHANNELS + ["Lap", "OnPitRoad", "PlayerTrackSurface"]
 TICK_SECONDS = 1.0 / 60.0
+
+
+def _lan_ip() -> str:
+    """Best-guess primary LAN IP for the 'open this on your iPad' message."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+    finally:
+        s.close()
 
 
 def _parse_track_length_km(weekend_info: dict) -> float:
@@ -93,6 +107,14 @@ def main() -> None:
     ir = irsdk.IRSDK()
     print("Race Engineer live coach - waiting for iRacing...")
 
+    feed = NudgeFeed()
+    start_web_display(feed)
+    print(f"Web display: http://{_lan_ip()}:8042  (open in Safari on your iPad)")
+
+    def emit(block: str) -> None:
+        print(block)
+        feed.add(block)
+
     tracker = LapBoundaryTracker()
     normalizer = Normalizer()
     session_best = None
@@ -128,13 +150,13 @@ def main() -> None:
                 if nlap.is_valid:
                     if session_best is None:
                         session_best = nlap
-                        print(format_lap_block(
+                        emit(format_lap_block(
                             nlap.lap_number, nlap.lap_time, 0.0, [],
                             is_baseline=True,
                         ))
                     else:
                         result = build_debrief(nlap, session_best, corners)
-                        print(format_lap_block(
+                        emit(format_lap_block(
                             nlap.lap_number, nlap.lap_time,
                             result.total_time_delta, result.diagnoses,
                         ))

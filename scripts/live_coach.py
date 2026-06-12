@@ -48,17 +48,27 @@ def _parse_track_length_km(weekend_info: dict) -> float:
         return 0.0
 
 
-def _session_meta(ir: "irsdk.IRSDK") -> tuple[str, float, str]:
-    """Return (track_id_str, track_length_m, track_name) from live YAML."""
+def _session_meta(ir: "irsdk.IRSDK") -> tuple[str, float, str, str]:
+    """Return (track_id_str, track_length_m, track_dir, track_display).
+
+    track_dir is iRacing's directory string ("spa 2024 up") used to build
+    the lovely-track-data slug; track_display is the pretty name for output.
+    """
     weekend = ir["WeekendInfo"] or {}
     track_id = str(weekend.get("TrackID", "") or "")
     track_length_m = _parse_track_length_km(weekend) * 1000.0
-    track_name = str(weekend.get("TrackDisplayName", "track"))
-    return track_id, track_length_m, track_name
+    track_dir = str(weekend.get("TrackName", "") or "")
+    track_display = str(weekend.get("TrackDisplayName", "track"))
+    return track_id, track_length_m, track_dir, track_display
 
 
-def _load_corners(track_id: str, track_name: str, track_length_m: float) -> list:
-    """Named corners for labeling, seeding from lovely-track-data on first use."""
+def _load_corners(track_id: str, track_dir: str, track_length_m: float) -> list:
+    """Named corners for labeling, seeding from lovely-track-data on first use.
+
+    track_dir is iRacing's directory string (e.g. "spa 2024 up"), which the
+    lovely seeder turns into its slug. Already-seeded tracks return existing
+    corners without re-seeding.
+    """
     if not track_id:
         return []
     db = TrackDB(DB_PATH)
@@ -70,7 +80,7 @@ def _load_corners(track_id: str, track_name: str, track_length_m: float) -> list
         try:
             seed_track_from_lovely(
                 db, track_id=track_id,
-                ibt_track_name=track_name.lower().replace(" ", " "),
+                ibt_track_name=track_dir,
                 track_length_m=track_length_m,
             )
             corners = db.get_corners(track_id)
@@ -99,18 +109,18 @@ def main() -> None:
                 continue
 
             if not meta_loaded:
-                track_id, track_length_m, track_name = _session_meta(ir)
-                corners = _load_corners(track_id, track_name, track_length_m)
+                track_id, track_length_m, track_dir, track_display = _session_meta(ir)
+                corners = _load_corners(track_id, track_dir, track_length_m)
                 session_best = None
                 meta_loaded = True
-                print(f"Connected: {track_name}. Drive a lap to set baseline.")
+                print(f"Connected: {track_display}. Drive a lap to set baseline.")
 
             ir.freeze_var_buffer_latest()
             sample = {ch: ir[ch] for ch in READ_CHANNELS}
 
             completed = tracker.feed(sample)
             if completed is not None:
-                _, track_length_m, _ = _session_meta(ir)
+                _, track_length_m, _, _ = _session_meta(ir)
                 nlap = normalizer.normalize_lap(
                     completed.dataframe, completed.lap_number, track_length_m
                 )

@@ -32,6 +32,7 @@ from core.live.nudges import format_lap_block  # noqa: E402
 from core.live.session_reader import LapBoundaryTracker  # noqa: E402
 from core.telemetry.normalizer import Normalizer  # noqa: E402
 from core.track.lovely_seeder import seed_track_from_lovely  # noqa: E402
+from core.track.models import Track, TrackType  # noqa: E402
 from core.track.track_db import TrackDB  # noqa: E402
 
 DB_PATH = Path("data/tracks.db")
@@ -76,19 +77,31 @@ def _session_meta(ir: "irsdk.IRSDK") -> tuple[str, float, str, str]:
     return track_id, track_length_m, track_dir, track_display
 
 
-def _load_corners(track_id: str, track_dir: str, track_length_m: float) -> list:
+def _load_corners(
+    track_id: str, track_dir: str, track_length_m: float, track_display: str
+) -> list:
     """Named corners for labeling, seeding from lovely-track-data on first use.
 
-    track_dir is iRacing's directory string (e.g. "spa 2024 up"), which the
-    lovely seeder turns into its slug. Already-seeded tracks return existing
-    corners without re-seeding.
+    A live session may be at a track never processed offline (the tracks
+    table is only populated by the offline IBT pipeline), so we create a
+    minimal track row from the live session metadata first — otherwise
+    corner seeding has nothing to attach to and every loss region falls
+    back to a bare distance. track_dir is iRacing's directory string (e.g.
+    "oran gp"), which the lovely seeder turns into its slug. Already-named
+    tracks return their existing corners without re-seeding.
     """
     if not track_id:
         return []
     db = TrackDB(DB_PATH)
     if db.get_track(track_id) is None:
-        # No track row -> nothing to attach corners to; skip seeding.
-        return []
+        db.upsert_track(Track(
+            track_id=track_id,
+            name=track_display,
+            config=None,
+            length_meters=track_length_m,
+            track_type=TrackType.ROAD,
+            character=None,
+        ))
     corners = db.get_corners(track_id)
     if not corners:
         try:
@@ -132,7 +145,9 @@ def main() -> None:
 
             if not meta_loaded:
                 track_id, track_length_m, track_dir, track_display = _session_meta(ir)
-                corners = _load_corners(track_id, track_dir, track_length_m)
+                corners = _load_corners(
+                    track_id, track_dir, track_length_m, track_display
+                )
                 session_best = None
                 meta_loaded = True
                 print(f"Connected: {track_display}. Drive a lap to set baseline.")

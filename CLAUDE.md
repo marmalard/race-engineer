@@ -377,7 +377,7 @@ streamlit run app/streamlit_app.py
 - Imports corner names and distances from Crew Chief's open-source `trackLandmarksData.json` (GitLab)
 - `IRACING_TRACK_MAP`: 30 entries mapping to iRacing numeric track IDs — 21 direct iRacing matches + 9 cross-sim matched
 - Cross-sim matching (`CROSS_SIM_MAP`): CC entries without `irTrackName` are matched by `pcarsTrackName`, `acTrackNames`, `rf1TrackNames` etc. Canonical keys prefixed `xsim_` (e.g., `xsim_brands_gp`, `xsim_suzuka`)
-- Verified track IDs from IBT files: bathurst=219, spa=523, roadamerica=18, lagunaseca=47, monza=239, sebring=95, brands_hatch=145
+- Verified track IDs from IBT files: bathurst=219, spa=523 (GP) / 525 (Endurance, "spa 2024 combined"), roadamerica=18, lagunaseca=47, monza=239, sebring=95, brands_hatch=145
 - Lazy-seeds on first use: when coaching pipeline processes an IBT file, automatically seeds if no named corners exist
 - `format_corner_name()` converts snake_case to display names with ~40 overrides for proper names (Eau Rouge, Raidillon, McPhillamy Park, Paddock Hill Bend, Tertre Rouge, Craner Curves, 130R, etc.)
 - `CornerRegistry.match_corners()` maps detected telemetry corners to named DB corners by distance overlap + apex proximity fallback (50m tolerance)

@@ -36,6 +36,9 @@ class ScheduledPrompt:
 
 
 def _containing_corner(pos: float, corners: list[Corner]) -> Corner | None:
+    # Assumes start <= end for every span; a corner whose span wraps the
+    # start/finish line (start > end) would never match. The seeders
+    # (lovely / Crew Chief) only produce non-wrapping spans today.
     for c in corners:
         if c.distance_start_meters <= pos <= c.distance_end_meters:
             return c
@@ -115,7 +118,13 @@ class PromptScheduler:
             p.fired = False
 
     def feed(self, lap_dist_m: float) -> str | None:
-        """One tick. Returns prompt text iff a trigger was crossed."""
+        """One tick. Returns prompt text iff a trigger was crossed.
+
+        At most ONE prompt fires per tick; if two triggers land inside the
+        same tick window (~1.4 m at 300 km/h and 60 Hz), the second is
+        silently skipped for this lap rather than deferred — two prompts
+        back-to-back would talk over each other anyway.
+        """
         prev, self._prev_dist = self._prev_dist, lap_dist_m
         if prev is None:
             return None
@@ -129,5 +138,7 @@ class PromptScheduler:
 def _crossed(prev: float, curr: float, trigger: float) -> bool:
     if curr >= prev:
         return prev < trigger <= curr
-    # Wrapped past start/finish between ticks.
+    # curr < prev is treated as a start/finish wrap. Safe because iRacing's
+    # LapDist comes from the track spline (monotonic within a lap, no GPS
+    # jitter); a genuine reversal (spin) is covered by the fired flag.
     return trigger > prev or trigger <= curr

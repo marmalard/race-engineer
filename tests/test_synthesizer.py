@@ -196,3 +196,90 @@ class TestGenerateScoutingReport:
 
             assert len(report.citations) == 1
             assert report.citations[0].url == "https://forum.com/spa"
+
+
+# ---------------------------------------------------------------------------
+# Task 9: Race debrief AI layer
+# ---------------------------------------------------------------------------
+
+from tests.test_race_models import _minimal_narrative  # noqa: E402
+
+from core.coaching.prompts.race_debrief import (  # noqa: E402
+    RACE_DEBRIEF_SYSTEM_PROMPT,
+    build_race_chat_system,
+    build_race_debrief_prompt,
+)
+
+
+def test_race_debrief_system_prompt_carries_tone_contract():
+    text = RACE_DEBRIEF_SYSTEM_PROMPT.lower()
+    assert "engineer" in text
+    assert "never" in text          # never scold / never invent
+    assert "2" in RACE_DEBRIEF_SYSTEM_PROMPT or "two" in text  # takeaway cap
+
+
+def test_build_race_debrief_prompt_embeds_narrative_json():
+    prompt = build_race_debrief_prompt(_minimal_narrative())
+    assert "86748877" in prompt
+    assert "Knickerbrook" in prompt
+    assert "Anthony Moorman" in prompt
+
+
+def test_build_race_chat_system_includes_debrief_and_grounding():
+    system = build_race_chat_system(_minimal_narrative(), "You raced well.")
+    assert "You raced well." in system
+    assert "Knickerbrook" in system
+    assert "don't have that" in system.lower() or "not in the data" in system.lower()
+
+
+class _FakeMessages:
+    def __init__(self, reply_text: str):
+        self.reply_text = reply_text
+        self.calls: list[dict] = []
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+
+        class _Block:
+            type = "text"
+            text = self.reply_text
+
+        class _Usage:
+            input_tokens = 10
+            output_tokens = 20
+
+        class _Response:
+            content = [_Block()]
+            usage = _Usage()
+            model = kwargs["model"]
+
+        return _Response()
+
+
+def _synthesizer_with_fake(reply_text: str):
+    from core.coaching.synthesizer import Synthesizer
+
+    synth = Synthesizer(api_key="fake-key")
+    fake = _FakeMessages(reply_text)
+    synth.client.messages = fake
+    return synth, fake
+
+
+def test_generate_race_debrief_returns_report():
+    synth, fake = _synthesizer_with_fake("Solid recovery drive.")
+    report = synth.generate_race_debrief(_minimal_narrative())
+    assert report.report_text == "Solid recovery drive."
+    assert report.track == "Oulton Park Circuit"
+    # No web search tools on the debrief path — facts come from the narrative
+    assert "tools" not in fake.calls[0]
+
+
+def test_race_chat_reply_threads_history_and_caps_it():
+    synth, fake = _synthesizer_with_fake("About lap 9...")
+    history = [{"role": "user", "content": f"q{i}"} for i in range(30)]
+    history += [{"role": "assistant", "content": "a"}, {"role": "user", "content": "final"}]
+    reply = synth.race_chat_reply(_minimal_narrative(), "Debrief.", history)
+    assert reply == "About lap 9..."
+    sent = fake.calls[0]["messages"]
+    assert len(sent) <= 20            # capped
+    assert sent[-1]["content"] == "final"

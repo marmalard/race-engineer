@@ -6,7 +6,8 @@ from core.telemetry.loss_regions import LossRegion
 
 
 def _diag(label="Eau Rouge", time_lost=0.4, braking=None, min_speed=0.0,
-          throttle=None, drv_min=60.0, ref_min=60.0) -> RegionDiagnosis:
+          throttle=None, drv_min=60.0, ref_min=60.0, release=None,
+          exit_speed=0.0, onset=None) -> RegionDiagnosis:
     return RegionDiagnosis(
         region=LossRegion(distance_start=1000.0, distance_end=1100.0,
                           time_lost=time_lost),
@@ -16,6 +17,9 @@ def _diag(label="Eau Rouge", time_lost=0.4, braking=None, min_speed=0.0,
         throttle_delta_m=throttle,
         driver_min_speed_ms=drv_min,
         reference_min_speed_ms=ref_min,
+        brake_release_delta_m=release,
+        exit_speed_delta_ms=exit_speed,
+        reference_brake_onset_m=onset,
     )
 
 
@@ -89,3 +93,67 @@ def test_format_lap_block_baseline_when_no_diagnoses():
                              is_baseline=True)
     assert "baseline" in block.lower()
     assert "Lap 1" in block
+
+
+def test_early_release_says_carry_brakes_deeper():
+    n = nudge_from_diagnosis(_diag(release=-15.0, min_speed=-0.5))
+    assert n is not None
+    assert "brakes deeper" in n.message.lower()
+    assert "15" in n.detail
+
+
+def test_release_below_threshold_returns_none():
+    n = nudge_from_diagnosis(_diag(release=-6.0, min_speed=-0.5))
+    assert n is None
+
+
+def test_slow_exit_says_prioritize_the_exit():
+    n = nudge_from_diagnosis(_diag(exit_speed=-3.0, min_speed=-0.5))
+    assert n is not None
+    assert "exit" in n.message.lower()
+
+
+def test_braking_point_outranks_release():
+    n = nudge_from_diagnosis(_diag(braking=-12.0, release=-15.0, min_speed=-0.5))
+    assert "brake later" in n.message.lower()
+
+
+def test_release_outranks_exit_speed():
+    n = nudge_from_diagnosis(_diag(release=-12.0, exit_speed=-3.0, min_speed=-0.5))
+    assert "brakes deeper" in n.message.lower()
+
+
+def test_exit_speed_outranks_throttle():
+    n = nudge_from_diagnosis(_diag(exit_speed=-3.0, throttle=30.0, min_speed=-0.5))
+    assert "exit" in n.message.lower()
+
+
+def test_speech_uses_car_lengths_not_meters():
+    n = nudge_from_diagnosis(_diag(braking=-15.0, min_speed=-0.5))
+    assert "car length" in n.speech.lower()
+    assert "15m" not in n.speech
+
+
+def test_prompt_is_terse_imperative_with_corner():
+    """In-corner prompts are quantity-free — the magnitude was spoken
+    between laps; at speed the driver needs only the instruction."""
+    n = nudge_from_diagnosis(_diag(label="La Source", braking=-15.0, min_speed=-0.5))
+    assert n.prompt == "La Source — brake later."
+    assert "car length" not in n.prompt
+
+
+def test_every_rung_has_speech_and_prompt():
+    rungs = [
+        _diag(min_speed=-4.0, drv_min=55.0, ref_min=59.0),  # flat lift
+        _diag(min_speed=-4.0, drv_min=16.0, ref_min=20.0),  # apex speed
+        _diag(braking=-15.0, min_speed=-0.5),               # brake later
+        _diag(braking=14.0, min_speed=-0.5),                # brake earlier
+        _diag(release=-15.0, min_speed=-0.5),               # trail
+        _diag(exit_speed=-3.0, min_speed=-0.5),             # exit
+        _diag(throttle=30.0, min_speed=-0.5),               # throttle
+    ]
+    for d in rungs:
+        n = nudge_from_diagnosis(d)
+        assert n is not None
+        assert n.speech and n.prompt
+        assert n.corner in n.speech and n.corner in n.prompt

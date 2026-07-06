@@ -3,8 +3,9 @@
 No AI, no API key on the critical path. Each loss region yields at most
 one imperative line plus the number that justifies it, chosen by salience:
 a big apex-speed deficit (a lift) outranks a braking-point error, which
-outranks a late throttle pickup. Thresholds are tuned during the spike so
-only meaningful deltas speak.
+outranks a brake-release error, which outranks an exit-speed deficit,
+which outranks a late throttle pickup. Thresholds are tuned during the
+spike so only meaningful deltas speak.
 """
 
 from dataclasses import dataclass
@@ -15,10 +16,15 @@ from core.coaching.debrief import RegionDiagnosis
 BRAKING_THRESHOLD_M = 8.0
 MIN_SPEED_THRESHOLD_MS = 2.0
 THROTTLE_THRESHOLD_M = 20.0
+RELEASE_THRESHOLD_M = 10.0
+EXIT_SPEED_THRESHOLD_MS = 2.0
 # Reference apex speed above this (m/s) = a fast/flat corner where the
 # right coaching is "carry it flat" rather than "carry more apex speed".
 # 50 m/s ≈ 180 km/h.
 FLAT_CORNER_MIN_SPEED_MS = 50.0
+# Spoken distances use car lengths — drivers translate "a car length later"
+# onto their own visual markers far better than raw meters at speed.
+CAR_LENGTH_M = 4.5
 
 
 @dataclass
@@ -28,15 +34,36 @@ class Nudge:
     corner: str
     message: str
     detail: str  # the justifying number, e.g. "-14 km/h" or "15m"
+    speech: str  # full between-lap spoken sentence (includes corner name)
+    prompt: str  # terse in-corner imperative (includes corner name)
 
 
 def _kmh(ms: float) -> float:
     return ms * 3.6
 
 
-def nudge_from_diagnosis(diag: RegionDiagnosis) -> Nudge | None:
+def _car_lengths_phrase(meters: float) -> str:
+    """'15m' -> '3 and a half car lengths' (rounded to the nearest half)."""
+    lengths = max(0.5, round(abs(meters) / CAR_LENGTH_M * 2) / 2)
+    if lengths == 0.5:
+        return "half a car length"
+    if lengths == 1.0:
+        return "a car length"
+    if lengths == 1.5:
+        return "a car length and a half"
+    whole = int(lengths)
+    if lengths == whole:
+        return f"{whole} car lengths"
+    return f"{whole} and a half car lengths"
+
+
+def nudge_from_diagnosis(diag: RegionDiagnosis) -> "Nudge | None":
     """The single most salient nudge for this region, or None if nothing
-    crosses threshold."""
+    crosses threshold.
+
+    Salience: lift > braking point > brake release (trail) > exit speed >
+    throttle pickup.
+    """
     corner = diag.label
 
     # 1) Apex-speed deficit (a lift / over-slow) is the headline when big.
@@ -44,19 +71,84 @@ def nudge_from_diagnosis(diag: RegionDiagnosis) -> Nudge | None:
         deficit_kmh = abs(_kmh(diag.min_speed_delta_ms))
         detail = f"-{deficit_kmh:.0f} km/h"
         if diag.reference_min_speed_ms >= FLAT_CORNER_MIN_SPEED_MS:
-            return Nudge(corner, "carry it flat, you lifted", detail)
-        return Nudge(corner, "carry more apex speed", detail)
+            return Nudge(
+                corner=corner,
+                message="carry it flat, you lifted",
+                detail=detail,
+                speech=f"{corner}. Carry it flat, you lifted.",
+                prompt=f"{corner} — carry it flat.",
+            )
+        return Nudge(
+            corner=corner,
+            message="carry more apex speed",
+            detail=detail,
+            speech=(
+                f"{corner}. Carry more apex speed, you had "
+                f"{deficit_kmh:.0f} k more on the reference."
+            ),
+            prompt=f"{corner} — carry more speed.",
+        )
 
     # 2) Braking-point error.
     if diag.braking_delta_m is not None and abs(diag.braking_delta_m) >= BRAKING_THRESHOLD_M:
         meters = abs(diag.braking_delta_m)
+        lengths = _car_lengths_phrase(meters)
         if diag.braking_delta_m < 0:
-            return Nudge(corner, "brake later", f"{meters:.0f}m")
-        return Nudge(corner, "brake earlier", f"{meters:.0f}m")
+            return Nudge(
+                corner=corner,
+                message="brake later",
+                detail=f"{meters:.0f}m",
+                speech=f"{corner}. Brake {lengths} later.",
+                prompt=f"{corner} — brake later.",
+            )
+        return Nudge(
+            corner=corner,
+            message="brake earlier",
+            detail=f"{meters:.0f}m",
+            speech=f"{corner}. Brake {lengths} earlier.",
+            prompt=f"{corner} — brake earlier.",
+        )
 
-    # 3) Late throttle pickup.
+    # 3) Brake release (trail braking) — fires only when the reference
+    #    trail-brakes (brake_release_delta_m is not None) and the driver
+    #    releases significantly earlier.
+    if (
+        diag.brake_release_delta_m is not None
+        and diag.brake_release_delta_m <= -RELEASE_THRESHOLD_M
+    ):
+        meters = abs(diag.brake_release_delta_m)
+        lengths = _car_lengths_phrase(meters)
+        return Nudge(
+            corner=corner,
+            message="carry the brakes deeper",
+            detail=f"{meters:.0f}m",
+            speech=f"{corner}. Release the brakes more slowly, carry them {lengths} deeper.",
+            prompt=f"{corner} — carry the brakes deeper.",
+        )
+
+    # 4) Exit-speed deficit — slow onto the following straight.
+    if diag.exit_speed_delta_ms <= -EXIT_SPEED_THRESHOLD_MS:
+        deficit_kmh = abs(_kmh(diag.exit_speed_delta_ms))
+        return Nudge(
+            corner=corner,
+            message="prioritize the exit",
+            detail=f"-{deficit_kmh:.0f} km/h",
+            speech=(
+                f"{corner}. Prioritize the exit, you're "
+                f"{deficit_kmh:.0f} k slow onto the straight."
+            ),
+            prompt=f"{corner} — prioritize the exit.",
+        )
+
+    # 5) Late throttle pickup.
     if diag.throttle_delta_m is not None and diag.throttle_delta_m >= THROTTLE_THRESHOLD_M:
-        return Nudge(corner, "back to power earlier", f"{diag.throttle_delta_m:.0f}m")
+        return Nudge(
+            corner=corner,
+            message="back to power earlier",
+            detail=f"{diag.throttle_delta_m:.0f}m",
+            speech=f"{corner}. Back to power earlier.",
+            prompt=f"{corner} — power earlier.",
+        )
 
     return None
 

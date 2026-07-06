@@ -20,9 +20,12 @@ class G61ImportError(Exception):
 
 
 # Logical channel -> acceptable G61 column names (case-insensitive match).
-# VERIFY against a real export before trusting; extend as needed.
+# Verified against a real export 2026-07 (Spa / BMW M2): headers are
+# Speed,LapDistPct,Lat,Lon,Brake,Throttle,RPM,SteeringWheelAngle,Gear,...
+# — note there is NO absolute distance column, only LapDistPct.
 CHANNEL_ALIASES: dict[str, list[str]] = {
     "distance": ["distance", "distance (m)", "lapdist", "lap distance", "dist"],
+    "distance_pct": ["lapdistpct", "lap dist pct", "lapdistpct (%)"],
     "speed": ["speed", "speed (km/h)", "speed (m/s)", "speed kmh", "ground speed"],
     "throttle": ["throttle", "throttle (%)", "throttle pos", "rpedal"],
     "brake": ["brake", "brake (%)", "brake pos", "brake pressure"],
@@ -34,6 +37,8 @@ CHANNEL_ALIASES: dict[str, list[str]] = {
     "lon": ["lon", "long", "longitude", "gps lon"],
 }
 
+# "distance" is satisfiable by either an absolute column or distance_pct
+# (reconstructed as pct * track_length_m at import time).
 REQUIRED = ["distance", "speed"]
 
 
@@ -56,7 +61,11 @@ def _map_columns(df: pd.DataFrame) -> dict[str, str]:
             if alias in lower_cols:
                 mapping[logical] = lower_cols[alias]
                 break
-    missing = [ch for ch in REQUIRED if ch not in mapping]
+    missing = [
+        ch for ch in REQUIRED
+        if ch not in mapping
+        and not (ch == "distance" and "distance_pct" in mapping)
+    ]
     if missing:
         raise G61ImportError(
             f"Could not find required channels {missing} in CSV. "
@@ -103,7 +112,15 @@ def import_g61_csv(
             "CSV has fewer than 2 data rows; cannot resample a lap from it."
         )
 
-    raw_dist = df[cols["distance"]].to_numpy(dtype=float)
+    if "distance" in cols:
+        raw_dist = df[cols["distance"]].to_numpy(dtype=float)
+    else:
+        # Real G61 exports carry LapDistPct (fraction of a lap) instead of
+        # absolute distance; reconstruct meters from the track length.
+        raw_pct = df[cols["distance_pct"]].to_numpy(dtype=float)
+        if np.nanmax(raw_pct) > 1.5:  # percent scale, not fraction
+            raw_pct = raw_pct / 100.0
+        raw_dist = raw_pct * track_length_m
     raw_speed = df[cols["speed"]].to_numpy(dtype=float)
 
     # Unit detection: no car reaches 130 m/s; km/h values for race cars do exceed it

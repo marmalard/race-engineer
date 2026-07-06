@@ -81,3 +81,37 @@ def test_real_g61_export_imports():
     assert lap.is_valid
     assert 30.0 < lap.speed.max() < 100.0  # plausible m/s for a race car
     assert 100.0 < lap.lap_time < 200.0  # plausible Spa lap
+
+
+# Real G61 exports (verified 2026-07: Spa BMW M2 export) carry no absolute
+# distance column — only LapDistPct (fraction 0-1). Distance must be
+# reconstructed as pct * track_length_m.
+def _pct_csv(n_rows: int = 4000, track_len: float = 2000.0) -> StringIO:
+    rows = ["Speed,LapDistPct,Lat,Lon,Brake,Throttle,RPM,SteeringWheelAngle,Gear"]
+    for i in range(n_rows):
+        d = i * track_len / n_rows
+        pct = d / track_len
+        speed_ms = 55.0 - 27.0 * np.exp(-((d - 800) ** 2) / (2 * 60.0**2))
+        brake = 0.8 if 700 <= d <= 780 else 0.0
+        throttle = 0.0 if 700 <= d <= 850 else 1.0
+        rows.append(f"{speed_ms},{pct},50.44,5.97,{brake},{throttle},6500,0.0,4")
+    return StringIO("\n".join(rows))
+
+
+def test_lapdistpct_reconstructs_distance():
+    lap = import_g61_csv(_pct_csv(), track_length_m=2000.0)
+    assert isinstance(lap, NormalizedLap)
+    assert lap.distance[1] - lap.distance[0] == pytest.approx(1.0)
+    # pct 0-1 over a 2000m track must span nearly the whole grid
+    assert lap.distance[-1] > 1900.0
+    # speed already m/s (max 55 < 130) — must NOT be divided by 3.6
+    assert lap.speed.max() == pytest.approx(55.0, abs=1.0)
+
+
+def test_absolute_distance_preferred_over_pct():
+    """When both Distance and LapDistPct exist, absolute distance wins."""
+    rows = ["Distance,LapDistPct,Speed"]
+    for i in range(1000):
+        rows.append(f"{i * 2.0},{i / 1000.0},50.0")
+    lap = import_g61_csv(StringIO("\n".join(rows)), track_length_m=2000.0)
+    assert lap.distance[-1] > 1900.0  # from the 2m-spaced absolute column

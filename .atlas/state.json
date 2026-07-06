@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "slug": "race-engineer",
   "name": "Race Engineer",
-  "description": "Personal racing engineer for iRacing — analyzes telemetry, sources community knowledge, and delivers opinionated AI coaching.",
+  "description": "Racing engineer for iRacing — v2 thesis: coach the race, not the lap (post-race debrief, field briefing, live PTT engineer). Lap/voice coaching continues as founder tooling and the pace-context foundation.",
   "status": "active",
   "tags": ["iracing", "telemetry", "ai-coaching", "python", "streamlit", "personal"],
   "repo": {
@@ -44,12 +44,12 @@
       "ANTHROPIC_API_KEY in .env not working — user rotating credentials (blocks scouting reports + AI coaching narrative; deterministic debrief + live voice unaffected, no AI on that path)"
     ],
     "roadmap": [
-      "Voice phase-2 tuning from real driving: LEAD_M/CLAMP_MARGIN/RELEASE/EXIT thresholds; watch the safety clamp dropping chicane-dense prompts (Bruxelles)",
-      "Per-corner technique notes (hatch 2): pre-session AI/scouting prose into corners.notes, cited deterministically by the between-lap voice — Stage 2 pairing",
-      "Line analysis (GPS lateral offset vs reference) — deferred to its own spec; today line errors surface as apex/exit-speed symptoms",
-      "Strategic boundary: stay in the technique-coaching lane; let Crew Chief own awareness/strategy voice",
-      "Stage 3 — Watcher: folder scan, auto-debrief, personal-best auto-promotion to ReferenceStore",
-      "Phase 3 — Intelligence: driver profile, session history, cross-session coaching"
+      "V2 STRATEGY (docs/race-engineer-v2-strategy.md): coach the race, not the lap — incumbents sell pace, this sells confidence; metric = does official-race volume go up",
+      "Phase 3 (market track): post-race debrief — race narrative from IBT + results API, conversational follow-up, iRating attribution (pace vs decisions), driver profile v1 incl. racecraft tendencies",
+      "Phase 4: pre-race field briefing — SoF/split prediction, opponent profiles, strategy plan; the most differentiated surface vs all incumbents",
+      "Phase 5: live PTT engineer — rolling race-state summarizer over CarIdx arrays, <=2s voice loop, sparse radio discipline; Crew Chief coexistence decision after Phase 4",
+      "Validation: 90-day beta with friends/one community; ~20 paying strangers by month 6 = signal; LLC before first dollar",
+      "Personal track (parallel): voice threshold tuning from session logs, watcher execution, per-corner technique notes, line-analysis spec"
     ]
   },
   "created_at": "2026-04-29T14:05:54Z",

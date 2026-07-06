@@ -8,7 +8,7 @@ Two initial features:
 1. **Scouting Report** — pre-session briefing for a car/track combo with pace targets, key corners, and community wisdom
 2. **Lap Coaching** — post-session analysis that compares your laps to your own best performance and delivers prioritized, actionable coaching on the 2-3 corners where you're leaving the most time
 
-See `docs/prd.md` for the full product requirements document.
+See `docs/prd.md` for the full product requirements document, and `docs/race-engineer-v2-strategy.md` (2026-07-06) for the strategic direction that extends it: **coach the race, not the lap**. The lap-coaching stack (debrief engine, live voice coach) continues as the founder's personal tool and the pipeline foundation; the market product is race intelligence — post-race debrief, pre-race field briefing, live engineer with push-to-talk — the gap Trophi/G61/VRS/Crew Chief all leave open. Incumbents sell pace; this sells confidence ("you never start a race blind, you never race alone"). Leading metric: does the user's official-race volume go up?
 
 ## Architecture
 
@@ -338,16 +338,25 @@ streamlit run app/streamlit_app.py
 - [ ] Full gate activation: needs the driver's OWN G61 lap export paired with its session IBT (tests/fixtures/g61/)
 - [ ] Driving validation: voice audibility/pacing, trail-nudge accuracy, prompt trigger timing (LEAD_M 300m / CLAMP_MARGIN_M 30m / thresholds tunable)
 
-**Phase 3: Intelligence**
-- [ ] Driver profile — accumulate across sessions
-- [ ] Session history — track progression over time
-- [ ] Cross-session coaching — "you've improved here, still struggling there"
-- [ ] Season awareness — series calendar integration
+**Phase 3 (revised per v2 strategy): Race Debrief + Intelligence foundation**
+- [ ] Race session ingestion: race IBT + Data API results + session YAML → race narrative (position timeline, gap evolution, incident timing, stint pace)
+- [ ] Debrief generation (existing synthesis voice) + conversational follow-up loop — engineer, not judge; honest, never scolding
+- [ ] iRating attribution: lost to pace or to incidents/decisions?
+- [ ] Driver profile v1: technique tendencies + racecraft tendencies (lap-1, restarts, defense, incident patterns) — builds on the watcher's sessions/laps tables
 
-**Phase 4: Live Awareness**
-- [ ] Between-lap coaching
-- [ ] Crew Chief integration or TTS output
-- [ ] Real-time session monitoring
+**Phase 4 (revised): Pre-Race Briefing / Field Scouting**
+- [ ] Field analysis from Data API: SoF/split prediction, opponent profiles (pace, aggression, incident history)
+- [ ] Strategy plan: fuel/tire/pit windows for actual race length
+- [ ] Series calendar awareness → proactive briefings
+
+**Phase 5: Live Engineer (push-to-talk)**
+- [ ] Rolling race-state summarizer (CarIdx arrays → compact briefing state)
+- [ ] PTT + realtime voice, ≤2s latency; sparse event-driven calls, strict rate limiting
+- [ ] Crew Chief coexistence decision (post-Surface-2)
+
+**Personal track (continues in parallel): lap coaching**
+- [ ] Voice/prompt threshold tuning from session logs; watcher execution; G61 gate fixtures
+- Note: real-time technique coaching is deliberately NOT the market product (Trophi's territory, overload trap — see v2 strategy §8); it remains founder tooling and the pace-context layer for race debriefs
 
 ## Implementation Notes
 

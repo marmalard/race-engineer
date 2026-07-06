@@ -93,6 +93,10 @@ Mirrors project style — pure functions unit-tested, fixture-dependent tests sk
 2. Habit: run after driving, or leave `--watch` running alongside the live coach.
 3. Phase 3 reads the populated `sessions`/`laps` tables.
 
+## Forward compatibility (v2 strategy, added 2026-07-06)
+
+The `sessions` table this activates is also **driver-profile v1's foundation** under the race-intelligence strategy (`docs/race-engineer-v2-strategy.md`): Phase 3-revised will extend it with racecraft columns (finish position, incidents, SoF, series/session id from the results API). Implementers should not add those columns now (YAGNI — the watcher only sees IBT data), but must not do anything that assumes the sessions schema is frozen: use explicit column lists in INSERTs (already the case in the plan), never `SELECT *` into positional tuples.
+
 ## Watch items
 
 - iRacing may write multiple IBTs per outing (one per car/session transition) — each is just an independent session here; fine.

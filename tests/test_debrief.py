@@ -103,11 +103,11 @@ def _early_release_driver(n: int = 2000) -> NormalizedLap:
 
 
 def _straightline_brake_reference(n: int = 2000) -> NormalizedLap:
-    """Reference that does NOT trail-brake: brakes done 60m before the apex."""
+    """Reference that does NOT trail-brake: brakes done 90m before the apex."""
     x = np.arange(n, dtype=float)
     speed = np.full(n, 60.0)
     speed -= 35.0 * np.exp(-((x - 500.0) ** 2) / (2 * 50.0**2))
-    brake = np.where((x > 380) & (x < 440), 0.8, 0.0)  # release 60m before apex
+    brake = np.where((x > 380) & (x < 410), 0.8, 0.0)  # release 90m before apex
     throttle = np.where((x > 380) & (x < 560), 0.0, 1.0)
     return _lap(speed, brake, throttle)
 
@@ -128,7 +128,7 @@ def test_release_delta_when_driver_releases_early():
     result = build_debrief(_early_release_driver(), _reference(), CORNERS)
     top = result.diagnoses[0]
     assert top.brake_release_delta_m is not None
-    assert top.brake_release_delta_m == pytest.approx(-30.0, abs=12.0)
+    assert top.brake_release_delta_m == pytest.approx(-30.0, abs=3.0)
 
 
 def test_release_delta_none_when_reference_does_not_trail():

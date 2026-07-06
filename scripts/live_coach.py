@@ -214,8 +214,12 @@ def main() -> None:
 
             completed = tracker.feed(sample)
 
-            if args.corner_prompts and not sample.get("OnPitRoad"):
-                prompt = scheduler.feed(float(sample["LapDist"] or 0.0))
+            # LapDist is None while towed/out-of-world; feeding 0.0 then would
+            # look like a start/finish wrap and false-fire a pending prompt.
+            lap_dist = sample.get("LapDist")
+            if (args.corner_prompts and lap_dist is not None
+                    and not sample.get("OnPitRoad")):
+                prompt = scheduler.feed(float(lap_dist))
                 if prompt is not None:
                     print(f"  >> {prompt}")
                     speaker.say(prompt)

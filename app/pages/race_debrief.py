@@ -6,8 +6,11 @@ ingest -> narrative -> store -> render, then AI debrief + chat.
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 import plotly.graph_objects as go
 import streamlit as st
@@ -15,7 +18,6 @@ import streamlit as st
 from core.race.ingest import (
     RaceIngestError,
     ingest_race,
-    load_race_ibt,
 )
 from core.race.models import RaceNarrative
 from core.race.narrative import build_narrative
@@ -58,7 +60,7 @@ def _load_corners(track_id: int, track_directory: str, track_length_m: float):
         return []
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300)
 def _scan_race_ibts(folder: str) -> list[dict]:
     """Cheap scan of the host telemetry folder for race IBTs."""
     parser = IBTParser()
@@ -145,16 +147,25 @@ def _render_debrief_and_chat(narrative: RaceNarrative, store: RaceStore):
     else:
         from core.coaching.synthesizer import Synthesizer
 
+        _AI_ERROR = (
+            "The engineer is unreachable right now (AI API error). "
+            "The narrative above is unaffected — try again later."
+        )
         if debrief_text is None:
             if st.button("Generate debrief"):
                 with st.spinner("Engineer is reviewing the race..."):
-                    synth = Synthesizer(api_key=api_key)
-                    report = synth.generate_race_debrief(narrative)
-                    store.save_debrief(
-                        h.subsession_id, h.cust_id,
-                        report.report_text, report.model_used,
-                    )
-                st.rerun()
+                    try:
+                        synth = Synthesizer(api_key=api_key)
+                        report = synth.generate_race_debrief(narrative)
+                    except Exception:
+                        logger.exception("generate_race_debrief failed")
+                        st.error(_AI_ERROR)
+                    else:
+                        store.save_debrief(
+                            h.subsession_id, h.cust_id,
+                            report.report_text, report.model_used,
+                        )
+                        st.rerun()
         else:
             st.markdown(debrief_text)
 
@@ -165,20 +176,25 @@ def _render_debrief_and_chat(narrative: RaceNarrative, store: RaceStore):
                     st.markdown(msg["content"])
             question = st.chat_input("Ask about the race...")
             if question:
-                store.append_chat_message(
-                    h.subsession_id, h.cust_id, "user", question
-                )
                 with st.spinner("..."):
-                    synth = Synthesizer(api_key=api_key)
-                    reply = synth.race_chat_reply(
-                        narrative,
-                        debrief_text,
-                        history + [{"role": "user", "content": question}],
-                    )
-                store.append_chat_message(
-                    h.subsession_id, h.cust_id, "assistant", reply
-                )
-                st.rerun()
+                    try:
+                        synth = Synthesizer(api_key=api_key)
+                        reply = synth.race_chat_reply(
+                            narrative,
+                            debrief_text,
+                            history + [{"role": "user", "content": question}],
+                        )
+                    except Exception:
+                        logger.exception("race_chat_reply failed")
+                        st.error(_AI_ERROR)
+                    else:
+                        store.append_chat_message(
+                            h.subsession_id, h.cust_id, "user", question
+                        )
+                        store.append_chat_message(
+                            h.subsession_id, h.cust_id, "assistant", reply
+                        )
+                        st.rerun()
 
     # Export is always available (works without AI)
     st.divider()
@@ -232,6 +248,12 @@ def render_race_debrief_page():
                 st.session_state["race_narrative"] = narrative
             except RaceIngestError as exc:
                 st.error(str(exc))
+            except Exception:
+                logger.exception("_analyze failed")
+                st.error(
+                    "Couldn't analyze this file — it may be corrupt, "
+                    "incomplete, or not a race IBT."
+                )
 
     with tab_stored:
         stored = store.list_races()

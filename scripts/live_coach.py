@@ -17,6 +17,7 @@ import argparse
 import socket
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 # Ensure project root on path when run as a script.
@@ -37,6 +38,7 @@ from core.live.nudges import (  # noqa: E402
 )
 from core.live.prompt_scheduler import PromptScheduler, build_schedule  # noqa: E402
 from core.live.session_reader import LapBoundaryTracker  # noqa: E402
+from core.live.session_log import SessionLog  # noqa: E402
 from core.live.speaker import create_speaker  # noqa: E402
 from core.telemetry.normalizer import Normalizer  # noqa: E402
 from core.track.lovely_seeder import seed_track_from_lovely  # noqa: E402
@@ -45,6 +47,7 @@ from core.track.track_db import TrackDB  # noqa: E402
 
 DB_PATH = Path("data/tracks.db")
 REFERENCE_DB = Path("data/reference_laps.db")
+LOG_DIR = Path("data/live_sessions")
 # Channels the tracker + buffer need: the normalizer-ready set plus the
 # boundary/validity flags the state machine reads.
 READ_CHANNELS = SAMPLE_CHANNELS + ["Lap", "OnPitRoad", "PlayerTrackSurface"]
@@ -166,6 +169,22 @@ def _load_reference(track_id: str, car: str) -> "ReferenceLap | None":
     return ref
 
 
+def _diag_fields(d) -> dict:
+    """RegionDiagnosis -> flat dict for the session log (all tuning numbers)."""
+    return {
+        "label": d.label,
+        "time_lost": d.region.time_lost,
+        "region_start_m": d.region.distance_start,
+        "region_end_m": d.region.distance_end,
+        "braking_delta_m": d.braking_delta_m,
+        "min_speed_delta_ms": d.min_speed_delta_ms,
+        "brake_release_delta_m": d.brake_release_delta_m,
+        "exit_speed_delta_ms": d.exit_speed_delta_ms,
+        "throttle_delta_m": d.throttle_delta_m,
+        "reference_brake_onset_m": d.reference_brake_onset_m,
+    }
+
+
 def main() -> None:
     args = _parse_args()
     ir = irsdk.IRSDK()
@@ -184,6 +203,7 @@ def main() -> None:
     tracker = LapBoundaryTracker()
     normalizer = Normalizer()
     scheduler = PromptScheduler()
+    session_log: SessionLog | None = None
     reference_lap = None       # stored (G61/PB) lap; never replaced mid-session
     session_best = None        # fallback comparison lap when no stored reference
     corners: list = []
@@ -213,6 +233,27 @@ def main() -> None:
                 prev_flagged = set()
                 prev_delta = None
                 meta_loaded = True
+                if session_log is not None:
+                    session_log.close()
+                stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                slug = track_dir.replace(" ", "-") or "unknown"
+                session_log = SessionLog(
+                    LOG_DIR / f"{slug}_{stamp}.jsonl"
+                )
+                session_log.log(
+                    "connect",
+                    track_id=track_id, track=track_display, car=car,
+                    track_length_m=track_length_m,
+                    corners=len(corners),
+                    reference=(
+                        {"source": ref.meta.source,
+                         "lap_time": ref.meta.lap_time,
+                         "driver": ref.meta.driver_name}
+                        if ref is not None else None
+                    ),
+                    corner_prompts=args.corner_prompts, mute=args.mute,
+                )
+                print(f"Session log: {session_log.path}")
                 if ref is not None:
                     emit(
                         f"Reference loaded: {ref.meta.source}, "
@@ -246,6 +287,12 @@ def main() -> None:
                     if prompt is not None:
                         print(f"  >> {prompt}")
                         speaker.say(prompt)
+                        if session_log is not None:
+                            session_log.log(
+                                "prompt", text=prompt,
+                                lap_dist_m=float(lap_dist),
+                                lap=int(sample.get("Lap") or 0),
+                            )
                 else:
                     scheduler.reset_position()
 
@@ -271,6 +318,11 @@ def main() -> None:
                             nlap.lap_time, 0.0, [], is_baseline=True,
                         )
                         speaker.say(speech)
+                        if session_log is not None:
+                            session_log.log(
+                                "baseline", lap=nlap.lap_number,
+                                lap_time=nlap.lap_time, speech=speech,
+                            )
                     else:
                         result = build_debrief(nlap, comparison, corners)
                         emit(format_lap_block(
@@ -290,11 +342,27 @@ def main() -> None:
                             prev_flagged=prev_flagged, improved=improved,
                         )
                         speaker.say(speech)
+                        if session_log is not None:
+                            session_log.log(
+                                "lap", lap=nlap.lap_number,
+                                lap_time=nlap.lap_time,
+                                delta=result.total_time_delta,
+                                improved=improved, speech=speech,
+                                diagnoses=[
+                                    _diag_fields(d) for d in result.diagnoses
+                                ],
+                            )
                         prev_delta = result.total_time_delta
                         if args.corner_prompts:
-                            scheduler.set_schedule(build_schedule(
+                            schedule = build_schedule(
                                 result.diagnoses, corners, track_length_m,
-                            ))
+                            )
+                            scheduler.set_schedule(schedule)
+                            if session_log is not None:
+                                session_log.log("schedule", prompts=[
+                                    {"trigger_m": p.trigger_m, "text": p.text}
+                                    for p in schedule
+                                ])
                         if (reference_lap is None
                                 and nlap.lap_time < session_best.lap_time):
                             session_best = nlap
@@ -304,6 +372,8 @@ def main() -> None:
         print("\nStopped.")
     finally:
         speaker.close()
+        if session_log is not None:
+            session_log.close()
         ir.shutdown()
 
 

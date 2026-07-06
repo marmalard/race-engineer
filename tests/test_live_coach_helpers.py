@@ -158,3 +158,28 @@ def test_load_reference_survives_store_exception(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(live_coach.ReferenceStore, "get", boom)
     assert live_coach._load_reference("523", "BMW M2 CS Racing") is None
     assert "Reference lookup failed" in capsys.readouterr().out
+
+
+def test_diag_fields_flattens_all_tuning_numbers():
+    from core.coaching.debrief import RegionDiagnosis
+    from core.telemetry.loss_regions import LossRegion
+
+    d = RegionDiagnosis(
+        region=LossRegion(distance_start=1000.0, distance_end=1100.0,
+                          time_lost=0.5),
+        label="Bruxelles",
+        braking_delta_m=-19.0,
+        min_speed_delta_ms=-1.0,
+        throttle_delta_m=None,
+        driver_min_speed_ms=20.0,
+        reference_min_speed_ms=21.0,
+        brake_release_delta_m=-43.0,
+        exit_speed_delta_ms=-0.5,
+        reference_brake_onset_m=950.0,
+    )
+    fields = live_coach._diag_fields(d)
+    assert fields["label"] == "Bruxelles"
+    assert fields["brake_release_delta_m"] == -43.0
+    assert fields["throttle_delta_m"] is None
+    assert fields["region_start_m"] == 1000.0
+    assert fields["reference_brake_onset_m"] == 950.0

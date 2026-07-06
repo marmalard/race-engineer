@@ -116,3 +116,206 @@ def test_build_attribution_handles_unranked_pace():
     )
     assert attribution.pace_deserved_position is None
     assert any("not enough clean laps" in line for line in attribution.summary_lines)
+
+
+import pandas as pd
+
+from core.race.models import (
+    LapChartRow,
+    RaceData,
+    ResultRow,
+    RosterEntry,
+)
+from core.race.narrative import (
+    CAUTION_MASK,
+    build_narrative,
+    corner_name_at,
+    detect_caution_laps,
+    detect_incidents,
+    detect_pit_laps,
+    extract_place_changes,
+    select_key_rivals,
+)
+
+
+def _ticks(**columns) -> pd.DataFrame:
+    """Telemetry frame from equal-length column lists."""
+    return pd.DataFrame(columns)
+
+
+def _tel(
+    n: int,
+    lap=None,
+    pos=None,
+    pct=None,
+    incidents=None,
+    pit=None,
+    flags=None,
+) -> pd.DataFrame:
+    return _ticks(
+        Lap=lap if lap is not None else [1] * n,
+        PlayerCarPosition=pos if pos is not None else [5] * n,
+        LapDistPct=pct if pct is not None else [i / n for i in range(n)],
+        PlayerCarMyIncidentCount=incidents if incidents is not None else [0] * n,
+        OnPitRoad=pit if pit is not None else [False] * n,
+        SessionFlags=flags if flags is not None else [0] * n,
+        LapCurrentLapTime=[float(i) for i in range(n)],
+    )
+
+
+# --- extract_place_changes -------------------------------------------------
+
+def test_extract_place_changes_requires_stability():
+    # Position flickers 5->4 for 3 ticks (noise), then settles at 4
+    pos = [5] * 100 + [4] * 3 + [5] * 100 + [4] * 100
+    df = _tel(303, pos=pos)
+    changes = extract_place_changes(df, stable_ticks=60)
+    assert len(changes) == 1
+    assert changes[0]["from_position"] == 5
+    assert changes[0]["to_position"] == 4
+
+
+# --- detect_incidents --------------------------------------------------------
+
+def test_detect_incidents_reports_steps_with_context():
+    n = 800
+    incidents = [0] * 400 + [2] * 400  # one 2x at tick 400
+    pos = [6] * 380 + [6] * 40 + [8] * 380
+    lap = [9] * n
+    df = _tel(n, lap=lap, pos=pos, incidents=incidents)
+    events = detect_incidents(df, context_ticks=120)
+    assert len(events) == 1
+    assert events[0]["lap"] == 9
+    assert events[0]["delta_incidents"] == 2
+    assert events[0]["position_before"] == 6
+    assert events[0]["position_after"] == 8
+
+
+# --- detect_pit_laps / detect_caution_laps ----------------------------------
+
+def test_detect_pit_laps():
+    df = _tel(6, lap=[1, 1, 2, 2, 3, 3], pit=[False, False, True, True, False, False])
+    assert detect_pit_laps(df) == {2}
+
+
+def test_detect_caution_laps_uses_flag_bits():
+    df = _tel(6, lap=[1, 1, 2, 2, 3, 3], flags=[0, 0, CAUTION_MASK, 0, 0, 0])
+    assert detect_caution_laps(df) == {2}
+
+
+# --- corner_name_at -----------------------------------------------------------
+
+class _FakeCorner:
+    def __init__(self, name, start, end):
+        self.name = name
+        self.distance_start_meters = start
+        self.distance_end_meters = end
+
+
+def test_corner_name_at_matches_with_tolerance():
+    corners = [_FakeCorner("Knickerbrook", 2500.0, 2650.0)]
+    assert corner_name_at(corners, 2600.0) == "Knickerbrook"
+    assert corner_name_at(corners, 2460.0) == "Knickerbrook"  # within 50m
+    assert corner_name_at(corners, 1000.0) is None
+
+
+# --- select_key_rivals ----------------------------------------------------------
+
+def _result(cust_id, finish):
+    return ResultRow(
+        cust_id=cust_id,
+        display_name=f"D{cust_id}",
+        finish_position=finish,
+        starting_position=finish,
+        laps_complete=10,
+        incidents=0,
+        oldi_rating=1500,
+        newi_rating=1500,
+        best_lap_time=100.0,
+    )
+
+
+def test_select_key_rivals_adjacent_finishers_and_battles():
+    results = [_result(i, i) for i in range(1, 8)]  # player is cust 4, P4
+    # cust 7 held the position adjacent to the player for 4 laps
+    lap_chart = []
+    for lap in range(1, 5):
+        lap_chart.append(LapChartRow(cust_id=4, lap_number=lap, position=4))
+        lap_chart.append(LapChartRow(cust_id=7, lap_number=lap, position=5))
+    rivals = select_key_rivals(results, lap_chart, player_cust_id=4)
+    assert 3 in rivals and 5 in rivals  # finished directly ahead/behind
+    assert 7 in rivals                   # sustained adjacency battle
+    assert len(rivals) <= 4
+
+
+# --- build_narrative ------------------------------------------------------------
+
+def _race_data() -> RaceData:
+    n = 400
+    df = _ticks(
+        Lap=[1] * 100 + [2] * 100 + [3] * 100 + [4] * 100,
+        PlayerCarPosition=[8] * 90 + [7] * 310,
+        LapDistPct=list(pd.Series(range(n)) % 100 / 100.0),
+        PlayerCarMyIncidentCount=[0] * 250 + [1] * 150,
+        OnPitRoad=[False] * n,
+        SessionFlags=[0] * n,
+        LapCurrentLapTime=[float(i % 100) for i in range(n)],
+    )
+    laps = {
+        1226848: _laps(1226848, [101.0, 100.0, 100.5, 100.2]),
+        999: _laps(999, [100.5, 99.5, 99.8, 99.9]),
+    }
+    return RaceData(
+        subsession_id=86748877,
+        player_cust_id=1226848,
+        player_car_idx=6,
+        driver_name="Anthony Moorman",
+        track_id=180,
+        track_name="Oulton Park Circuit",
+        track_config="International",
+        track_directory="oulton international",
+        track_length_m=4286.5,
+        car_name="Mazda MX-5 Cup",
+        series_name="MX-5 Cup",
+        session_date="2026-06-26",
+        sof=1350,
+        player_telemetry=df,
+        roster=[
+            RosterEntry(6, 1226848, "Anthony Moorman", "8", 1420, "D 4.5", "MX-5"),
+            RosterEntry(2, 999, "Rival One", "9", 1500, "D 4.9", "MX-5"),
+        ],
+        results=[_result(999, 6), _result(1226848, 7)],
+        lap_chart=[
+            LapChartRow(cust_id=1226848, lap_number=lap, position=p)
+            for lap, p in [(1, 7), (2, 7), (3, 7), (4, 7)]
+        ],
+        driver_laps=laps,
+    )
+
+
+def test_build_narrative_assembles_all_sections():
+    narrative = build_narrative(_race_data(), corners=[])
+    assert narrative.header.subsession_id == 86748877
+    assert narrative.header.finish_position == 7
+    assert narrative.position_timeline[0].position == 7
+    assert narrative.lap1 is not None
+    assert narrative.lap1.grid_position == 7  # from ResultRow.starting_position
+    assert narrative.pace is not None
+    assert narrative.pace.median_clean_lap is not None
+    assert narrative.attribution is not None
+    assert len(narrative.incidents) == 1
+    assert narrative.gaps  # rival 999 fetched laps -> gap series exists
+
+
+def test_build_narrative_partial_without_api_data():
+    data = _race_data()
+    data.results = []
+    data.lap_chart = []
+    data.driver_laps = {}
+    narrative = build_narrative(data, corners=[])
+    # Telemetry-only facts still present
+    assert len(narrative.incidents) == 1
+    assert narrative.position_timeline  # falls back to telemetry positions
+    # API-dependent facts absent, not faked
+    assert narrative.pace is None or narrative.pace.pace_rank is None
+    assert narrative.attribution is None

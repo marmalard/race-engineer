@@ -157,3 +157,18 @@ def test_every_rung_has_speech_and_prompt():
         assert n is not None
         assert n.speech and n.prompt
         assert n.corner in n.speech and n.corner in n.prompt
+
+
+def test_release_threshold_boundary():
+    """Exactly -10.0 fires (<= semantics); just above it does not."""
+    assert nudge_from_diagnosis(_diag(release=-10.0, min_speed=-0.5)) is not None
+    assert nudge_from_diagnosis(_diag(release=-9.9, min_speed=-0.5)) is None
+
+
+def test_lift_dominates_all_rungs():
+    """Apex-speed deficit outranks every other signal regardless of magnitude."""
+    n = nudge_from_diagnosis(_diag(
+        min_speed=-3.0, drv_min=30.0, ref_min=33.0,
+        braking=-20.0, release=-20.0, exit_speed=-5.0, throttle=40.0,
+    ))
+    assert "carry" in n.message.lower()

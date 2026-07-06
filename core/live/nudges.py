@@ -43,7 +43,8 @@ def _kmh(ms: float) -> float:
 
 
 def _car_lengths_phrase(meters: float) -> str:
-    """'15m' -> '3 and a half car lengths' (rounded to the nearest half)."""
+    """'15m' -> '3 and a half car lengths' (Python round() to nearest half;
+    callers pass whole-meter deltas from the 1m grid)."""
     lengths = max(0.5, round(abs(meters) / CAR_LENGTH_M * 2) / 2)
     if lengths == 0.5:
         return "half a car length"
@@ -127,6 +128,8 @@ def nudge_from_diagnosis(diag: RegionDiagnosis) -> "Nudge | None":
         )
 
     # 4) Exit-speed deficit — slow onto the following straight.
+    # exit_speed_delta_ms is always a float (defaults 0.0 in RegionDiagnosis,
+    # never None) — no guard needed, unlike the Optional fields above.
     if diag.exit_speed_delta_ms <= -EXIT_SPEED_THRESHOLD_MS:
         deficit_kmh = abs(_kmh(diag.exit_speed_delta_ms))
         return Nudge(

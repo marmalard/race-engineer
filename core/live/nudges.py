@@ -162,6 +162,65 @@ def _fmt_lap_time(seconds: float) -> str:
     return f"{mins}:{secs:06.3f}"
 
 
+def _speech_lap_time(seconds: float) -> str:
+    """131.4 -> '2 11.4' — SAPI reads it as 'two eleven point four'."""
+    mins = int(seconds // 60)
+    return f"{mins} {seconds % 60:.1f}"
+
+
+def _speech_delta(total_delta: float) -> str:
+    """Lap delta as a spoken sentence, in tenths (or seconds when >= 1s)."""
+    tenths = round(abs(total_delta) * 10)
+    if tenths == 0:
+        return "Even with the reference."
+    if tenths >= 10:
+        secs = f"{abs(total_delta):.1f}"
+        return f"Up {secs} seconds." if total_delta > 0 else f"{secs} seconds quicker."
+    if tenths == 1:
+        return "Up a tenth." if total_delta > 0 else "A tenth quicker."
+    return f"Up {tenths} tenths." if total_delta > 0 else f"{tenths} tenths quicker."
+
+
+def format_lap_speech(
+    lap_time: float,
+    total_delta: float,
+    diagnoses: list[RegionDiagnosis],
+    *,
+    is_baseline: bool = False,
+    prev_flagged: set[str] | None = None,
+    improved: bool = False,
+) -> tuple[str, set[str]]:
+    """The spoken lap summary and the set of corner labels flagged this lap.
+
+    Voice gets the headline only: delta sentence + the top region's top
+    nudge. A confirmation ("that's it, keep that") is appended when a
+    corner flagged on the previous lap produced no nudge this lap AND the
+    lap improved — closing the learning loop the way a human coach does.
+    Callers thread the returned flagged set into the next call's
+    prev_flagged.
+    """
+    if is_baseline:
+        return f"Baseline set. {_speech_lap_time(lap_time)}.", set()
+
+    nudges = [
+        n for n in (nudge_from_diagnosis(d) for d in diagnoses) if n is not None
+    ]
+    flagged = {n.corner for n in nudges}
+
+    parts = [_speech_delta(total_delta)]
+    if nudges:
+        parts.append(nudges[0].speech)
+    else:
+        parts.append("Clean lap, nothing to flag.")
+
+    if prev_flagged and improved:
+        healed = sorted(prev_flagged - flagged)
+        if healed:
+            parts.append(f"{healed[0]} — that's it, keep that.")
+
+    return " ".join(parts), flagged
+
+
 def format_lap_block(
     lap_number: int,
     lap_time: float,

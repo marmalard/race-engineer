@@ -1,7 +1,7 @@
 """Tests for turning a RegionDiagnosis into a terse coaching nudge."""
 
 from core.coaching.debrief import RegionDiagnosis
-from core.live.nudges import Nudge, format_lap_block, nudge_from_diagnosis
+from core.live.nudges import Nudge, format_lap_block, format_lap_speech, nudge_from_diagnosis
 from core.telemetry.loss_regions import LossRegion
 
 
@@ -172,3 +172,64 @@ def test_lift_dominates_all_rungs():
         braking=-20.0, release=-20.0, exit_speed=-5.0, throttle=40.0,
     ))
     assert "carry" in n.message.lower()
+
+
+def test_speech_baseline():
+    speech, flagged = format_lap_speech(131.4, 0.0, [], is_baseline=True)
+    assert speech == "Baseline set. 2 11.4."
+    assert flagged == set()
+
+
+def test_speech_slower_lap_reads_delta_then_top_nudge():
+    diags = [_diag(label="Les Combes", braking=-15.0, min_speed=-0.5)]
+    speech, flagged = format_lap_speech(132.0, 0.3, diags)
+    assert speech.startswith("Up 3 tenths.")
+    assert "Les Combes" in speech
+    assert "car length" in speech
+    assert flagged == {"Les Combes"}
+
+
+def test_speech_singular_tenth():
+    speech, _ = format_lap_speech(132.0, 0.11, [])
+    assert speech.startswith("Up a tenth.")
+
+
+def test_speech_faster_lap():
+    speech, _ = format_lap_speech(130.9, -0.4, [])
+    assert speech.startswith("4 tenths quicker.")
+
+
+def test_speech_big_delta_in_seconds():
+    speech, _ = format_lap_speech(133.0, 1.4, [])
+    assert speech.startswith("Up 1.4 seconds.")
+
+
+def test_speech_clean_lap():
+    speech, _ = format_lap_speech(131.5, 0.05, [])
+    assert "clean lap" in speech.lower()
+
+
+def test_speech_only_top_nudge_is_spoken():
+    diags = [
+        _diag(label="Eau Rouge", min_speed=-4.0, drv_min=55.0, ref_min=59.0),
+        _diag(label="Pouhon", braking=-15.0, min_speed=-0.5),
+    ]
+    speech, flagged = format_lap_speech(132.0, 0.5, diags)
+    assert "Eau Rouge" in speech
+    assert "Pouhon" not in speech  # flagged, but not spoken
+    assert flagged == {"Eau Rouge", "Pouhon"}
+
+
+def test_speech_confirmation_when_flagged_corner_heals_on_improving_lap():
+    diags = [_diag(label="Eau Rouge", braking=-15.0, min_speed=-0.5)]
+    speech, _ = format_lap_speech(
+        131.0, 0.2, diags, prev_flagged={"Pouhon", "Eau Rouge"}, improved=True
+    )
+    assert "Pouhon — that's it, keep that." in speech
+
+
+def test_speech_no_confirmation_when_lap_did_not_improve():
+    speech, _ = format_lap_speech(
+        133.0, 1.0, [], prev_flagged={"Pouhon"}, improved=False
+    )
+    assert "that's it" not in speech

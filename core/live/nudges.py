@@ -163,9 +163,17 @@ def _fmt_lap_time(seconds: float) -> str:
 
 
 def _speech_lap_time(seconds: float) -> str:
-    """131.4 -> '2 11.4' — SAPI reads it as 'two eleven point four'."""
+    """131.4 -> '2 11.4' — SAPI reads it as 'two eleven point four'.
+
+    Seconds are zero-padded ('1 05.0', not '1 5.0') so SAPI says "oh five"
+    rather than an ambiguous "five", and rounding that hits 60.0 carries
+    into the minutes (1:59.97 must not become '1 60.0')."""
     mins = int(seconds // 60)
-    return f"{mins} {seconds % 60:.1f}"
+    secs = round(seconds % 60, 1)
+    if secs >= 60.0:
+        mins += 1
+        secs = 0.0
+    return f"{mins} {secs:04.1f}"
 
 
 def _speech_delta(total_delta: float) -> str:
@@ -213,6 +221,11 @@ def format_lap_speech(
     else:
         parts.append("Clean lap, nothing to flag.")
 
+    # "Healed" = flagged last lap, no nudge this lap. That fires both when
+    # the driver fixed the corner and when its region merely ranked out of
+    # the top-3 because a larger loss appeared elsewhere; the `improved`
+    # guard makes the false-positive case uncommon. Acceptable for a voice
+    # line — a human coach makes the same call.
     if prev_flagged and improved:
         healed = sorted(prev_flagged - flagged)
         if healed:

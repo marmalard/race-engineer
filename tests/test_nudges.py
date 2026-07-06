@@ -233,3 +233,11 @@ def test_speech_no_confirmation_when_lap_did_not_improve():
         133.0, 1.0, [], prev_flagged={"Pouhon"}, improved=False
     )
     assert "that's it" not in speech
+
+
+def test_speech_lap_time_minute_rollover_and_padding():
+    """1:59.97 must carry to '2 00.0', and sub-10s seconds are zero-padded
+    so SAPI says 'oh five' instead of an ambiguous 'five'."""
+    from core.live.nudges import _speech_lap_time
+    assert _speech_lap_time(119.97) == "2 00.0"
+    assert _speech_lap_time(65.03) == "1 05.0"

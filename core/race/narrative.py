@@ -197,6 +197,9 @@ def extract_place_changes(
     i = 1
     while i < len(pos):
         if pos[i] != last_stable and pos[i] > 0:
+            # A change within the final < stable_ticks samples is accepted on
+            # the shorter available window deliberately — end-of-race passes
+            # are real events; the trade-off is possible last-sample noise.
             end = min(i + stable_ticks, len(pos))
             window = pos[i:end]
             if (window == pos[i]).all():
@@ -299,22 +302,23 @@ def build_stints(
     start = lap_numbers[0]
     for boundary in boundaries + [lap_numbers[-1] + 1]:
         end = boundary - 1 if boundary in pit_laps else lap_numbers[-1]
-        stint_laps = [l for l in player_laps if start <= l.lap_number <= end]
-        clean = clean_laps(stint_laps, caution_laps)
-        median = (
-            statistics.median(l.lap_time for l in clean)
-            if len(clean) >= MIN_CLEAN_LAPS
-            else None
-        )
-        trend = None
-        if len(clean) >= 4:
-            half = len(clean) // 2
-            trend = statistics.median(
-                l.lap_time for l in clean[half:]
-            ) - statistics.median(l.lap_time for l in clean[:half])
-        stints.append(
-            Stint(start_lap=start, end_lap=end, median_clean_pace=median, trend_s=trend)
-        )
+        if start <= end:  # skip degenerate stints (e.g., pit on the final lap)
+            stint_laps = [l for l in player_laps if start <= l.lap_number <= end]
+            clean = clean_laps(stint_laps, caution_laps)
+            median = (
+                statistics.median(l.lap_time for l in clean)
+                if len(clean) >= MIN_CLEAN_LAPS
+                else None
+            )
+            trend = None
+            if len(clean) >= 4:
+                half = len(clean) // 2
+                trend = statistics.median(
+                    l.lap_time for l in clean[half:]
+                ) - statistics.median(l.lap_time for l in clean[:half])
+            stints.append(
+                Stint(start_lap=start, end_lap=end, median_clean_pace=median, trend_s=trend)
+            )
         start = boundary + 1 if boundary in pit_laps else start
         if boundary not in pit_laps:
             break
@@ -482,14 +486,21 @@ def build_narrative(data: RaceData, corners: list) -> RaceNarrative:
             unranked_drivers=len(unranked),
         )
         if player_result is not None:
+            # Dedupe by lap: multiple incident steps on the same lap each
+            # carry the full lap's excess time; summing them directly would
+            # double-count. Count each incident lap's excess time once only.
+            seen_incident_laps: set[int] = set()
+            incident_time_lost_deduped = 0.0
+            for i in incidents:
+                if i.lap not in seen_incident_laps:
+                    incident_time_lost_deduped += i.time_lost_estimate_s
+                    seen_incident_laps.add(i.lap)
             attribution = build_attribution(
                 irating_old=player_result.oldi_rating,
                 irating_new=player_result.newi_rating,
                 pace_deserved_position=rank_index,
                 actual_position=player_result.finish_position,
-                incident_time_lost_s=round(
-                    sum(i.time_lost_estimate_s for i in incidents), 1
-                ),
+                incident_time_lost_s=round(incident_time_lost_deduped, 1),
                 lap1_net_positions=(grid - lap1.position_after_lap1)
                 if lap1
                 else 0,

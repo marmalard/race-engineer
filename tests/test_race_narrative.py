@@ -125,10 +125,12 @@ from core.race.models import (
     RaceData,
     ResultRow,
     RosterEntry,
+    Stint,
 )
 from core.race.narrative import (
     CAUTION_MASK,
     build_narrative,
+    build_stints,
     corner_name_at,
     detect_caution_laps,
     detect_incidents,
@@ -319,3 +321,110 @@ def test_build_narrative_partial_without_api_data():
     # API-dependent facts absent, not faked
     assert narrative.pace is None or narrative.pace.pace_rank is None
     assert narrative.attribution is None
+
+
+# --- incident time-lost deduplication (Issue 1) --------------------------
+
+def test_incident_time_lost_deduped_by_lap():
+    """Two incident steps on the same lap → attribution counts that lap once."""
+    # 5 laps × 50 ticks = 250 ticks total
+    n = 250
+    lap_col = [1] * 50 + [2] * 50 + [3] * 50 + [4] * 50 + [5] * 50
+    # Two incident steps both in lap 3 (ticks 110 and 130)
+    inc_col = [0] * 110 + [1] * 20 + [2] * 120
+    df = _ticks(
+        Lap=lap_col,
+        PlayerCarPosition=[5] * n,
+        LapDistPct=[i / 50 % 1.0 for i in range(n)],
+        PlayerCarMyIncidentCount=inc_col,
+        OnPitRoad=[False] * n,
+        SessionFlags=[0] * n,
+        LapCurrentLapTime=[float(i % 50) for i in range(n)],
+    )
+    # Lap 3 is an incident lap (slow); laps 2, 4, 5 are clean
+    player_laps_list = _laps(1226848, [101.0, 100.0, 120.0, 100.5, 100.2])
+    player_laps_list[2].incident = True  # lap 3
+    laps = {
+        1226848: player_laps_list,
+        999: _laps(999, [100.5, 99.5, 99.8, 99.9, 100.0]),
+    }
+    data = RaceData(
+        subsession_id=86748877,
+        player_cust_id=1226848,
+        player_car_idx=6,
+        driver_name="Anthony Moorman",
+        track_id=180,
+        track_name="Oulton Park Circuit",
+        track_config="International",
+        track_directory="oulton international",
+        track_length_m=4286.5,
+        car_name="Mazda MX-5 Cup",
+        series_name="MX-5 Cup",
+        session_date="2026-06-26",
+        sof=1350,
+        player_telemetry=df,
+        roster=[
+            RosterEntry(6, 1226848, "Anthony Moorman", "8", 1420, "D 4.5", "MX-5"),
+            RosterEntry(2, 999, "Rival One", "9", 1500, "D 4.9", "MX-5"),
+        ],
+        results=[_result(999, 6), _result(1226848, 7)],
+        lap_chart=[
+            LapChartRow(cust_id=1226848, lap_number=lap, position=5)
+            for lap in range(1, 6)
+        ],
+        driver_laps=laps,
+    )
+    narrative = build_narrative(data, corners=[])
+    # Both incident steps must be detected on lap 3
+    lap3_events = [i for i in narrative.incidents if i.lap == 3]
+    assert len(lap3_events) == 2, "Expected two incident events on lap 3"
+    # Individual events each carry the full lap's excess time (per-event context)
+    assert lap3_events[0].time_lost_estimate_s == lap3_events[1].time_lost_estimate_s
+    single_lap_excess = lap3_events[0].time_lost_estimate_s
+    assert single_lap_excess > 0
+    # Attribution must count the excess once, not twice
+    assert narrative.attribution is not None
+    assert narrative.attribution.incident_time_lost_s == pytest.approx(
+        single_lap_excess, abs=0.2
+    ), (
+        f"Expected ~{single_lap_excess}, got "
+        f"{narrative.attribution.incident_time_lost_s} (double-count not fixed?)"
+    )
+
+
+# --- build_stints direct unit tests (Issue 2) ----------------------------
+
+def test_build_stints_no_pits_single_stint():
+    """No pit laps → single stint spanning all laps."""
+    laps = _laps(1, [101.0, 100.0, 100.5, 100.2, 100.3])
+    stints = build_stints(laps, pit_laps=set(), caution_laps=set())
+    assert len(stints) == 1
+    assert stints[0].start_lap == 1
+    assert stints[0].end_lap == 5
+
+
+def test_build_stints_single_pit_splits_at_boundary():
+    """Single pit on lap 3 → two stints: laps 1-2 and laps 4-7."""
+    laps = _laps(1, [101.0, 100.0, 30.0, 100.5, 100.2, 100.3, 100.1])
+    stints = build_stints(laps, pit_laps={3}, caution_laps=set())
+    assert len(stints) == 2
+    assert stints[0].start_lap == 1
+    assert stints[0].end_lap == 2
+    assert stints[1].start_lap == 4
+    assert stints[1].end_lap == 7
+
+
+def test_build_stints_pit_on_final_lap_no_degenerate_trailing_stint():
+    """Pit on the final lap must not produce a degenerate Stint(start > end)."""
+    laps = _laps(
+        1, [101.0, 100.0, 100.5, 100.2, 100.3, 100.1, 100.0, 100.4, 100.2, 30.0]
+    )  # 10 laps, lap 10 is the pit lap
+    stints = build_stints(laps, pit_laps={10}, caution_laps=set())
+    for stint in stints:
+        assert stint.start_lap <= stint.end_lap, (
+            f"Degenerate stint emitted: start_lap={stint.start_lap} "
+            f"> end_lap={stint.end_lap}"
+        )
+    assert len(stints) == 1
+    assert stints[0].start_lap == 1
+    assert stints[0].end_lap == 9

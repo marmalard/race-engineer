@@ -18,7 +18,7 @@
     "framework": "Streamlit",
     "ui": "Streamlit + Plotly",
     "database": "SQLite",
-    "notable_deps": ["pandas", "numpy", "scipy", "anthropic", "pydantic", "httpx", "pyyaml"]
+    "notable_deps": ["pandas", "numpy", "scipy", "anthropic", "pydantic", "httpx", "pyyaml", "pyttsx3"]
   },
   "deployment": {
     "target": "local"
@@ -28,29 +28,30 @@
     "models_used": ["claude-sonnet-4-5-20250929"]
   },
   "state": {
-    "current_phase": "Live between-lap coaching spike merged to master and pushed (5/5 tasks, 303 tests passing). Terminal coach reuses the loss-region engine on live pyirsdk laps; awaits hands-on driving validation before the iPad HUD (Plan 2) is built.",
+    "current_phase": "Live voice coaching merged to master (365 tests): spoken between-lap summaries + opt-in in-corner prompts, trail-braking/exit-speed diagnosis, reference-lap coaching from lap 1. First real G61 reference imported (Spa Endurance / BMW M2 G87, 0.09% time agreement). Awaiting voice driving validation.",
     "last_session": {
-      "at": "2026-06-12T16:49:08Z",
-      "summary": "Built and merged the live between-lap coaching de-risk spike: pyirsdk reader, pure LapBoundaryTracker state machine (pit/reset/tow/Lap-0/too-short gating), deterministic nudges from RegionDiagnosis, terminal entry point; also added a self-debrief loss-region view to the Streamlit coaching page (catches flat-corner/exit-bleed losses corner detection misses)."
+      "at": "2026-07-06T18:20:00Z",
+      "summary": "Designed, planned, and shipped live voice coaching end-to-end (spec -> plan -> 8 subagent-executed tasks -> merged): Windows SAPI speaker with latest-wins queue, five-rung nudge ladder (added trail-braking with reference-trails guard + exit speed), spoken lap summaries with confirmation nudges, distance-triggered in-corner prompts with corner-span safety clamp, ReferenceStore wired into the live coach; then verified G61 import against a real export (LapDistPct-only headers) and imported the first reference lap — user's best is +2.2s to it, headline loss is trail braking into Bruxelles."
     },
     "next_actions": [
-      "DRIVE the live coach: `.venv/Scripts/python.exe scripts/live_coach.py` with iRacing on track — validate lap-boundary detection across pits/resets and tune nudge thresholds (8m braking / 2 m/s apex / 20m throttle) for signal-not-noise",
-      "Activate G61 validation gate: user supplies paired_session.ibt + paired_lap.csv + G61-displayed lap time; verify CHANNEL_ALIASES against real export headers",
-      "Plan 2 (after driving validates the spike): iPad HUD — NiceGUI LAN web service (0.0.0.0, LAN + tailnet), chat-feed surface, Web Speech voice checkbox",
-      "Follow-up fix: offline analyzer lovely-slug bug (passes TrackDisplayName instead of directory TrackName; see memory) — also a CLAUDE.md Quick Start refresh to uv",
+      "DRIVE with voice at Spa Endurance: `.venv/Scripts/python.exe scripts/live_coach.py` — reference (Borsuk 2:39.302) loads automatically; validate audibility/pacing, then add --corner-prompts and validate trigger timing",
+      "Close the G61 validation gate fully: export one of YOUR OWN laps from Garage 61 + copy that session's IBT to tests/fixtures/g61/ (paired_session.ibt + paired_lap.csv) and set G61_DISPLAYED_LAP_TIME",
+      "Push master to GitHub (20+ commits ahead, includes two merged features)",
+      "Follow-up fix: offline analyzer lovely-slug bug (passes TrackDisplayName instead of directory TrackName; live path already correct)",
       "Stage 2: briefing (corner cards from reference lap + scouting synthesis + iracingdataapi swap)"
     ],
     "blockers": [
-      "ANTHROPIC_API_KEY in .env not working — user rotating credentials (blocks scouting reports + AI coaching narrative; deterministic debrief + live nudges unaffected, no AI on that path)"
+      "ANTHROPIC_API_KEY in .env not working — user rotating credentials (blocks scouting reports + AI coaching narrative; deterministic debrief + live voice unaffected, no AI on that path)"
     ],
     "roadmap": [
-      "Live coaching HUD (Plan 2) — iPad/LAN NiceGUI web service, between-lap chat feed, optional browser Web Speech voice; gated on the terminal spike's driving results",
-      "Strategic boundary: stay in the technique-coaching lane; tire data as a coaching INPUT not a strategy readout; let Crew Chief own awareness/strategy and potentially deliver voice",
-      "Stage 2 — Briefing: reference-lap corner cards + scouting synthesis grounded with track detail_copy + iracingdataapi swap + manual corner-name edit path",
+      "Voice phase-2 tuning from real driving: LEAD_M/CLAMP_MARGIN/RELEASE/EXIT thresholds; watch the safety clamp dropping chicane-dense prompts (Bruxelles)",
+      "Per-corner technique notes (hatch 2): pre-session AI/scouting prose into corners.notes, cited deterministically by the between-lap voice — Stage 2 pairing",
+      "Line analysis (GPS lateral offset vs reference) — deferred to its own spec; today line errors surface as apex/exit-speed symptoms",
+      "Strategic boundary: stay in the technique-coaching lane; let Crew Chief own awareness/strategy voice",
       "Stage 3 — Watcher: folder scan, auto-debrief, personal-best auto-promotion to ReferenceStore",
       "Phase 3 — Intelligence: driver profile, session history, cross-session coaching"
     ]
   },
   "created_at": "2026-04-29T14:05:54Z",
-  "updated_at": "2026-06-12T16:49:08Z"
+  "updated_at": "2026-07-06T18:20:00Z"
 }

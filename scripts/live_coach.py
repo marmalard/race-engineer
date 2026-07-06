@@ -121,6 +121,16 @@ def _load_corners(
     return corners
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Live between-lap coach")
+    parser.add_argument("--mute", action="store_true",
+                        help="disable voice output")
+    parser.add_argument("--corner-prompts", action="store_true",
+                        help="speak approach prompts before flagged corners "
+                             "(phase 2, validate --mute-less laps first)")
+    return parser.parse_args()
+
+
 def _car_name(ir: "irsdk.IRSDK") -> str:
     """The driver's CarScreenName — the exact field the offline pipeline
     (IBTParser) stores references under, so ReferenceStore lookups match."""
@@ -133,9 +143,12 @@ def _car_name(ir: "irsdk.IRSDK") -> str:
 
 
 def _load_reference(track_id: str, car: str) -> "ReferenceLap | None":
-    """Stored reference lap for this combo, or None — with a visible reason,
-    because a silent car-string mismatch would just look like missing
-    trail coaching."""
+    """Stored reference lap for this combo, or None — with a visible reason.
+
+    A silent car-string mismatch would be indistinguishable from having no
+    reference at all: the coach would quietly fall back to session-best mode
+    and trail-braking coaching (which needs a G61 lap that actually trails)
+    would never fire."""
     if not track_id or not car:
         return None
     try:
@@ -252,6 +265,9 @@ def main() -> None:
                             nlap.lap_number, nlap.lap_time,
                             result.total_time_delta, result.diagnoses,
                         ))
+                        # prev_delta compares deltas against a FIXED reference;
+                        # in session-best fallback mode the baseline moves after
+                        # each PB lap, so `improved` is approximate there.
                         improved = (
                             prev_delta is not None
                             and result.total_time_delta < prev_delta
@@ -277,16 +293,6 @@ def main() -> None:
     finally:
         speaker.close()
         ir.shutdown()
-
-
-def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Live between-lap coach")
-    parser.add_argument("--mute", action="store_true",
-                        help="disable voice output")
-    parser.add_argument("--corner-prompts", action="store_true",
-                        help="speak approach prompts before flagged corners "
-                             "(phase 2, validate --mute-less laps first)")
-    return parser.parse_args()
 
 
 if __name__ == "__main__":

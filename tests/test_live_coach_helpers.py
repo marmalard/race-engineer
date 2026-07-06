@@ -3,6 +3,10 @@
 import importlib.util
 from pathlib import Path
 
+import numpy as np
+
+from core.benchmark.reference_store import ReferenceStore
+from core.telemetry.normalizer import NormalizedLap
 from core.track.models import Corner
 from core.track.track_db import TrackDB
 
@@ -86,10 +90,6 @@ def test_load_corners_empty_track_id_returns_empty(monkeypatch, tmp_path):
     ) == []
 
 
-import numpy as np
-
-from core.benchmark.reference_store import ReferenceStore
-from core.telemetry.normalizer import NormalizedLap
 
 
 def _tiny_lap(n: int = 100) -> NormalizedLap:
@@ -146,3 +146,15 @@ def test_load_reference_returns_stored_g61_lap(tmp_path, monkeypatch):
     assert ref is not None
     assert ref.meta.source == "g61"
     assert ref.lap.lap_time == 131.4
+
+
+def test_load_reference_survives_store_exception(tmp_path, monkeypatch, capsys):
+    """A broken store prints a visible reason and falls back to None."""
+    monkeypatch.setattr(live_coach, "REFERENCE_DB", tmp_path / "refs.db")
+
+    def boom(self, track_id, car):
+        raise RuntimeError("db locked")
+
+    monkeypatch.setattr(live_coach.ReferenceStore, "get", boom)
+    assert live_coach._load_reference("523", "BMW M2 CS Racing") is None
+    assert "Reference lookup failed" in capsys.readouterr().out

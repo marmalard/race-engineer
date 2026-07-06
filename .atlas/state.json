@@ -30,14 +30,14 @@
   "state": {
     "current_phase": "Live voice coaching merged to master (365 tests): spoken between-lap summaries + opt-in in-corner prompts, trail-braking/exit-speed diagnosis, reference-lap coaching from lap 1. First real G61 reference imported (Spa Endurance / BMW M2 G87, 0.09% time agreement). Awaiting voice driving validation.",
     "last_session": {
-      "at": "2026-07-06T18:20:00Z",
-      "summary": "Designed, planned, and shipped live voice coaching end-to-end (spec -> plan -> 8 subagent-executed tasks -> merged): Windows SAPI speaker with latest-wins queue, five-rung nudge ladder (added trail-braking with reference-trails guard + exit speed), spoken lap summaries with confirmation nudges, distance-triggered in-corner prompts with corner-span safety clamp, ReferenceStore wired into the live coach; then verified G61 import against a real export (LapDistPct-only headers) and imported the first reference lap — user's best is +2.2s to it, headline loss is trail braking into Bruxelles."
+      "at": "2026-07-06T19:40:00Z",
+      "summary": "Shipped live voice coaching end-to-end (spec -> plan -> 8 subagent tasks -> merged -> pushed), verified G61 import on a real export and imported the first reference lap (user +2.2s, headline: trail braking into Bruxelles); then front-loaded before Fable access ends: JSONL session logging for tonight's drive, fixed the offline lovely-slug bug, and wrote the full Stage 3 watcher spec + execution-ready plan."
     },
     "next_actions": [
-      "DRIVE with voice at Spa Endurance: `.venv/Scripts/python.exe scripts/live_coach.py` — reference (Borsuk 2:39.302) loads automatically; validate audibility/pacing, then add --corner-prompts and validate trigger timing",
-      "Close the G61 validation gate fully: export one of YOUR OWN laps from Garage 61 + copy that session's IBT to tests/fixtures/g61/ (paired_session.ibt + paired_lap.csv) and set G61_DISPLAYED_LAP_TIME",
-      "Push master to GitHub (20+ commits ahead, includes two merged features)",
-      "Follow-up fix: offline analyzer lovely-slug bug (passes TrackDisplayName instead of directory TrackName; live path already correct)",
+      "TONIGHT: drive with voice at Spa Endurance — `.venv/Scripts/python.exe scripts/live_coach.py`; the Borsuk reference loads automatically and every nudge/prompt is logged to data/live_sessions/ for threshold tuning",
+      "Execute the watcher plan (any model): docs/superpowers/plans/2026-07-06-telemetry-watcher.md via subagent-driven-development — first run back-fills references + history for every combo in the telemetry folder",
+      "Tune voice/prompt thresholds from the session logs after a few drives (LEAD_M, CLAMP_MARGIN_M, RELEASE/EXIT thresholds; watch the clamp dropping the Bruxelles prompt)",
+      "Close the G61 validation gate fully: export one of YOUR OWN laps from Garage 61 + copy that session's IBT to tests/fixtures/g61/ and set G61_DISPLAYED_LAP_TIME",
       "Stage 2: briefing (corner cards from reference lap + scouting synthesis + iracingdataapi swap)"
     ],
     "blockers": [

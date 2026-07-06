@@ -10,6 +10,7 @@
 - The narrative (facts) is deterministic, typed, and testable; the AI supplies voice and prioritization only. Facts render fully with no API key.
 - iRating attribution: a transparent accounting of whether rating was lost to pace or to incidents/decisions — no black-box model.
 - Debriefs persist (SQLite) and export as clean markdown — the shareable artifact the distribution strategy leans on.
+- **Friend-testable from v1**: the app runs served over Tailscale from the founder's PC, friends upload their own race IBTs, and their races coexist in the same store. No re-platforming — deployability is a design constraint, not a new stack.
 - Tone contract enforced in the prompt: engineer, not judge; never scold; never invent facts; a wrecked race produces the most *useful* debrief.
 
 ## Non-Goals
@@ -30,6 +31,8 @@
 | V1 extras | Persist debriefs + chat to SQLite; markdown export. Hosted-race degraded path deferred |
 | Persistence home | New `data/races.db` (subsession-keyed), NOT the watcher's `sessions` table (IBT-filename-keyed, watcher-owned) |
 | Opponent granularity | Lap-by-lap (forced by data: no CarIdx in disk IBT; API lap data is per-lap) |
+| Deployment | Tailscale serve/funnel from the founder's PC (HTTPS URL, no Tailscale account needed for friends); founder's iRacing + Anthropic credentials shared server-side; no auth beyond the unlisted URL in v1 |
+| Multi-driver | Friends upload their own race IBTs; driver identity read from the IBT YAML; store keyed by (subsession_id, cust_id) since two testers can share one subsession |
 
 ## Data sources (verified on `mx5 mx52016_oulton international 2026-06-26 16-42-05.ibt`)
 
@@ -103,35 +106,48 @@ core/benchmark/iracing_api.py       # + 3 endpoints + chunk helper
 
 ```sql
 CREATE TABLE races (
-    subsession_id INTEGER PRIMARY KEY,
+    subsession_id INTEGER NOT NULL,
+    cust_id INTEGER NOT NULL,              -- the driver this narrative is about (from IBT YAML)
+    driver_name TEXT,
     track_id INTEGER, track_name TEXT, car TEXT, series_name TEXT,
     session_date TEXT, sof INTEGER, field_size INTEGER,
     start_position INTEGER, finish_position INTEGER,
     incidents INTEGER, irating_old INTEGER, irating_new INTEGER,
     ibt_file_path TEXT,
     narrative_json TEXT NOT NULL,          -- full RaceNarrative
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (subsession_id, cust_id)   -- two testers can race in the SAME subsession
 );
 CREATE TABLE debriefs (
-    subsession_id INTEGER PRIMARY KEY REFERENCES races(subsession_id),
-    debrief_text TEXT NOT NULL, model TEXT, created_at TEXT NOT NULL
+    subsession_id INTEGER NOT NULL, cust_id INTEGER NOT NULL,
+    debrief_text TEXT NOT NULL, model TEXT, created_at TEXT NOT NULL,
+    PRIMARY KEY (subsession_id, cust_id)
 );
 CREATE TABLE chat_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    subsession_id INTEGER REFERENCES races(subsession_id),
+    subsession_id INTEGER NOT NULL, cust_id INTEGER NOT NULL,
     role TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL
 );
 ```
 
 - Scalar columns exist for cheap listing/profile queries; the narrative JSON blob is canonical.
 - Re-ingesting a race upserts `races` and preserves chat history.
+- Driver identity comes from the uploaded IBT's session YAML (`DriverInfo` → the player's UserID/UserName), never from any login — there is no auth in v1.
 - Explicit column lists everywhere (same forward-compat rule as the watcher spec) — driver profile v1 will read this DB.
 
 ### Streamlit page (`app/pages/race_debrief.py`, display-only)
 
-- **Picker**: scans the telemetry folder for race IBTs + upload fallback. Cheap scan requires reading only header + session YAML — add `IBTParser.parse_session_only(path)` that reads just the session-info byte range (offsets are in the 112-byte header; no full-file read). Previously-analyzed races (from `races.db`) listed for instant re-open.
+- **Picker**: **upload is the primary path** (friends have no local folder on the host) with a configurable size limit (`server.maxUploadSize = 400` MB — observed race IBTs run 25–205 MB). The host-side telemetry-folder scan appears additionally when the folder exists (founder convenience). Cheap folder scan requires reading only header + session YAML — add `IBTParser.parse_session_only(path)` that reads just the session-info byte range (offsets are in the 112-byte header; no full-file read). Previously-analyzed races (from `races.db`) listed for instant re-open, labeled by driver.
 - **Layout**: header card (finish, SoF, iR delta) → position timeline chart (Plotly, player + key rivals) → gap chart → incident list (with corner names) → deterministic narrative → AI debrief → chat → export button.
 - **Export**: `st.download_button` producing `{track}-{date}-debrief.md` = deterministic narrative + AI debrief (+ chat transcript, checkbox-optional).
+
+## Deployment (friend testing)
+
+- `tailscale funnel` (or `serve` for tailnet-only) in front of `streamlit run` on the founder's PC — friends get a plain HTTPS URL, no accounts, no Docker, no re-platforming. The URL is unlisted; that is the whole access control in v1.
+- Credentials stay in the host `.env`: the founder's iRacing API creds fetch results for **any** subsession (results are member-visible), and the founder's Anthropic key powers debrief/chat for all testers. Cost exposure is bounded by friends-scale usage; per-race synthesis is cached, chat context is capped.
+- SQLite handles this concurrency fine (a handful of users, WAL mode if needed); `races.db` lives on the founder's disk so nothing is ephemeral.
+- Constraint accepted: the PC must be on for friends to use it. If that chafes, a VPS with a volume is the later move (Phase 6 territory), not a v1 blocker.
+- Ops notes for the plan: a `.streamlit/config.toml` with `server.maxUploadSize = 400` and headless mode; document the funnel command in the README.
 
 ## Error Handling
 
@@ -156,7 +172,8 @@ CREATE TABLE chat_messages (
 1. Build ingestion + narrative against the Oulton race; validate the narrative reads true against memory of the race (founder is the ground truth for v1).
 2. Wire the page + persistence + export; debrief/chat activate when the Anthropic key is rotated.
 3. Founder debriefs his own next official races (the tool's existence is itself the race-more nudge); post one real debrief to the friends group — first shareable artifact.
-4. Driver profile v1 spec follows, reading `races.db` + the watcher's `sessions` tables.
+4. Stand up the Tailscale funnel and hand the URL to the first friend tester; their uploaded race is the first non-founder validation (and the first test of the leading metric: does *their* race volume move?).
+5. Driver profile v1 spec follows, reading `races.db` + the watcher's `sessions` tables.
 
 ## Watch items / open questions (park, don't block)
 
@@ -165,3 +182,5 @@ CREATE TABLE chat_messages (
 - API rate limits: one race = 1 results call + 1 lap-chart call + ~5 lap-data calls (player + rivals). Fine for personal use; batch/backoff is a multi-user concern (strategy doc §7.4).
 - Multi-class races: fields are ingested (`CarClassID`, class position) but narrative logic is single-class; multi-class attribution is a follow-up.
 - Chat context size: narrative JSON for a long race could get large; if it exceeds a sane budget, summarize gap/timeline arrays before injection (decision deferred until a real long-race narrative exists).
+- Funnel exposure: the app is on the public internet behind an unlisted URL only. Acceptable for friends-scale; before any wider beta, add at least a shared passphrase (`st.secrets`) — noted so it isn't forgotten, deliberately not built now.
+- Shared-key cost: all testers ride the founder's Anthropic key. Watch spend once friends are active; per-user keys/billing is Phase 6.

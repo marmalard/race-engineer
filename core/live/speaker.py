@@ -43,6 +43,8 @@ class Speaker:
             self._cv.notify()
 
     def close(self) -> None:
+        """Signal the worker to stop. In-progress speech completes; any
+        pending utterance is discarded. Safe to call more than once."""
         with self._cv:
             self._closed = True
             self._cv.notify()

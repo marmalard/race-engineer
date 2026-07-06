@@ -60,9 +60,11 @@ def test_engine_failure_goes_silent_without_crashing():
 
     s = Speaker(engine=broken)
     s.say("a")
-    time.sleep(0.2)
-    s.say("b")  # must not raise even though the worker died
+    assert _wait_for(lambda: not s._thread.is_alive()), \
+        "worker thread should have exited after engine failure"
+    s.say("b")  # provably a silent no-op now — must not raise
     s.close()
+    s.close()  # idempotent: second close on a dead worker is harmless
 
 
 def test_null_speaker_is_a_noop():

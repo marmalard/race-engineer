@@ -84,3 +84,65 @@ def test_load_corners_empty_track_id_returns_empty(monkeypatch, tmp_path):
     assert live_coach._load_corners(
         track_id="", track_dir="", track_length_m=0.0, track_display="x"
     ) == []
+
+
+import numpy as np
+
+from core.benchmark.reference_store import ReferenceStore
+from core.telemetry.normalizer import NormalizedLap
+
+
+def _tiny_lap(n: int = 100) -> NormalizedLap:
+    z = np.zeros(n)
+    return NormalizedLap(
+        lap_number=1, lap_time=131.4, track_length=float(n),
+        distance=np.arange(n, dtype=float), speed=np.full(n, 50.0),
+        throttle=np.ones(n), brake=z, steering=z, gear=np.full(n, 4),
+        rpm=np.full(n, 6000.0), lat=z, lon=z,
+        elapsed_time=np.cumsum(np.full(n, 0.02)), is_valid=True,
+    )
+
+
+def test_car_name_reads_car_screen_name():
+    """Must read the exact field the offline pipeline stores references
+    under (ibt_parser uses CarScreenName) — the store lookup is an exact
+    string match."""
+    class _FakeIR:
+        def __getitem__(self, key):
+            assert key == "DriverInfo"
+            return {"DriverCarIdx": 1, "Drivers": [
+                {"CarScreenName": "Other Car"},
+                {"CarScreenName": "BMW M2 CS Racing"},
+            ]}
+    assert live_coach._car_name(_FakeIR()) == "BMW M2 CS Racing"
+
+
+def test_car_name_handles_missing_driver_info():
+    class _FakeIR:
+        def __getitem__(self, key):
+            return None
+    assert live_coach._car_name(_FakeIR()) == ""
+
+
+def test_load_reference_none_when_store_empty(tmp_path, monkeypatch):
+    monkeypatch.setattr(live_coach, "REFERENCE_DB", tmp_path / "refs.db")
+    assert live_coach._load_reference("523", "BMW M2 CS Racing") is None
+
+
+def test_load_reference_none_for_blank_key(tmp_path, monkeypatch):
+    monkeypatch.setattr(live_coach, "REFERENCE_DB", tmp_path / "refs.db")
+    assert live_coach._load_reference("", "BMW M2 CS Racing") is None
+    assert live_coach._load_reference("523", "") is None
+
+
+def test_load_reference_returns_stored_g61_lap(tmp_path, monkeypatch):
+    db = tmp_path / "refs.db"
+    monkeypatch.setattr(live_coach, "REFERENCE_DB", db)
+    ReferenceStore(db).save(
+        "523", "BMW M2 CS Racing", _tiny_lap(),
+        source="g61", driver_name="Fast Alien",
+    )
+    ref = live_coach._load_reference("523", "BMW M2 CS Racing")
+    assert ref is not None
+    assert ref.meta.source == "g61"
+    assert ref.lap.lap_time == 131.4

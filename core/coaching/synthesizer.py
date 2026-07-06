@@ -203,12 +203,19 @@ class Synthesizer:
 
         history: [{"role": "user"|"assistant", "content": str}, ...],
         newest last. Only the last MAX_CHAT_HISTORY turns are sent.
+
+        Guard: if the capped slice starts with an assistant turn (which the
+        Anthropic Messages API rejects), the leading assistant message is
+        dropped so the first sent message always has role 'user'.
         """
+        msgs = history[-self.MAX_CHAT_HISTORY:]
+        if msgs and msgs[0]["role"] != "user":
+            msgs = msgs[1:]
         response = self.client.messages.create(
             model=self.model,
             max_tokens=800,
             system=build_race_chat_system(narrative, debrief_text),
-            messages=history[-self.MAX_CHAT_HISTORY:],
+            messages=msgs,
         )
         return self._extract_text(response)
 

@@ -283,3 +283,29 @@ def test_race_chat_reply_threads_history_and_caps_it():
     sent = fake.calls[0]["messages"]
     assert len(sent) <= 20            # capped
     assert sent[-1]["content"] == "final"
+
+
+def test_race_chat_reply_first_message_is_always_user():
+    """Capped history must never start with an assistant turn.
+
+    With 15 exchanges (30 msgs) + 1 final user message = 31 total,
+    slicing the last 20 starts at index 11 which is an assistant turn.
+    The Anthropic Messages API rejects a first message with role 'assistant'.
+    """
+    synth, fake = _synthesizer_with_fake("Reply.")
+    history: list[dict] = []
+    for i in range(15):
+        history.append({"role": "user", "content": f"q{i}"})
+        history.append({"role": "assistant", "content": f"a{i}"})
+    history.append({"role": "user", "content": "final"})
+    # 31 messages total; last-20 slice starts at index 11 (assistant a5)
+    assert len(history) == 31
+
+    synth.race_chat_reply(_minimal_narrative(), "Debrief.", history)
+    sent = fake.calls[0]["messages"]
+
+    assert sent[0]["role"] == "user", (
+        f"First sent message must be 'user', got '{sent[0]['role']}'"
+    )
+    assert len(sent) <= 20
+    assert sent[-1]["content"] == "final"

@@ -18,6 +18,7 @@ from core.race.models import (
     ResultRow,
     RosterEntry,
 )
+from core.race.narrative import select_key_rivals
 from core.telemetry.ibt_parser import IBTParser
 
 logger = logging.getLogger(__name__)
@@ -57,7 +58,12 @@ def select_race_simsession(session_results: list[dict]) -> dict:
 
 
 def _parse_api_lap_time(value) -> float:
-    """API lap times are 1/10000s; <= 0 means no valid time."""
+    """API lap times are 1/10000s; <= 0 means no valid time.
+
+    Results/lap_data endpoint times are ALWAYS 1/10000s — unlike the
+    recent-races endpoint used in iracing_api._parse_lap_time() which
+    returns a mixed format (seconds for low values, 1/10000s for high).
+    """
     if not isinstance(value, (int, float)) or value <= 0:
         return -1.0
     return value / 10000.0
@@ -120,13 +126,24 @@ def parse_lap_data_rows(raw: list[dict], cust_id: int) -> list[DriverLap]:
 def _cached_fetch(cache_path: Path, fetch: Callable[[], dict | list]):
     """Serve from disk cache, else fetch and cache.
 
-    The cache file is written only after a fully successful fetch.
+    The cache file is written atomically (write to .tmp sibling, then
+    replace) so a crash mid-write never leaves a truncated file that
+    poisons the cache permanently.  Corrupt existing files
+    (JSONDecodeError) are treated as a cache miss: re-fetch and overwrite.
     """
     if cache_path.exists():
-        return json.loads(cache_path.read_text(encoding="utf-8"))
+        try:
+            return json.loads(cache_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            logger.warning(
+                "Corrupt cache file %s — treating as cache miss and re-fetching",
+                cache_path,
+            )
     data = fetch()
     cache_path.parent.mkdir(parents=True, exist_ok=True)
-    cache_path.write_text(json.dumps(data), encoding="utf-8")
+    tmp_path = cache_path.with_suffix(cache_path.suffix + ".tmp")
+    tmp_path.write_text(json.dumps(data), encoding="utf-8")
+    tmp_path.replace(cache_path)
     return data
 
 
@@ -234,8 +251,6 @@ def ingest_race(
 
                 # Lap data: player + key rivals only (bounds API calls).
                 # Rival selection needs results + chart, both now loaded.
-                from core.race.narrative import select_key_rivals
-
                 targets = [meta["player_cust_id"]] + select_key_rivals(
                     results, lap_chart, meta["player_cust_id"]
                 )

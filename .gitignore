@@ -19,6 +19,7 @@ wheels/
 *.ibt
 data/*.db
 data/crew_chief_cache.json
+data/race_cache/
 
 # Track map SVG cache (iRacing copyright — local use only)
 data/track_maps/

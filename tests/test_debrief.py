@@ -90,3 +90,66 @@ def test_identical_laps_produce_no_diagnoses():
 def test_top_n_limits_diagnoses():
     result = build_debrief(_slower_driver(), _reference(), CORNERS, top_n=1)
     assert len(result.diagnoses) <= 1
+
+
+def _early_release_driver(n: int = 2000) -> NormalizedLap:
+    """Brakes at the reference point but releases the brakes ~30m earlier."""
+    x = np.arange(n, dtype=float)
+    speed = np.full(n, 60.0)
+    speed -= 40.0 * np.exp(-((x - 500.0) ** 2) / (2 * 52.0**2))  # slower than ref
+    brake = np.where((x > 380) & (x < 450), 0.8, 0.0)  # releases at 450 not 480
+    throttle = np.where((x > 380) & (x < 560), 0.0, 1.0)
+    return _lap(speed, brake, throttle)
+
+
+def _straightline_brake_reference(n: int = 2000) -> NormalizedLap:
+    """Reference that does NOT trail-brake: brakes done 60m before the apex."""
+    x = np.arange(n, dtype=float)
+    speed = np.full(n, 60.0)
+    speed -= 35.0 * np.exp(-((x - 500.0) ** 2) / (2 * 50.0**2))
+    brake = np.where((x > 380) & (x < 440), 0.8, 0.0)  # release 60m before apex
+    throttle = np.where((x > 380) & (x < 560), 0.0, 1.0)
+    return _lap(speed, brake, throttle)
+
+
+def _slow_exit_driver(n: int = 2000) -> NormalizedLap:
+    """Matches the reference into the corner but recovers speed slowly on exit."""
+    x = np.arange(n, dtype=float)
+    speed = np.full(n, 60.0)
+    speed -= 35.0 * np.exp(-((x - 500.0) ** 2) / (2 * 50.0**2))
+    speed = speed - np.where(x >= 500.0, 4.0 * np.exp(-(x - 500.0) / 300.0), 0.0)
+    brake = np.where((x > 380) & (x < 480), 0.8, 0.0)
+    throttle = np.where((x > 380) & (x < 600), 0.0, 1.0)
+    return _lap(speed, brake, throttle)
+
+
+def test_release_delta_when_driver_releases_early():
+    """Driver gives up the brakes ~30m before the reference -> negative delta."""
+    result = build_debrief(_early_release_driver(), _reference(), CORNERS)
+    top = result.diagnoses[0]
+    assert top.brake_release_delta_m is not None
+    assert top.brake_release_delta_m == pytest.approx(-30.0, abs=12.0)
+
+
+def test_release_delta_none_when_reference_does_not_trail():
+    """Reference brakes in a straight line -> trail coaching is meaningless
+    here, so the release delta must be None (the trail guard)."""
+    result = build_debrief(
+        _early_release_driver(), _straightline_brake_reference(), CORNERS
+    )
+    top = result.diagnoses[0]
+    assert top.brake_release_delta_m is None
+
+
+def test_exit_speed_delta_negative_when_slower_on_exit():
+    result = build_debrief(_slow_exit_driver(), _reference(), CORNERS)
+    top = result.diagnoses[0]
+    assert top.exit_speed_delta_ms < -1.0
+
+
+def test_reference_brake_onset_recorded():
+    """The reference's brake-onset distance is exposed for the prompt
+    scheduler's trigger anchor."""
+    result = build_debrief(_slower_driver(), _reference(), CORNERS)
+    top = result.diagnoses[0]
+    assert top.reference_brake_onset_m == pytest.approx(380.0, abs=15.0)

@@ -20,6 +20,9 @@ from core.track.segment_annotator import annotate_region
 BRAKE_THRESHOLD = 0.05
 THROTTLE_THRESHOLD = 0.9
 BRAKE_SEARCH_BACK_M = 200.0
+# Reference must carry brake to within this distance of its apex for a
+# trail-braking (release) delta to be meaningful at this corner.
+TRAIL_GUARD_M = 30.0
 
 
 @dataclass
@@ -33,6 +36,9 @@ class RegionDiagnosis:
     throttle_delta_m: float | None  # positive = driver back on power later
     driver_min_speed_ms: float
     reference_min_speed_ms: float
+    brake_release_delta_m: float | None = None  # negative = driver releases earlier
+    exit_speed_delta_ms: float = 0.0  # negative = driver slower at region end
+    reference_brake_onset_m: float | None = None  # absolute distance, for prompts
 
 
 @dataclass
@@ -55,6 +61,15 @@ def _onset(
     span = mask[start_idx:end_idx]
     hits = np.flatnonzero(span)
     return int(start_idx + hits[0]) if len(hits) else None
+
+
+def _release(
+    mask: np.ndarray, start_idx: int, apex_idx: int
+) -> int | None:
+    """Last index in [start_idx, apex_idx] where mask is True."""
+    span = mask[start_idx:apex_idx + 1]
+    hits = np.flatnonzero(span)
+    return int(start_idx + hits[-1]) if len(hits) else None
 
 
 def _diagnose_region(
@@ -91,6 +106,25 @@ def _diagnose_region(
         else None
     )
 
+    # Brake release (trail braking) — only meaningful where the reference
+    # itself carries brake near its apex; otherwise None (the trail guard).
+    ref_release = _release(reference.brake[:n] > BRAKE_THRESHOLD, start, ref_apex)
+    drv_release = _release(driver.brake[:n] > BRAKE_THRESHOLD, start, drv_apex)
+    reference_trails = (
+        ref_release is not None
+        and (ref_apex - ref_release) * interval_m <= TRAIL_GUARD_M
+    )
+    brake_release_delta = (
+        (drv_release - ref_release) * interval_m
+        if reference_trails and drv_release is not None
+        else None
+    )
+
+    # Exit speed at the region end — a deficit here compounds down the
+    # following straight.
+    exit_idx = max(0, min(n - 1, end - 1))
+    exit_speed_delta = float(driver.speed[exit_idx] - reference.speed[exit_idx])
+
     return RegionDiagnosis(
         region=region,
         label=annotate_region(region, corners, track_length=driver.track_length),
@@ -99,6 +133,11 @@ def _diagnose_region(
         throttle_delta_m=throttle_delta,
         driver_min_speed_ms=drv_min,
         reference_min_speed_ms=ref_min,
+        brake_release_delta_m=brake_release_delta,
+        exit_speed_delta_ms=exit_speed_delta,
+        reference_brake_onset_m=(
+            ref_brake * interval_m if ref_brake is not None else None
+        ),
     )
 
 

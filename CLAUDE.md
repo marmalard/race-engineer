@@ -334,7 +334,8 @@ streamlit run app/streamlit_app.py
 - [x] PromptScheduler — triggers 300m before reference brake onset, corner-span safety clamp (move past exit or drop under 100m gap), max 3/lap, once-per-lap with rearm (`core/live/prompt_scheduler.py`)
 - [x] live_coach wiring — --mute / --corner-prompts flags, ReferenceStore lookup at connect (CarScreenName key, visible-failure logging), stored reference never replaced mid-session, LapDist-None tow guard
 - [x] Debrief cards show Brake Release + Exit Speed metrics (`app/pages/coaching.py`)
-- [ ] Rollout 0: export real Spa/M2 G61 CSV — closes validation gate AND enables trail coaching
+- [x] Rollout 0 (partial): real G61 CSV verified (LapDistPct-only headers; CHANNEL_ALIASES updated), Spa-Endurance/M2 reference imported to ReferenceStore (track 525, "BMW M2 Racing (G87)", 2:39.155 integrated vs 2:39.302 displayed = 0.09%)
+- [ ] Full gate activation: needs the driver's OWN G61 lap export paired with its session IBT (tests/fixtures/g61/)
 - [ ] Driving validation: voice audibility/pacing, trail-nudge accuracy, prompt trigger timing (LEAD_M 300m / CLAMP_MARGIN_M 30m / thresholds tunable)
 
 **Phase 3: Intelligence**
@@ -433,7 +434,9 @@ streamlit run app/streamlit_app.py
 - Output sorted descending by time_lost; `find_loss_regions()[:top_n]` gives the priority list
 
 ### G61 Import
-- `CHANNEL_ALIASES` table maps logical channels (distance, speed, throttle, brake, gear, rpm, steering, time, lat, lon) to acceptable G61 column names — **not yet verified against a real G61 export**; extend as needed
+- `CHANNEL_ALIASES` table maps logical channels (distance, distance_pct, speed, throttle, brake, gear, rpm, steering, time, lat, lon) to acceptable G61 column names — **verified against a real export 2026-07** (headers: `Speed,LapDistPct,Lat,Lon,Brake,Throttle,RPM,SteeringWheelAngle,Gear,Clutch,ABSActive,DRSActive,...`)
+- Real exports have NO absolute distance column — only `LapDistPct` (fraction 0–1); distance reconstructed as `pct × track_length_m` (percent-scale heuristic for >1.5 max)
+- No time column either — elapsed time integrated from ds/v; verified 0.09% vs the G61-displayed lap time on a real Spa lap
 - Speed unit heuristic: `max > 130` → km/h → divide by 3.6 (no production car reaches 130 m/s)
 - Pedal unit heuristic: `max > 1.5` → percent scale → divide by 100
 - Elapsed time: use time column when present; otherwise integrate `dt = ds / max(v, 1.0)` over the output grid

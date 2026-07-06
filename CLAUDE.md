@@ -58,7 +58,10 @@ race-engineer/
 │   └── live/
 │       ├── lap_buffer.py         # Accumulate live ticks into normalizer-ready DataFrame
 │       ├── session_reader.py     # LapBoundaryTracker pure state machine
-│       └── nudges.py             # RegionDiagnosis → terse nudge
+│       ├── nudges.py             # RegionDiagnosis → terse nudge + spoken lap summary
+│       ├── speaker.py            # Non-blocking SAPI voice (latest-wins queue)
+│       ├── prompt_scheduler.py   # Distance-triggered in-corner prompts
+│       └── feed.py               # In-memory nudge feed + stdlib web display
 ├── scripts/
 │   └── live_coach.py             # Terminal entry point (pyirsdk driver)
 ├── data/
@@ -93,7 +96,10 @@ race-engineer/
     ├── test_lap_buffer.py
     ├── test_session_reader.py
     ├── test_nudges.py
-    └── test_live_coach_helpers.py
+    ├── test_live_coach_helpers.py
+    ├── test_feed.py
+    ├── test_speaker.py
+    └── test_prompt_scheduler.py
 ```
 
 ## Key Technical Concepts
@@ -236,6 +242,9 @@ Telemetry:
 - struct — IBT binary parsing (stdlib)
 - scipy — signal processing for corner detection (smoothing, peak finding)
 
+Live coaching:
+- pyttsx3 — Windows SAPI text-to-speech (live voice; degrades to silent)
+
 Visualization:
 - plotly — interactive telemetry charts
 - matplotlib — static plots if needed
@@ -316,6 +325,17 @@ streamlit run app/streamlit_app.py
 - [x] Terminal entry point — pyirsdk driver, prints nudges after each flying lap (`scripts/live_coach.py`)
 - [ ] Live driving validation — lap-boundary reliability + nudge naturalness across real sessions
 - Note: reuses `build_debrief` / `Normalizer` unchanged; no edits to core analysis engine
+
+**Live Voice Coaching** (complete, branch live-voice-coaching)
+- [x] Diagnosis metrics: brake-release delta (trail guard: only where reference trails) + exit-speed delta + reference brake onset (`core/coaching/debrief.py`)
+- [x] Five-rung nudge ladder — lift > braking > release (trail) > exit speed > throttle — with speech (car lengths, "k" for km/h) and terse quantity-free in-corner prompt phrasings (`core/live/nudges.py`)
+- [x] format_lap_speech — delta-first spoken summary, confirmation nudges ("that's it, keep that"), returns flagged-label set for threading (`core/live/nudges.py`)
+- [x] Speaker — daemon-thread SAPI via pyttsx3, one-slot latest-wins queue, in-progress never interrupted, failure degrades to silent (`core/live/speaker.py`)
+- [x] PromptScheduler — triggers 300m before reference brake onset, corner-span safety clamp (move past exit or drop under 100m gap), max 3/lap, once-per-lap with rearm (`core/live/prompt_scheduler.py`)
+- [x] live_coach wiring — --mute / --corner-prompts flags, ReferenceStore lookup at connect (CarScreenName key, visible-failure logging), stored reference never replaced mid-session, LapDist-None tow guard
+- [x] Debrief cards show Brake Release + Exit Speed metrics (`app/pages/coaching.py`)
+- [ ] Rollout 0: export real Spa/M2 G61 CSV — closes validation gate AND enables trail coaching
+- [ ] Driving validation: voice audibility/pacing, trail-nudge accuracy, prompt trigger timing (LEAD_M 300m / CLAMP_MARGIN_M 30m / thresholds tunable)
 
 **Phase 3: Intelligence**
 - [ ] Driver profile — accumulate across sessions
@@ -466,16 +486,17 @@ streamlit run app/streamlit_app.py
 - **LapBoundaryTracker** is a pure state machine (no pyirsdk, no I/O); fed one sample dict per tick. Coarse gating only: suppresses pre-green laps (Lap < 1), pit-touch laps, laps too short to be real (< `min_lap_samples` ticks), and discards the buffer on a backward Lap jump (reset/tow). Fine validity (90% distance coverage, distance jumps) is left to `Normalizer.is_valid`, checked by the consumer in `live_coach.py` before debriefing.
 - **Nudge salience order and thresholds**: min-speed deficit (>= 2.0 m/s) wins — "carry it flat, you lifted" when reference apex >= 50 m/s, else "carry more apex speed"; braking error (>= 8 m) second — "brake later" or "brake earlier"; late throttle (>= 20 m) third — "back to power earlier". Deterministic, no AI.
 - **Track slug for lovely-track-data**: live path reads `WeekendInfo:TrackName` (the directory string, e.g. "spa 2024 up") to build the slug, NOT `TrackDisplayName`. Using `TrackDisplayName` was a known bug in the offline path — the live path avoids it deliberately.
-- **Run command**: `.venv/Scripts/python.exe scripts/live_coach.py` with iRacing open and a session loaded. Prints "Connected: <track>. Drive a lap to set baseline." on startup; prints nudges after each flying lap.
+- **Run command**: `.venv/Scripts/python.exe scripts/live_coach.py [--mute] [--corner-prompts]` with iRacing open and a session loaded. Speaks lap summaries via Windows SAPI (mixed with game audio); `--corner-prompts` adds approach-triggered prompts (phase 2 — validate plain voice first). With a stored reference lap (ReferenceStore, keyed by track_id + CarScreenName), coaching starts on the first flying lap; otherwise lap 1 sets the session baseline.
 - **Deferred to Plan 2 (HUD)**: NiceGUI LAN web service (binds 0.0.0.0, reachable on LAN + tailnet), iPad chat-feed HUD, Web Speech voice. AI nudge rewrite and Streamlit cleanup are separate tracks.
 
 ### Test Suite
-- 303 tests passing, 10 skipped (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`)
+- 362 tests passing, 9 skipped (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`)
 - Test fixtures: `tests/fixtures/sample.ibt` (Spa, BMW M2 CS Racing, 2 laps — gitignored)
 - Multi-lap fixture from `C:\Users\antho\Documents\iRacing\telemetry\` (Road America F4, 7 laps)
 - Bathurst fixture also available for corner detection tuning tests
 - Tests skip gracefully when no IBT file is available
 - 3 gate tests in `test_g61_validation_gate.py` skip pending real paired G61 fixtures
 - Stage 1 new test files: test_parser_cross_validation, test_alignment, test_loss_regions, test_reference_store, test_lovely_seeder, test_segment_annotator, test_debrief, test_track_assets, test_track_map, test_g61_import, test_g61_validation_gate
-- Live coaching spike new test files: test_lap_buffer, test_session_reader, test_nudges, test_live_coach_helpers
+- Live coaching spike new test files: test_lap_buffer, test_session_reader, test_nudges, test_live_coach_helpers, test_feed
+- Live voice coaching new test files: test_speaker (fake engines only, no SAPI), test_prompt_scheduler
 - Legacy test files: test_ibt_parser, test_normalizer, test_corner_detector, test_corner_detection_tuning, test_lap_comparator, test_multilap_comparator, test_track_db, test_iracing_api, test_synthesizer, test_analyzer, test_crew_chief_seeder, test_scouting, test_unit_helpers

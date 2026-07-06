@@ -361,7 +361,7 @@ def _render_loss_analysis(
     for diag in result.diagnoses:
         with st.container(border=True):
             st.markdown(f"**{diag.label}** — +{diag.region.time_lost:.2f}s lost")
-            c1, c2, c3 = st.columns(3)
+            c1, c2, c3, c4, c5 = st.columns(5)
             c1.metric(
                 "Braking Point",
                 fmt_distance(diag.braking_delta_m, imperial, signed=True)
@@ -380,6 +380,21 @@ def _render_loss_analysis(
                 if diag.throttle_delta_m is not None
                 else "—",
                 help="Positive = you pick up throttle later than the reference",
+            )
+            c4.metric(
+                "Brake Release",
+                fmt_distance(diag.brake_release_delta_m, imperial, signed=True)
+                if diag.brake_release_delta_m is not None
+                else "—",
+                help="Negative = you release the brakes earlier than the "
+                     "reference (less trail braking). Only shown where the "
+                     "reference trail-brakes.",
+            )
+            c5.metric(
+                "Exit Speed",
+                fmt_speed(diag.exit_speed_delta_ms, imperial),
+                help="Negative = you're slower at the corner exit; the loss "
+                     "compounds down the following straight",
             )
 
 

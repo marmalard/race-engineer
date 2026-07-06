@@ -123,3 +123,24 @@ class TestIBTParserLaps:
         ibt = parser.parse(raw_bytes)
         assert ibt.header.version in (1, 2)
         assert len(ibt.telemetry) > 0
+
+
+class TestParseSessionOnly:
+    def test_parse_session_only_matches_full_parse(self, sample_ibt_path):
+        """parse_session_only returns the same session metadata as parse()."""
+        parser = IBTParser()
+        full = parser.parse(sample_ibt_path, channels=["Lap"])
+        session_only = parser.parse_session_only(sample_ibt_path)
+
+        assert session_only.track_id == full.session.track_id
+        assert session_only.track_name == full.session.track_name
+        assert session_only.car_name == full.session.car_name
+        assert session_only.session_type == full.session.session_type
+        assert session_only.raw.get("WeekendInfo", {}).get("SubSessionID") == \
+            full.session.raw.get("WeekendInfo", {}).get("SubSessionID")
+
+    def test_parse_session_only_accepts_bytes(self, sample_ibt_path):
+        parser = IBTParser()
+        data = sample_ibt_path.read_bytes()
+        session = parser.parse_session_only(data)
+        assert session.track_id == parser.parse_session_only(sample_ibt_path).track_id

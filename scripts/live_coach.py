@@ -30,7 +30,11 @@ from core.benchmark.reference_store import ReferenceLap, ReferenceStore  # noqa:
 from core.coaching.debrief import build_debrief  # noqa: E402
 from core.live.feed import NudgeFeed, start_web_display  # noqa: E402
 from core.live.lap_buffer import SAMPLE_CHANNELS  # noqa: E402
-from core.live.nudges import format_lap_block, format_lap_speech  # noqa: E402
+from core.live.nudges import (  # noqa: E402
+    _speech_lap_time,
+    format_lap_block,
+    format_lap_speech,
+)
 from core.live.prompt_scheduler import PromptScheduler, build_schedule  # noqa: E402
 from core.live.session_reader import LapBoundaryTracker  # noqa: E402
 from core.live.speaker import create_speaker  # noqa: E402
@@ -216,7 +220,11 @@ def main() -> None:
                         + (f" ({ref.meta.driver_name})"
                            if ref.meta.driver_name else "")
                     )
-                    speaker.say("Reference lap loaded. Coaching from lap one.")
+                    speaker.say(
+                        f"Reference lap loaded, "
+                        f"{_speech_lap_time(ref.meta.lap_time)}. "
+                        "Coaching from lap one."
+                    )
                     print(f"Connected: {track_display}.")
                 else:
                     print(f"Connected: {track_display}. "
@@ -229,13 +237,17 @@ def main() -> None:
 
             # LapDist is None while towed/out-of-world; feeding 0.0 then would
             # look like a start/finish wrap and false-fire a pending prompt.
-            lap_dist = sample.get("LapDist")
-            if (args.corner_prompts and lap_dist is not None
-                    and not sample.get("OnPitRoad")):
-                prompt = scheduler.feed(float(lap_dist))
-                if prompt is not None:
-                    print(f"  >> {prompt}")
-                    speaker.say(prompt)
+            # While skipping, also forget the scheduler's last position so the
+            # jump back on track isn't mistaken for a wrap either.
+            if args.corner_prompts:
+                lap_dist = sample.get("LapDist")
+                if lap_dist is not None and not sample.get("OnPitRoad"):
+                    prompt = scheduler.feed(float(lap_dist))
+                    if prompt is not None:
+                        print(f"  >> {prompt}")
+                        speaker.say(prompt)
+                else:
+                    scheduler.reset_position()
 
             if completed is not None:
                 scheduler.rearm()

@@ -117,6 +117,14 @@ class PromptScheduler:
         for p in self._schedule:
             p.fired = False
 
+    def reset_position(self) -> None:
+        """Forget the last distance sample. Call while feeds are being
+        skipped (pits, tow, out-of-world) — otherwise the first sample
+        after resuming compares against a stale position and a backward
+        jump looks like a start/finish wrap, false-firing a prompt far
+        from its corner."""
+        self._prev_dist = None
+
     def feed(self, lap_dist_m: float) -> str | None:
         """One tick. Returns prompt text iff a trigger was crossed.
 

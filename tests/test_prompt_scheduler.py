@@ -104,3 +104,14 @@ def test_empty_schedule_is_silent():
     s = PromptScheduler([])
     assert s.feed(100.0) is None
     assert s.feed(200.0) is None
+
+
+def test_reset_position_prevents_false_wrap_fire_after_pits():
+    """A backward position jump after a gated stretch (pit/tow) must not be
+    mistaken for a start/finish wrap and fire a far-away trigger."""
+    s = PromptScheduler([ScheduledPrompt(trigger_m=5500.0, text="far")])
+    s.feed(4900.0)
+    s.feed(5000.0)          # on track, trigger still ahead
+    s.reset_position()      # feeds were skipped (towed to pits)
+    assert s.feed(300.0) is None   # resume near pit exit: primes, no fire
+    assert s.feed(400.0) is None   # still nowhere near the trigger

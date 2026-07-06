@@ -28,17 +28,17 @@
     "models_used": ["claude-sonnet-4-5-20250929"]
   },
   "state": {
-    "current_phase": "Live voice coaching merged to master (365 tests): spoken between-lap summaries + opt-in in-corner prompts, trail-braking/exit-speed diagnosis, reference-lap coaching from lap 1. First real G61 reference imported (Spa Endurance / BMW M2 G87, 0.09% time agreement). Awaiting voice driving validation.",
+    "current_phase": "V2 strategy adopted (coach the race, not the lap — docs/race-engineer-v2-strategy.md): lap/voice coaching is the personal track, race intelligence is the market product. Voice coaching merged (371 tests), first G61 reference imported, watcher specced+planned ready to execute; next build is the watcher, then Surface 1 (post-race debrief) brainstorm.",
     "last_session": {
-      "at": "2026-07-06T19:40:00Z",
-      "summary": "Shipped live voice coaching end-to-end (spec -> plan -> 8 subagent tasks -> merged -> pushed), verified G61 import on a real export and imported the first reference lap (user +2.2s, headline: trail braking into Bruxelles); then front-loaded before Fable access ends: JSONL session logging for tonight's drive, fixed the offline lovely-slug bug, and wrote the full Stage 3 watcher spec + execution-ready plan."
+      "at": "2026-07-06T20:30:00Z",
+      "summary": "Shipped live voice coaching end-to-end (spec -> plan -> 8 subagent tasks -> merged -> pushed) with the first real G61 reference imported (user +2.2s at Spa, headline: trail braking into Bruxelles); front-loaded before Fable access ends (session logging, lovely-slug fix, watcher spec + execution-ready plan); then adopted the v2 race-intelligence strategy and reconciled CLAUDE.md/Atlas/watcher-spec to it."
     },
     "next_actions": [
       "TONIGHT: drive with voice at Spa Endurance — `.venv/Scripts/python.exe scripts/live_coach.py`; the Borsuk reference loads automatically and every nudge/prompt is logged to data/live_sessions/ for threshold tuning",
       "Execute the watcher plan (any model): docs/superpowers/plans/2026-07-06-telemetry-watcher.md via subagent-driven-development — first run back-fills references + history for every combo in the telemetry folder",
       "Tune voice/prompt thresholds from the session logs after a few drives (LEAD_M, CLAMP_MARGIN_M, RELEASE/EXIT thresholds; watch the clamp dropping the Bruxelles prompt)",
       "Close the G61 validation gate fully: export one of YOUR OWN laps from Garage 61 + copy that session's IBT to tests/fixtures/g61/ and set G61_DISPLAYED_LAP_TIME",
-      "Stage 2: briefing (corner cards from reference lap + scouting synthesis + iracingdataapi swap)"
+      "Brainstorm the Surface 1 spec (post-race debrief): race narrative from race IBT + results API + CarIdx data, conversational follow-up, iRating attribution, debrief tone contract (engineer not judge, never dishonest) — first v2 build, after the watcher"
     ],
     "blockers": [
       "ANTHROPIC_API_KEY in .env not working — user rotating credentials (blocks scouting reports + AI coaching narrative; deterministic debrief + live voice unaffected, no AI on that path)"
@@ -53,5 +53,5 @@
     ]
   },
   "created_at": "2026-04-29T14:05:54Z",
-  "updated_at": "2026-07-06T18:20:00Z"
+  "updated_at": "2026-07-06T20:30:00Z"
 }

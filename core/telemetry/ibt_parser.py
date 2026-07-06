@@ -113,6 +113,9 @@ class IBTSession:
     driver_name: str
     driver_id: int
     session_type: str
+    # WeekendInfo.TrackName ("spa 2024 up") — the lovely-track-data slug
+    # source; track_name above is the pretty TrackDisplayName.
+    track_directory: str = ""
     raw: dict = field(default_factory=dict)
 
 
@@ -329,6 +332,7 @@ class IBTParser:
             track_name=track_name,
             track_id=track_id,
             track_length_km=track_length_km,
+            track_directory=str(weekend_info.get("TrackName", "") or ""),
             car_name=car_name,
             car_id=car_id,
             driver_name=driver_name,

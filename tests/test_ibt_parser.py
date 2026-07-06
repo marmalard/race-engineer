@@ -44,6 +44,15 @@ class TestIBTParser:
         assert session.car_name, "Car name should not be empty"
         assert session.raw, "Raw YAML dict should not be empty"
 
+    def test_track_directory_is_the_slug_source(self, parsed_ibt):
+        """track_directory carries WeekendInfo.TrackName (the directory
+        string, e.g. 'spa 2024 up') — the lovely-track-data slug source.
+        It is NOT the pretty TrackDisplayName."""
+        session = parsed_ibt.session
+        assert session.track_directory, "track_directory should not be empty"
+        assert session.track_directory == session.raw["WeekendInfo"]["TrackName"]
+        assert session.track_directory != session.track_name
+
     def test_var_headers_contain_core_channels(self, parsed_ibt):
         """Key channels should be present in the variable headers."""
         var_names = {vh.name for vh in parsed_ibt.var_headers}

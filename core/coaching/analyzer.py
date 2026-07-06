@@ -121,7 +121,10 @@ def analyze_session(
             db_path,
             str(ibt.session.track_id),
             segmentation.corners,
-            ibt_track_name=ibt.session.track_name,
+            # The DIRECTORY string ("spa 2024 up"), not the pretty display
+            # name — the lovely slug is built from it. Passing track_name
+            # here silently 404'd and fell back to Crew Chief.
+            ibt_track_name=ibt.session.track_directory,
             track_length_m=track_length_m,
         )
 

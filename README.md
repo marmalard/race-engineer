@@ -119,6 +119,28 @@ print(f"Best lap: {theoretical.actual_best_time:.3f}s")
 print(f"Theoretical best: {theoretical.theoretical_time:.3f}s")
 ```
 
+## Friend-testable deployment (Tailscale)
+
+The app serves over Tailscale from the host PC — no re-platforming:
+
+    # tailnet-only (testers need Tailscale):
+    tailscale serve 8501
+
+    # or public HTTPS URL (no Tailscale account needed):
+    tailscale funnel 8501
+
+    streamlit run app/streamlit_app.py
+
+Notes:
+- The URL is unlisted; that is the only access control. Add a shared
+  passphrase before any wider beta.
+- Testers upload their own race IBT files (up to 400 MB — see
+  .streamlit/config.toml). Their races are keyed by (subsession, driver)
+  and coexist in data/races.db.
+- The host's iRacing credentials fetch results for any subsession;
+  the host's ANTHROPIC_API_KEY powers all testers' debriefs (watch spend).
+- The PC must be on for the URL to work.
+
 ## Development Status
 
 ### Phase 1: Foundation (complete)

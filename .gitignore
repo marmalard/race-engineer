@@ -27,7 +27,8 @@ data/track_maps/
 
 # Test fixtures (large telemetry files)
 tests/fixtures/*.ibt
-tests/fixtures/race/
+tests/fixtures/race/*.ibt
+tests/fixtures/race/cache/
 # G61 validation gate fixtures (user-supplied, not committed)
 tests/fixtures/g61/*.ibt
 tests/fixtures/g61/*.csv

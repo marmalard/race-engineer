@@ -218,3 +218,63 @@ def test_ingest_race_api_failure_degrades_gracefully(tmp_path, monkeypatch, capl
     assert race_data.lap_chart == []
     assert race_data.driver_laps == {}
     assert any("Data API fetch failed" in r.message for r in caplog.records)
+
+
+# --- Integration: real Oulton fixtures (skip when absent) -------------------
+
+FIXTURE_DIR = Path("tests/fixtures/race")
+FIXTURE_IBT = FIXTURE_DIR / "race.ibt"
+FIXTURE_CACHE = FIXTURE_DIR / "cache"
+
+needs_fixture = pytest.mark.skipif(
+    not FIXTURE_IBT.exists() or not FIXTURE_CACHE.exists(),
+    reason="race fixtures not recorded (scripts/record_race_fixture.py)",
+)
+
+
+@needs_fixture
+def test_ingest_real_race_from_cache_no_network():
+    """Full ingestion served entirely from recorded cache (api=None ok
+    for telemetry, but cache satisfies the API layer via a stub that
+    must never be called)."""
+    from core.race.ingest import ingest_race
+
+    class _ExplodingAPI:
+        def __getattr__(self, name):
+            raise AssertionError(f"network call attempted: {name}")
+
+        def close(self):
+            pass
+
+    # Cache dir contains {subsession_id}/... — ingest resolves inside it
+    data = ingest_race(
+        FIXTURE_IBT, _ExplodingAPI(), cache_dir=FIXTURE_CACHE
+    )
+    assert data.results, "results should come from the recorded cache"
+    assert data.player_cust_id > 0
+    assert data.driver_laps.get(data.player_cust_id)
+
+
+@needs_fixture
+def test_real_narrative_is_coherent():
+    from core.race.ingest import ingest_race
+    from core.race.narrative import build_narrative
+
+    class _NeverCalled:
+        def __getattr__(self, name):
+            raise AssertionError("network call attempted")
+
+        def close(self):
+            pass
+
+    data = ingest_race(FIXTURE_IBT, _NeverCalled(), cache_dir=FIXTURE_CACHE)
+    narrative = build_narrative(data, corners=[])
+    h = narrative.header
+    assert 1 <= h.finish_position <= h.field_size
+    assert narrative.position_timeline
+    assert narrative.pace is not None
+    assert narrative.attribution is not None
+    # Round-trip through persistence layer format
+    from core.race.models import RaceNarrative
+
+    assert RaceNarrative.from_dict(narrative.to_dict()) == narrative

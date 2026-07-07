@@ -23,7 +23,8 @@ race-engineer/
 │   ├── streamlit_app.py          # Main Streamlit entry point
 │   ├── pages/
 │   │   ├── scouting.py           # Scouting report UI
-│   │   └── coaching.py           # Lap coaching UI (debrief wired in)
+│   │   ├── coaching.py           # Lap coaching UI (debrief wired in)
+│   │   └── race_debrief.py       # Race debrief UI (Surface 1): picker, charts, chat, export
 │   └── components/               # Shared Streamlit components
 │       ├── units.py              # Unit conversion helpers (metric/imperial)
 │       └── track_map.py          # GPS track outline with colored loss regions
@@ -55,19 +56,28 @@ race-engineer/
 │   │   └── prompts/              # Prompt templates for AI synthesis
 │   │       ├── coaching.py
 │   │       └── scouting.py
-│   └── live/
-│       ├── lap_buffer.py         # Accumulate live ticks into normalizer-ready DataFrame
-│       ├── session_reader.py     # LapBoundaryTracker pure state machine
-│       ├── nudges.py             # RegionDiagnosis → terse nudge + spoken lap summary
-│       ├── speaker.py            # Non-blocking SAPI voice (latest-wins queue)
-│       ├── prompt_scheduler.py   # Distance-triggered in-corner prompts
-│       └── feed.py               # In-memory nudge feed + stdlib web display
+│   ├── live/
+│   │   ├── lap_buffer.py         # Accumulate live ticks into normalizer-ready DataFrame
+│   │   ├── session_reader.py     # LapBoundaryTracker pure state machine
+│   │   ├── nudges.py             # RegionDiagnosis → terse nudge + spoken lap summary
+│   │   ├── speaker.py            # Non-blocking SAPI voice (latest-wins queue)
+│   │   ├── prompt_scheduler.py   # Distance-triggered in-corner prompts
+│   │   └── feed.py               # In-memory nudge feed + stdlib web display
+│   └── race/
+│       ├── models.py             # RaceData (raw) + RaceNarrative (product) dataclasses
+│       ├── ingest.py             # Race IBT + YAML + Data API → RaceData (disk cache, partial mode)
+│       ├── narrative.py          # PURE narrative engine: RaceData → RaceNarrative
+│       ├── render.py             # Deterministic RaceNarrative → markdown (+ export assembly)
+│       └── race_store.py         # data/races.db — narratives, debriefs, chat, keyed (subsession, cust)
 ├── scripts/
-│   └── live_coach.py             # Terminal entry point (pyirsdk driver)
+│   ├── live_coach.py             # Terminal entry point (pyirsdk driver)
+│   └── record_race_fixture.py    # Record real race API fixtures for integration tests
 ├── data/
 │   ├── tracks.db                 # SQLite track database
 │   ├── profiles.db               # SQLite driver profile and session history
-│   └── reference_laps.db         # SQLite reference lap store (npz-compressed blobs)
+│   ├── reference_laps.db         # SQLite reference lap store (npz-compressed blobs)
+│   ├── races.db                  # SQLite race debrief store (gitignored)
+│   └── race_cache/               # Cached Data API JSON per subsession (gitignored)
 └── tests/
     ├── test_ibt_parser.py
     ├── test_normalizer.py
@@ -99,7 +109,12 @@ race-engineer/
     ├── test_live_coach_helpers.py
     ├── test_feed.py
     ├── test_speaker.py
-    └── test_prompt_scheduler.py
+    ├── test_prompt_scheduler.py
+    ├── test_race_models.py
+    ├── test_race_narrative.py
+    ├── test_race_render.py
+    ├── test_race_store.py
+    └── test_race_ingest.py
 ```
 
 ## Key Technical Concepts
@@ -338,11 +353,14 @@ streamlit run app/streamlit_app.py
 - [ ] Full gate activation: needs the driver's OWN G61 lap export paired with its session IBT (tests/fixtures/g61/)
 - [ ] Driving validation: voice audibility/pacing, trail-nudge accuracy, prompt trigger timing (LEAD_M 300m / CLAMP_MARGIN_M 30m / thresholds tunable)
 
-**Phase 3 (revised per v2 strategy): Race Debrief + Intelligence foundation**
-- [ ] Race session ingestion: race IBT + Data API results + session YAML → race narrative (position timeline, gap evolution, incident timing, stint pace)
-- [ ] Debrief generation (existing synthesis voice) + conversational follow-up loop — engineer, not judge; honest, never scolding
-- [ ] iRating attribution: lost to pace or to incidents/decisions?
-- [ ] Driver profile v1: technique tendencies + racecraft tendencies (lap-1, restarts, defense, incident patterns) — builds on the watcher's sessions/laps tables
+**Phase 3 (revised per v2 strategy): Race Debrief + Intelligence foundation** (Surface 1 shipped 2026-07-06, branch race-debrief — see `docs/superpowers/specs/2026-07-06-race-debrief-design.md`)
+- [x] Race session ingestion: race IBT + Data API results + session YAML → race narrative (position timeline, gap evolution, incident timing, stint pace) (`core/race/ingest.py`, `core/race/narrative.py`)
+- [x] Debrief generation (existing synthesis voice) + conversational follow-up loop — engineer, not judge; honest, never scolding (`core/coaching/prompts/race_debrief.py`, chat grounded in narrative JSON)
+- [x] iRating attribution: lost to pace or to incidents/decisions? (transparent accounting — pace-deserved position vs actual + labeled time-lost estimates, no counterfactual elo model)
+- [x] Persistence + markdown export + Streamlit page (`core/race/race_store.py` → data/races.db keyed (subsession_id, cust_id); `app/pages/race_debrief.py`)
+- [x] Friend-testable deployment: Tailscale serve/funnel, upload-first UX (400 MB limit), shared host creds — see README "Friend-testable deployment"
+- [ ] Founder validation of the Oulton narrative + first real AI debrief (blocked on ANTHROPIC_API_KEY rotation)
+- [ ] Driver profile v1: technique tendencies + racecraft tendencies (lap-1, restarts, defense, incident patterns) — reads races.db + the watcher's sessions/laps tables (separate spec)
 
 **Phase 4 (revised): Pre-Race Briefing / Field Scouting**
 - [ ] Field analysis from Data API: SoF/split prediction, opponent profiles (pace, aggression, incident history)
@@ -501,8 +519,21 @@ streamlit run app/streamlit_app.py
 - **Run command**: `.venv/Scripts/python.exe scripts/live_coach.py [--mute] [--corner-prompts]` with iRacing open and a session loaded. Speaks lap summaries via Windows SAPI (mixed with game audio); `--corner-prompts` adds approach-triggered prompts (phase 2 — validate plain voice first). With a stored reference lap (ReferenceStore, keyed by track_id + CarScreenName), coaching starts on the first flying lap; otherwise lap 1 sets the session baseline.
 - **Deferred to Plan 2 (HUD)**: NiceGUI LAN web service (binds 0.0.0.0, reachable on LAN + tailnet), iPad chat-feed HUD, Web Speech voice. AI nudge rewrite and Streamlit cleanup are separate tracks.
 
+### Race Debrief (Surface 1, 2026-07-06)
+- Three-source ingestion linked by `WeekendInfo.SubSessionID` (in the IBT YAML): race IBT player channels (`RACE_CHANNELS` = CORE + PlayerCarPosition/ClassPosition, SessionFlags, FuelLevel, SessionState), Data API subsession results + lap chart + per-driver lap data, YAML roster (iRating/license per driver; SoF = mean of roster iRatings)
+- **Disk IBTs contain NO CarIdx arrays** (verified) — opponent detail is lap-granularity from the API's lap_chart_data/lap_data endpoints (chunked: `chunk_info` → S3 chunk files, assembled by `LiveIRacingAPI._fetch_chunked`, retry-once per chunk)
+- API raw JSON cached to `data/race_cache/{subsession_id}/` (atomic .tmp+replace writes; corrupt cache = cache miss + re-fetch); cached files double as test fixtures
+- API positions are ZERO-based (finish_position 3 = P4) → +1 in `parse_results`; results/lap_data lap times are always 1/10000s (unlike the mixed-format recent-races endpoint)
+- Clean lap = not lap 1, valid time, no incident, no pit event, not under caution (`CAUTION_MASK = 0x4000 | 0x8000` on SessionFlags); pace metric = median of clean laps, ≥3 required to rank
+- Attribution dedupes incident time-lost by lap (two steps on one lap = that lap's excess counted once); header incident count is telemetry-sourced by design (works in partial mode)
+- `select_key_rivals` (finishers ±1 + ≥3-lap adjacency, cap 4) is called in BOTH ingest (bounds lap-data fetches) and build_narrative (gap series) — the two call sites must stay in sync
+- Honest degradation: API failure → partial RaceData (empty results/chart/laps) + logged warning, page renders telemetry-only facts with a warning; no AI key → deterministic narrative renders fully
+- Chat: system = tone contract + narrative JSON + delivered debrief; history capped at 20, never starts on an assistant turn; page persists a chat turn only after the reply succeeds
+- Real fixtures: Oulton MX-5 race (subsession 86748877, P7→P4) in `tests/fixtures/race/` (gitignored except README; re-record with `scripts/record_race_fixture.py`)
+- Deployment: `tailscale serve/funnel 8501` + `streamlit run` from the host PC; `.streamlit/config.toml` sets maxUploadSize 400
+
 ### Test Suite
-- 363 tests passing, 9 skipped (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`)
+- 429 tests passing, 9 skipped (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`)
 - Test fixtures: `tests/fixtures/sample.ibt` (Spa, BMW M2 CS Racing, 2 laps — gitignored)
 - Multi-lap fixture from `C:\Users\antho\Documents\iRacing\telemetry\` (Road America F4, 7 laps)
 - Bathurst fixture also available for corner detection tuning tests

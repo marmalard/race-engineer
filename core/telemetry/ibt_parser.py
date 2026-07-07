@@ -195,6 +195,27 @@ class IBTParser:
             telemetry=telemetry,
         )
 
+    def parse_session_only(self, source: Path | bytes) -> IBTSession:
+        """Read only the header + session YAML — no telemetry extraction.
+
+        For Path input this reads a few hundred KB instead of the whole
+        file (race IBTs run 25-205 MB), making folder scans cheap.
+        """
+        if isinstance(source, Path):
+            with open(source, "rb") as f:
+                prefix = f.read(TOTAL_HEADER_SIZE)
+                header = self._read_header(prefix)
+                needed = header.session_info_offset + header.session_info_len
+                f.seek(0)
+                data = f.read(needed)
+        elif isinstance(source, (bytes, bytearray)):
+            data = bytes(source)
+            header = self._read_header(data)
+        else:
+            raise TypeError(f"Expected Path or bytes, got {type(source)}")
+
+        return self._read_session_info(data, header)
+
     def _read_header(self, data: bytes) -> IBTHeader:
         """Read the main header from bytes 0-111."""
         if len(data) < TOTAL_HEADER_SIZE:

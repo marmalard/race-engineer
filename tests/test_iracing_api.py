@@ -516,3 +516,102 @@ class TestContextManager:
                 pass
 
             mock_client.close.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Chunked endpoints — Task 1 (Race Debrief)
+# ---------------------------------------------------------------------------
+
+class _FakeResponse:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self._payload
+
+
+class _FakeHTTPClient:
+    """Serves canned responses keyed by URL substring."""
+
+    def __init__(self, routes: dict):
+        self.routes = routes
+        self.calls: list[str] = []
+
+    def get(self, url, **kwargs):
+        self.calls.append(url)
+        for key, payload in self.routes.items():
+            if key in url:
+                return _FakeResponse(payload)
+        raise AssertionError(f"unexpected URL: {url}")
+
+
+def _api_with_fake_client(routes: dict):
+    from core.benchmark.iracing_api import LiveIRacingAPI, _TokenData
+
+    api = LiveIRacingAPI("cid", "csecret", "user", "pass")
+    api._client = _FakeHTTPClient(routes)
+    # Pre-seed a valid token so _ensure_token never hits the network
+    api._token = _TokenData(access_token="tok", expires_at=9999999999.0)
+    return api
+
+
+def test_fetch_chunked_concatenates_chunks():
+    routes = {
+        "chunk-a.json": [{"lap_number": 1}],
+        "chunk-b.json": [{"lap_number": 2}, {"lap_number": 3}],
+    }
+    api = _api_with_fake_client(routes)
+    data = {
+        "chunk_info": {
+            "base_download_url": "https://s3.example/",
+            "chunk_file_names": ["chunk-a.json", "chunk-b.json"],
+        }
+    }
+    rows = api._fetch_chunked(data)
+    assert [r["lap_number"] for r in rows] == [1, 2, 3]
+
+
+def test_fetch_chunked_without_chunk_info_returns_list_passthrough():
+    api = _api_with_fake_client({})
+    assert api._fetch_chunked([{"a": 1}]) == [{"a": 1}]
+    assert api._fetch_chunked({}) == []
+
+
+def test_get_subsession_results_calls_results_get():
+    payload = {"link": "https://s3.example/signed-results"}
+    results_doc = {"subsession_id": 86748877, "session_results": []}
+    api = _api_with_fake_client({
+        "/data/results/get": payload,
+        "signed-results": results_doc,
+    })
+    out = api.get_subsession_results(86748877)
+    assert out["subsession_id"] == 86748877
+
+
+def test_get_lap_chart_data_unwraps_chunks():
+    link_doc = {"link": "https://s3.example/signed-chart"}
+    chart_head = {
+        "chunk_info": {
+            "base_download_url": "https://s3.example/",
+            "chunk_file_names": ["c0.json"],
+        }
+    }
+    api = _api_with_fake_client({
+        "/data/results/lap_chart_data": link_doc,
+        "signed-chart": chart_head,
+        "c0.json": [{"cust_id": 1, "lap_number": 0, "lap_position": 5}],
+    })
+    rows = api.get_lap_chart_data(86748877, 0)
+    assert rows[0]["lap_position"] == 5
+
+
+def test_stub_race_endpoints_graceful():
+    from core.benchmark.iracing_api import StubIRacingAPI
+
+    stub = StubIRacingAPI()
+    assert stub.get_subsession_results(1) == {}
+    assert stub.get_lap_chart_data(1, 0) == []
+    assert stub.get_lap_data(1, 0, 2) == []

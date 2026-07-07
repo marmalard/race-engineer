@@ -14,9 +14,15 @@ import anthropic
 if TYPE_CHECKING:
     from core.coaching.analyzer import CoachingAnalysis
     from core.coaching.scouting import PaceContext
+    from core.race.models import RaceNarrative
 
 from core.coaching.prompts.scouting import SCOUTING_SYSTEM_PROMPT, build_scouting_prompt
 from core.coaching.prompts.coaching import COACHING_SYSTEM_PROMPT, build_coaching_prompt
+from core.coaching.prompts.race_debrief import (
+    RACE_DEBRIEF_SYSTEM_PROMPT,
+    build_race_chat_system,
+    build_race_debrief_prompt,
+)
 
 
 @dataclass
@@ -46,6 +52,19 @@ class ScoutingReport:
 class CoachingReport:
     """Generated coaching report with metadata."""
 
+    track: str
+    car: str
+    report_text: str
+    model_used: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
+@dataclass
+class RaceDebriefReport:
+    """Generated race debrief with metadata."""
+
+    subsession_id: int
     track: str
     car: str
     report_text: str
@@ -143,6 +162,62 @@ class Synthesizer:
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
         )
+
+    MAX_CHAT_HISTORY = 20
+
+    def generate_race_debrief(
+        self, narrative: "RaceNarrative"
+    ) -> RaceDebriefReport:
+        """Generate the race debrief from the deterministic narrative.
+
+        No web search — every fact comes from the narrative JSON.
+        """
+        response = self.client.messages.create(
+            model=self.model,
+            max_tokens=1500,
+            system=RACE_DEBRIEF_SYSTEM_PROMPT,
+            messages=[
+                {
+                    "role": "user",
+                    "content": build_race_debrief_prompt(narrative),
+                }
+            ],
+        )
+        return RaceDebriefReport(
+            subsession_id=narrative.header.subsession_id,
+            track=narrative.header.track_name,
+            car=narrative.header.car_name,
+            report_text=self._extract_text(response),
+            model_used=response.model,
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+        )
+
+    def race_chat_reply(
+        self,
+        narrative: "RaceNarrative",
+        debrief_text: str,
+        history: list[dict],
+    ) -> str:
+        """One follow-up chat turn, grounded in the narrative + debrief.
+
+        history: [{"role": "user"|"assistant", "content": str}, ...],
+        newest last. Only the last MAX_CHAT_HISTORY turns are sent.
+
+        Guard: if the capped slice starts with an assistant turn (which the
+        Anthropic Messages API rejects), the leading assistant message is
+        dropped so the first sent message always has role 'user'.
+        """
+        msgs = history[-self.MAX_CHAT_HISTORY:]
+        if msgs and msgs[0]["role"] != "user":
+            msgs = msgs[1:]
+        response = self.client.messages.create(
+            model=self.model,
+            max_tokens=800,
+            system=build_race_chat_system(narrative, debrief_text),
+            messages=msgs,
+        )
+        return self._extract_text(response)
 
     def _extract_text(self, response: anthropic.types.Message) -> str:
         """Extract the text content from a Claude response, skipping tool use blocks."""

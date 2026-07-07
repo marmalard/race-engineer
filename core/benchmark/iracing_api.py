@@ -243,6 +243,33 @@ class LiveIRacingAPI(IRacingAPIClient):
         data_resp.raise_for_status()
         return data_resp.json()
 
+    def _fetch_chunked(self, data: dict | list) -> list:
+        """Assemble a chunked Data API payload into one list.
+
+        Chunked endpoints (lap_chart_data, lap_data) return a dict whose
+        chunk_info lists S3 files; each file is a JSON array. Non-chunked
+        list payloads pass through unchanged.
+        """
+        if isinstance(data, list):
+            return data
+        chunk_info = data.get("chunk_info") if isinstance(data, dict) else None
+        if not chunk_info:
+            return []
+        base = chunk_info["base_download_url"]
+        rows: list = []
+        for name in chunk_info["chunk_file_names"]:
+            url = base + name
+            for attempt in (1, 2):  # retry once per spec
+                try:
+                    resp = self._client.get(url)
+                    resp.raise_for_status()
+                    rows.extend(resp.json())
+                    break
+                except httpx.HTTPError:
+                    if attempt == 2:
+                        raise
+        return rows
+
     # --- Public API methods ---
 
     def get_member_summary(self) -> dict:
@@ -376,6 +403,39 @@ class LiveIRacingAPI(IRacingAPIClient):
             ))
         return results
 
+    def get_subsession_results(self, subsession_id: int) -> dict:
+        """Get full official results for a subsession (all simsessions)."""
+        return self._api_get(
+            "/data/results/get", {"subsession_id": subsession_id}
+        )
+
+    def get_lap_chart_data(
+        self, subsession_id: int, simsession_number: int
+    ) -> list[dict]:
+        """Get every car's position on every lap (chunked endpoint)."""
+        data = self._api_get(
+            "/data/results/lap_chart_data",
+            {
+                "subsession_id": subsession_id,
+                "simsession_number": simsession_number,
+            },
+        )
+        return self._fetch_chunked(data)
+
+    def get_lap_data(
+        self, subsession_id: int, simsession_number: int, cust_id: int
+    ) -> list[dict]:
+        """Get one driver's per-lap times and events (chunked endpoint)."""
+        data = self._api_get(
+            "/data/results/lap_data",
+            {
+                "subsession_id": subsession_id,
+                "simsession_number": simsession_number,
+                "cust_id": cust_id,
+            },
+        )
+        return self._fetch_chunked(data)
+
 
 def _parse_lap_time(value: int | float) -> float:
     """Parse a lap time value from the iRacing API.
@@ -415,3 +475,16 @@ class StubIRacingAPI(IRacingAPIClient):
 
     def get_track_assets(self) -> dict:
         return {}  # Graceful fallback: no assets, not an error
+
+    def get_subsession_results(self, subsession_id: int) -> dict:
+        return {}  # Graceful fallback: no data, not an error
+
+    def get_lap_chart_data(
+        self, subsession_id: int, simsession_number: int
+    ) -> list[dict]:
+        return []
+
+    def get_lap_data(
+        self, subsession_id: int, simsession_number: int, cust_id: int
+    ) -> list[dict]:
+        return []

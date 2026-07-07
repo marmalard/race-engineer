@@ -1,0 +1,3 @@
+[server]
+maxUploadSize = 400   # race IBTs run 25-205 MB
+headless = true

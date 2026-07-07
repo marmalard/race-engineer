@@ -19,12 +19,16 @@ wheels/
 *.ibt
 data/*.db
 data/crew_chief_cache.json
+data/race_cache/
+data/races.db
 
 # Track map SVG cache (iRacing copyright — local use only)
 data/track_maps/
 
 # Test fixtures (large telemetry files)
 tests/fixtures/*.ibt
+tests/fixtures/race/*.ibt
+tests/fixtures/race/cache/
 # G61 validation gate fixtures (user-supplied, not committed)
 tests/fixtures/g61/*.ibt
 tests/fixtures/g61/*.csv

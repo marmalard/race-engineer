@@ -25,13 +25,17 @@ st.markdown("Your personal iRacing coaching system.")
 
 page = st.sidebar.selectbox(
     "Navigate",
-    ["Scouting Report", "Lap Coaching"],
+    ["Race Debrief", "Scouting Report", "Lap Coaching"],
 )
 
 st.sidebar.divider()
 st.sidebar.radio("Units", ["Metric", "Imperial"], key="unit_system")
 
-if page == "Scouting Report":
+if page == "Race Debrief":
+    from app.pages.race_debrief import render_race_debrief_page
+
+    render_race_debrief_page()
+elif page == "Scouting Report":
     from app.pages.scouting import render_scouting_page
 
     render_scouting_page()

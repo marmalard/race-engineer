@@ -22,6 +22,8 @@ from core.race.narrative import build_narrative
 from core.race.race_store import RaceStore
 from core.race.render import render_export_markdown, render_narrative_markdown
 from core.telemetry.ibt_parser import IBTParser
+from core.track.lovely_seeder import seed_track_from_lovely
+from core.track.models import Track, TrackType
 from core.track.track_db import TrackDB
 
 logger = logging.getLogger(__name__)
@@ -43,14 +45,37 @@ def _make_api():
     return LiveIRacingAPI(client_id, client_secret, username, password)
 
 
-def _load_corners(track_id: int, track_directory: str, track_length_m: float):
-    """Corners for annotation, lazy-seeding like the live coach does."""
+def _load_corners(
+    track_id: int,
+    track_directory: str,
+    track_length_m: float,
+    track_name: str,
+) -> list:
+    """Corners for annotation, lazy-seeding like the live coach does.
+
+    The lovely-track-data seeder requires a track row in tracks.db before it
+    can attach corners. A race debrief may be the first time this track is
+    processed (the offline IBT pipeline creates rows, but the debrief page
+    runs independently), so we create a minimal row when missing — same
+    pattern as scripts/live_coach.py::_load_corners. Corner names are
+    enhancement only: any exception leaves the caller with an empty list
+    and position-based fallbacks.
+    """
+    if not track_id:
+        return []
     try:
         db = TrackDB(TRACKS_DB)
+        if db.get_track(str(track_id)) is None:
+            db.upsert_track(Track(
+                track_id=str(track_id),
+                name=track_name,
+                config=None,
+                length_meters=track_length_m,
+                track_type=TrackType.ROAD,
+                character=None,
+            ))
         corners = db.get_corners(str(track_id))
         if not corners:
-            from core.track.lovely_seeder import seed_track_from_lovely
-
             seed_track_from_lovely(
                 db, str(track_id), track_directory, track_length_m
             )
@@ -91,7 +116,7 @@ def _analyze(source, ibt_path: str, store: RaceStore) -> RaceNarrative:
         if api is not None:
             api.close()
     corners = _load_corners(
-        data.track_id, data.track_directory, data.track_length_m
+        data.track_id, data.track_directory, data.track_length_m, data.track_name
     )
     narrative = build_narrative(data, corners)
     store.save_race(narrative, ibt_file_path=ibt_path)

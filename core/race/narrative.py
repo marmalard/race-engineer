@@ -507,6 +507,8 @@ def build_narrative(data: RaceData, corners: list) -> RaceNarrative:
             )
 
     # Gaps to key rivals
+    # NOTE: must match ingest_race's rival selection — ingest only fetched
+    # lap data for rivals returned by this call; fetch-set and render-set are coupled.
     rivals = select_key_rivals(data.results, data.lap_chart, data.player_cust_id)
     names = {r.cust_id: r.display_name for r in data.results}
     finishes = {r.cust_id: r.finish_position for r in data.results}
@@ -539,6 +541,8 @@ def build_narrative(data: RaceData, corners: list) -> RaceNarrative:
                 timeline[-1].position if timeline else 0
             )
         ),
+        # Deliberately telemetry-sourced (works in partial mode); may differ
+        # from ResultRow.incidents which is the API's official count.
         incidents=int(df["PlayerCarMyIncidentCount"].astype(int).max())
         if len(df)
         else 0,

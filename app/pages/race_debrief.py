@@ -10,8 +10,6 @@ import logging
 import os
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
-
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -25,6 +23,8 @@ from core.race.race_store import RaceStore
 from core.race.render import render_export_markdown, render_narrative_markdown
 from core.telemetry.ibt_parser import IBTParser
 from core.track.track_db import TrackDB
+
+logger = logging.getLogger(__name__)
 
 TELEMETRY_DIR = Path(r"C:\Users\antho\Documents\iRacing\telemetry")
 TRACKS_DB = Path("data/tracks.db")
@@ -276,12 +276,16 @@ def render_race_debrief_page():
     h = narrative.header
     if not narrative.pace and not narrative.gaps:
         st.warning(
-            "Official results were unavailable — this is a partial "
-            "narrative from your telemetry only."
+            "Some race data was unavailable — pace ranking and rival gaps "
+            "are missing. This can happen when official results couldn't be "
+            "fetched or lap data was too thin."
         )
     cols = st.columns(4)
     cols[0].metric("Finish", f"P{h.finish_position}", f"from P{h.start_position}")
-    cols[1].metric("iRating", h.irating_new, f"{h.irating_new - h.irating_old:+d}")
+    if h.irating_new > 0:
+        cols[1].metric("iRating", h.irating_new, f"{h.irating_new - h.irating_old:+d}")
+    else:
+        cols[1].metric("iRating", "—")
     cols[2].metric("SoF", h.sof)
     cols[3].metric("Incidents", f"{h.incidents}x")
 

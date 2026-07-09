@@ -291,3 +291,48 @@ class TestPopulateFromDetection:
         corners = db.get_corners("spa_2024")
         assert len(corners) == 1
         assert corners[0].name == "La Source"
+
+
+def test_record_session_and_processed_paths(tmp_path):
+    db = TrackDB(tmp_path / "t.db")
+    db.record_session(
+        session_id="bmwm2g87_spa 2026-07-05 16-32-53",
+        track_id="525", car="BMW M2 Racing (G87)", session_type="Practice",
+        session_date="2026-07-05T16:32:53", best_lap_time=161.384,
+        lap_count=16, ibt_file_path="C:/tel/bmwm2g87_spa.ibt",
+    )
+    assert db.processed_ibt_paths() == {"C:/tel/bmwm2g87_spa.ibt"}
+
+
+def test_record_session_is_idempotent(tmp_path):
+    db = TrackDB(tmp_path / "t.db")
+    for best in (161.384, 160.9):  # rerun with updated data replaces
+        db.record_session(
+            session_id="s1", track_id="525", car="M2", session_type="Practice",
+            session_date="2026-07-05T16:32:53", best_lap_time=best,
+            lap_count=16, ibt_file_path="C:/tel/a.ibt",
+        )
+    assert db.processed_ibt_paths() == {"C:/tel/a.ibt"}  # one row, not two
+
+
+def test_record_laps_replaces_on_rerun(tmp_path):
+    db = TrackDB(tmp_path / "t.db")
+    db.record_session(
+        session_id="s1", track_id="525", car="M2", session_type="Practice",
+        session_date="d", best_lap_time=100.0, lap_count=2,
+        ibt_file_path="p",
+    )
+    db.record_laps("s1", [(1, 101.0, True), (2, 100.0, True)])
+    db.record_laps("s1", [(1, 101.0, True), (2, 100.0, True), (3, 99.5, True)])
+    conn = db._get_conn()
+    try:
+        n = conn.execute(
+            "SELECT COUNT(*) FROM laps WHERE session_id = 's1'"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert n == 3  # replaced, not appended to 5
+
+
+def test_processed_paths_empty_on_fresh_db(tmp_path):
+    assert TrackDB(tmp_path / "t.db").processed_ibt_paths() == set()

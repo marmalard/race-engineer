@@ -35,6 +35,36 @@ def find_new_ibts(
     return sorted(fresh, key=lambda c: c.mtime)
 
 
+def is_plausible_lap(
+    lap_time_s: float,
+    track_length_m: float,
+    max_avg_speed_mps: float = 85.0,
+) -> bool:
+    """True if a lap time is physically achievable for the track length.
+
+    A lap whose implied average speed exceeds ``max_avg_speed_mps``
+    (85 m/s ~= 306 km/h) cannot be real — no iRacing car averages that
+    over a full lap. Such "laps" come from towed / reset / aborted laps
+    whose recorded time covers only a fraction of the track distance yet
+    still clears the normalizer's 90% coverage check (a stationary tow
+    teleport inflates LapDist coverage; a car that stops at ~92% around
+    barely clears the bar). Left ungated, one becomes an unbeatable
+    "personal best" and permanently blocks real laps from promotion.
+
+    This is the promotion path's defense in depth — the ReferenceStore is
+    the live coach's ground truth, so it must never ingest an impossible
+    lap regardless of upstream validity.
+
+    Fails closed on non-positive lap times; passes when the track length
+    is unknown (<= 0), since plausibility cannot be judged without it.
+    """
+    if lap_time_s <= 0:
+        return False
+    if track_length_m <= 0:
+        return True
+    return (track_length_m / lap_time_s) <= max_avg_speed_mps
+
+
 def should_promote(
     best_lap_time: float, existing_pb_time: float | None
 ) -> bool:

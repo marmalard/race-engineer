@@ -16,7 +16,7 @@ from core.telemetry.normalizer import Normalizer
 from core.track.lovely_seeder import seed_track_from_lovely
 from core.track.models import Track, TrackType
 from core.track.track_db import TrackDB
-from core.watcher.scanner import should_promote
+from core.watcher.scanner import is_plausible_lap, should_promote
 
 
 @dataclass
@@ -88,7 +88,17 @@ def process_ibt(
         valid = [l for l in laps if l.is_valid]
         report.valid_laps = len(valid)
 
-        best = min(valid, key=lambda l: l.lap_time) if valid else None
+        # Defense in depth before best-selection and promotion: a
+        # normalizer-valid lap can still be physically impossible (towed /
+        # aborted / partial laps whose recorded time covers only a fraction
+        # of the track — see is_plausible_lap). Never let one become the
+        # session best or a promoted PB; the ReferenceStore is the live
+        # coach's ground truth.
+        plausible = [
+            l for l in valid
+            if is_plausible_lap(l.lap_time, track_length_m)
+        ]
+        best = min(plausible, key=lambda l: l.lap_time) if plausible else None
         report.best_lap_time = best.lap_time if best else None
 
         # Upsert the real track row BEFORE record_session so that

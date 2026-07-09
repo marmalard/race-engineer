@@ -95,6 +95,61 @@ class TestNormalizer:
         assert abs(actual - expected) < expected * 0.15
 
 
+def _synthetic_lap_df(track_length_m: float, n: int = 3000) -> "object":
+    """A clean, continuous single lap: LapDist 0 -> track_length at 60 Hz."""
+    import pandas as pd
+
+    dist = np.linspace(0.0, track_length_m, n)
+    session_time = np.linspace(0.0, n / 60.0, n)
+    return pd.DataFrame({
+        "Lap": np.full(n, 5),
+        "LapDist": dist,
+        "Speed": np.full(n, 40.0),
+        "Throttle": np.full(n, 1.0),
+        "Brake": np.zeros(n),
+        "SessionTime": session_time,
+        "LapCurrentLapTime": session_time,
+    })
+
+
+class TestTowTeleportRejection:
+    """A single-sample forward LapDist teleport (tow / reset) fabricates
+    distance coverage and yields an impossibly short lap time. Regression
+    guard for the back-fill corruption (Okayama 11.26s, Virginia 30.66s,
+    Lime Rock 18.07s/33.8s were all towed partial laps that passed the
+    90% coverage check because the teleport inflated max(LapDist)."""
+
+    def test_clean_lap_is_valid(self, normalizer):
+        df = _synthetic_lap_df(3654.7)
+        nlap = normalizer.normalize_lap(df, 5, 3654.7)
+        assert nlap.is_valid
+
+    def test_forward_teleport_while_stationary_is_rejected(self, normalizer):
+        # Car drives ~230 m, stops, then is towed forward ~3400 m — exactly
+        # the real Okayama lap-12 pattern.
+        track_length = 3654.7
+        driven = np.linspace(0.0, 230.0, 700)
+        towed = np.full(200, 3595.0)  # teleport + sit still near the line
+        dist = np.concatenate([driven, towed])
+        n = len(dist)
+        speed = np.concatenate([np.full(700, 30.0), np.full(200, 0.1)])
+        import pandas as pd
+        df = pd.DataFrame({
+            "Lap": np.full(n, 12),
+            "LapDist": dist,
+            "Speed": speed,
+            "Throttle": np.zeros(n),
+            "Brake": np.zeros(n),
+            "SessionTime": np.linspace(0.0, n / 60.0, n),
+            "LapCurrentLapTime": np.linspace(0.0, n / 60.0, n),
+        })
+        # Coverage (max-min) clears 90% purely from the teleport...
+        assert (dist.max() - dist.min()) > track_length * 0.90
+        # ...but the lap must still be rejected.
+        nlap = normalizer.normalize_lap(df, 12, track_length)
+        assert not nlap.is_valid
+
+
 class TestNormalizerSession:
     def test_normalize_session(self, parser, parsed_ibt, normalizer):
         """normalize_session should return valid normalized laps."""

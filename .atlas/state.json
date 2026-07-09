@@ -30,8 +30,8 @@
   "state": {
     "current_phase": "All queued build work done (467 tests): Surface 1 shipped + Pit Wall UX + Guide page + telemetry watcher merged with real back-fill (30 PBs, every combo now live-coachable). App live on tailnet. Next: user validates AI debrief tone + funnel to friend #1; next build spec is driver profile v1 (brainstorm with user).",
     "last_session": {
-      "at": "2026-07-09T20:30:00Z",
-      "summary": "Executed the telemetry watcher plan (5 tasks, subagent-driven) incl. real back-fill of 66 IBTs -> 30 personal-best references; the back-fill exposed real corruption (tow-teleport and stop-short laps promoted as impossible PBs) which drove a normalizer hardening fix + two promotion gates (85 m/s plausibility, 98% coverage) and a data purge/re-promotion (Spa 525 PB now the true 2:41.384); then fixed the two Surface 1 honesty wrinkles (lap-1 incident estimates zeroed, full-field pace ranking on grids <= 16 with per-driver fetch degradation)."
+      "at": "2026-07-09T22:15:00Z",
+      "summary": "Shipped the watcher (with back-fill corruption hunt: normalizer teleport fix + plausibility/coverage promotion gates), fixed the Surface 1 wrinkles, then from the user's first real practice test built the Toolbox page (start/stop/status for coach + watcher, session-activity tail, scan-now) and queued three voice-UX items from field feedback (radio check, cold-track startup rundown, discard acknowledgment); guide updated; future brainstorm captured: what makes this business fully AI-native."
     },
     "next_actions": [
       "Generate the first real AI debrief + chat on the Oulton race (key rotated + verified; app live at https://desktop-sjdfffr.tail7227a6.ts.net) and check the tone contract (no scolding, no invented facts, 'I don't have that data' when asked outside the narrative)",
@@ -54,6 +54,7 @@
       "Phase 4: pre-race field briefing — SoF/split prediction, opponent profiles, strategy plan; the most differentiated surface vs all incumbents",
       "Phase 5: live PTT engineer — rolling race-state summarizer over CarIdx arrays, <=2s voice loop, sparse radio discipline; Crew Chief coexistence decision after Phase 4",
       "Validation: 90-day beta with friends/one community; ~20 paying strangers by month 6 = signal; LLC before first dollar",
+      "FUTURE BRAINSTORM (user, 2026-07-09): what does fully AI-native mean for this business — engineer-as-agent (autonomous per-race ingestion/debrief/briefing per user, not button-driven), ops run by agents (onboarding, support, community distribution of shareable debriefs), accumulated driver-profile corpus as the defensible layer; contrast with 'app with AI features'",
       "Personal track (parallel): voice threshold tuning from session logs, watcher execution, per-corner technique notes, line-analysis spec"
     ]
   },

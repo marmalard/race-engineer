@@ -170,9 +170,21 @@ class Normalizer:
         if track_length_m > 0 and dist_range < track_length_m * 0.90:
             return False
 
+        # A large forward LapDist teleport is never a real lap: it is a
+        # tow, reset, or session teleport. Reject it regardless of speed.
+        # No car covers >100 m in a single 60 Hz sample, so such a jump can
+        # only be a teleport — and it fabricates distance coverage, letting
+        # the max-min check clear the 90% bar while the car actually drove
+        # only a fraction of the lap. That produced the physically
+        # impossible back-fill PBs (Okayama 11.26s, Virginia 30.66s, Lime
+        # Rock 18.07s/33.8s — all towed partial laps). A backward jump while
+        # stationary (LapDist wrapping near the line) stays harmless.
+        dist_diffs = np.diff(dist)
+        if np.any(dist_diffs > 100):
+            return False
+
         # Check for large distance jumps while the car is moving
         # (jumps while stationary are harmless — session resets, etc.)
-        dist_diffs = np.diff(dist)
         if "Speed" in lap_df.columns:
             speed = lap_df["Speed"].values[:-1]
             moving = speed > 1.0  # m/s threshold

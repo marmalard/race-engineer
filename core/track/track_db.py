@@ -208,6 +208,77 @@ class TrackDB:
         finally:
             conn.close()
 
+    # --- Session history (populated by the telemetry watcher) ---
+
+    def record_session(
+        self,
+        session_id: str,
+        track_id: str,
+        car: str,
+        session_type: str,
+        session_date: str,
+        best_lap_time: float | None,
+        lap_count: int,
+        ibt_file_path: str,
+    ) -> None:
+        """Insert or replace one session-history row (idempotent per id).
+
+        Creates a stub track row if the track doesn't exist yet so that
+        the foreign-key constraint is satisfied even when called before
+        _load_corners has run (e.g. in tests or on first-ever scan).
+        """
+        conn = self._get_conn()
+        try:
+            conn.execute(
+                "INSERT OR IGNORE INTO tracks (track_id, name) VALUES (?, ?)",
+                (track_id, track_id),
+            )
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO sessions
+                    (session_id, track_id, car, session_type, session_date,
+                     best_lap_time, lap_count, ibt_file_path)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (session_id, track_id, car, session_type, session_date,
+                 best_lap_time, lap_count, ibt_file_path),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def record_laps(
+        self, session_id: str, laps: list[tuple[int, float, bool]]
+    ) -> None:
+        """Replace the lap rows for a session (idempotent on rerun).
+
+        Args:
+            laps: (lap_number, lap_time, is_valid) tuples.
+        """
+        conn = self._get_conn()
+        try:
+            conn.execute("DELETE FROM laps WHERE session_id = ?", (session_id,))
+            conn.executemany(
+                "INSERT INTO laps (session_id, lap_number, lap_time, is_valid)"
+                " VALUES (?, ?, ?, ?)",
+                [(session_id, n, t, v) for n, t, v in laps],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def processed_ibt_paths(self) -> set[str]:
+        """Every ibt_file_path already recorded — the watcher's dedupe set."""
+        conn = self._get_conn()
+        try:
+            rows = conn.execute(
+                "SELECT ibt_file_path FROM sessions"
+                " WHERE ibt_file_path IS NOT NULL"
+            ).fetchall()
+        finally:
+            conn.close()
+        return {r[0] for r in rows}
+
     def populate_from_detection(
         self,
         track_id: str,

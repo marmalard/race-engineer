@@ -51,3 +51,6 @@ data/live_sessions/
 
 # Brainstorm visual companion sessions
 .superpowers/
+
+# Garage 61 CSV exports (reference-lap source files, imported via g61_import)
+*Garage 61*.csv

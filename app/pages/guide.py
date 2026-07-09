@@ -79,6 +79,7 @@ _FOUNDER_DATA = """
 """
 
 _FOUNDER_TOOLS = """
+- **🎛 Toolbox page** — start/stop/status for the live coach and watcher without touching a terminal, plus a live tail of session activity. Host machine only.
 - **Live voice coach:** `.venv/Scripts/python.exe scripts/live_coach.py [--mute] [--corner-prompts]` — run with iRacing open; speaks lap debriefs between laps. Works at every track/car combo you have telemetry for (references come from the watcher below; a Garage 61 import beats your PB when present).
 - **Telemetry watcher:** `.venv/Scripts/python.exe scripts/watch_telemetry.py [--watch]` — run after driving (or leave `--watch` polling alongside the sim). Every new session lands in history and your best valid full lap auto-promotes as the reference the live coach uses. Broken laps (tows, resets, laps that stop short of the line) are gated out.
 - **Record race fixtures:** `.venv/Scripts/python.exe scripts/record_race_fixture.py <race.ibt>` — refresh the integration-test fixtures.

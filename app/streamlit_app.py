@@ -32,6 +32,7 @@ PAGES = {
     "\U0001f4d6 Guide": "guide",
     "\U0001f52d Scouting Report": "scouting",
     "⏱️ Lap Coaching": "coaching",
+    "\U0001f39b Toolbox": "toolbox",
 }
 
 choice = st.sidebar.radio("Navigate", list(PAGES), label_visibility="collapsed")
@@ -56,3 +57,7 @@ elif page == "coaching":
     from app.pages.coaching import render_coaching_page
 
     render_coaching_page()
+elif page == "toolbox":
+    from app.pages.toolbox import render_toolbox_page
+
+    render_toolbox_page()

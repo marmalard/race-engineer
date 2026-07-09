@@ -16,30 +16,38 @@ import streamlit as st
 
 st.set_page_config(
     page_title="Race Engineer",
-    page_icon="\U0001f3ce\ufe0f",
+    page_icon="\U0001f3c1",
     layout="wide",
 )
 
-st.title("Race Engineer")
-st.markdown("Your personal iRacing coaching system.")
+from app.components.theme import apply_theme, brand_sidebar  # noqa: E402
 
-page = st.sidebar.selectbox(
-    "Navigate",
-    ["Race Debrief", "Scouting Report", "Lap Coaching"],
-)
+apply_theme()
+brand_sidebar()
+
+# Label → dispatch key; emoji live only in the labels so changing them
+# can never break the routing below.
+PAGES = {
+    "\U0001f3c1 Race Debrief": "race_debrief",
+    "\U0001f52d Scouting Report": "scouting",
+    "⏱️ Lap Coaching": "coaching",
+}
+
+choice = st.sidebar.radio("Navigate", list(PAGES), label_visibility="collapsed")
+page = PAGES[choice]
 
 st.sidebar.divider()
 st.sidebar.radio("Units", ["Metric", "Imperial"], key="unit_system")
 
-if page == "Race Debrief":
+if page == "race_debrief":
     from app.pages.race_debrief import render_race_debrief_page
 
     render_race_debrief_page()
-elif page == "Scouting Report":
+elif page == "scouting":
     from app.pages.scouting import render_scouting_page
 
     render_scouting_page()
-elif page == "Lap Coaching":
+elif page == "coaching":
     from app.pages.coaching import render_coaching_page
 
     render_coaching_page()

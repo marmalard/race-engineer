@@ -99,3 +99,33 @@ def test_nonpositive_lap_time_fails_closed():
 def test_unknown_track_length_passes_open():
     # Without a length we cannot judge; do not reject a real lap.
     assert is_plausible_lap(lap_time_s=90.0, track_length_m=0.0)
+
+
+# --- covers_full_lap --------------------------------------------------
+
+from core.watcher.scanner import covers_full_lap  # noqa: E402
+
+
+def test_covers_full_lap_passes_for_complete_lap():
+    # Spa GP (6929m) — distance grid ends at ~6928m, well above 98% floor.
+    assert covers_full_lap(distance_covered_m=6928.0, track_length_m=6929.0)
+
+
+def test_covers_full_lap_rejects_stop_short():
+    # The actual bad Spa 525 lap: 92.8% of ~7004m -> distance[-1] ~6499m.
+    assert not covers_full_lap(distance_covered_m=6499.0, track_length_m=7004.0)
+
+
+def test_covers_full_lap_boundary_at_exactly_98_pct():
+    # At exactly 98% the gate should pass; one metre below should fail.
+    track = 10_000.0
+    exactly = track * 0.98          # 9800.0
+    just_under = exactly - 1.0      # 9799.0
+    assert covers_full_lap(distance_covered_m=exactly, track_length_m=track)
+    assert not covers_full_lap(distance_covered_m=just_under, track_length_m=track)
+
+
+def test_covers_full_lap_unknown_length_passes_open():
+    # If track length is unknown (<= 0) we cannot judge; do not reject.
+    assert covers_full_lap(distance_covered_m=100.0, track_length_m=0.0)
+    assert covers_full_lap(distance_covered_m=100.0, track_length_m=-1.0)

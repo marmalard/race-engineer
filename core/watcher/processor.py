@@ -16,7 +16,7 @@ from core.telemetry.normalizer import Normalizer
 from core.track.lovely_seeder import seed_track_from_lovely
 from core.track.models import Track, TrackType
 from core.track.track_db import TrackDB
-from core.watcher.scanner import is_plausible_lap, should_promote
+from core.watcher.scanner import covers_full_lap, is_plausible_lap, should_promote
 
 
 @dataclass
@@ -97,6 +97,10 @@ def process_ibt(
         plausible = [
             l for l in valid
             if is_plausible_lap(l.lap_time, track_length_m)
+            and covers_full_lap(
+                float(l.distance[-1]) if len(l.distance) > 0 else 0.0,
+                track_length_m,
+            )
         ]
         best = min(plausible, key=lambda l: l.lap_time) if plausible else None
         report.best_lap_time = best.lap_time if best else None

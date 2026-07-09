@@ -65,6 +65,27 @@ def is_plausible_lap(
     return (track_length_m / lap_time_s) <= max_avg_speed_mps
 
 
+def covers_full_lap(
+    distance_covered_m: float,
+    track_length_m: float,
+    min_fraction: float = 0.98,
+) -> bool:
+    """True when the lap covers at least min_fraction of the track.
+
+    A reference/PB lap must actually reach the finish line; the
+    normaliser's 90% validity floor is for analysis laps, not references.
+    A lap stopping short (e.g. 92.8%) will have an implausibly fast
+    recorded time — it only drove a fraction of the track — and must never
+    enter the ReferenceStore where it would permanently block real laps
+    from promotion.
+
+    Pass-open when track_length_m <= 0 (unknown length cannot be judged).
+    """
+    if track_length_m <= 0:
+        return True
+    return distance_covered_m >= track_length_m * min_fraction
+
+
 def should_promote(
     best_lap_time: float, existing_pb_time: float | None
 ) -> bool:

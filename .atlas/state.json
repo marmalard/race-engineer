@@ -30,13 +30,13 @@
   "state": {
     "current_phase": "Surface 1 (post-race debrief) SHIPPED to master 2026-07-06 evening: spec -> plan -> 11 subagent tasks -> merged, 429 tests. core/race/ narrative engine + AI debrief/chat + races.db + Streamlit page + Tailscale deployment, real Oulton fixture (86748877, P7->P4). Pending: founder UI validation + first AI debrief (key rotation), then friend #1 via funnel. Watcher plan still queued.",
     "last_session": {
-      "at": "2026-07-07T02:20:00Z",
-      "summary": "Brainstormed, spec'd, planned, and shipped Surface 1 (post-race debrief) end-to-end in one session via subagent-driven development: three-source race ingestion (IBT + Data API chunked endpoints + roster), pure narrative engine with transparent iRating attribution, tone-contract AI debrief + grounded chat, (subsession, cust)-keyed persistence, markdown export, friend-deployable Streamlit page; recorded the real Oulton MX-5 race as the integration fixture and validated its deterministic narrative."
+      "at": "2026-07-09T14:15:00Z",
+      "summary": "Deployed the app over Tailscale (serve live at desktop-sjdfffr.tail7227a6.ts.net; funnel awaits explicit user go), verified the rotated Anthropic key, then shipped the Pit Wall UX pass (dark carbon theme, branded shell, Race Debrief story-stack polish) and the in-app Guide page (friend onboarding + founder reference) — verified end-to-end in a real browser by analyzing the Oulton race through the UI."
     },
     "next_actions": [
-      "Validate Surface 1 in the UI: streamlit run app/streamlit_app.py -> Race Debrief -> analyze the Oulton race (deterministic narrative already spot-checked and sent as markdown)",
-      "Rotate ANTHROPIC_API_KEY, then generate the first real AI debrief + chat and check the tone contract (no scolding, no invented facts, 'I don't have that data' when asked outside the narrative)",
-      "Stand up `tailscale funnel 8501` and hand the URL to the first friend tester (README 'Friend-testable deployment')",
+      "Generate the first real AI debrief + chat on the Oulton race (key rotated + verified; app live at https://desktop-sjdfffr.tail7227a6.ts.net) and check the tone contract (no scolding, no invented facts, 'I don't have that data' when asked outside the narrative)",
+      "Flip tailnet-only serve to public: `tailscale funnel --bg 8501` (user must run/authorize — classifier correctly blocks Claude from public exposure), then hand the URL + Guide page to the first friend tester",
+      "Make the app survive session close: streamlit currently runs as a Claude background task — add a Task Scheduler entry or run it in its own terminal for durable friend access",
       "Surface 1 wrinkle fixes: exclude lap 1 from incident time-lost estimates (standing start inflates it); fetch full-field lap data on small grids so pace ranking isn't rival-relative",
       "Execute the watcher plan (any model): docs/superpowers/plans/2026-07-06-telemetry-watcher.md via subagent-driven-development — first run back-fills references + history for every combo in the telemetry folder",
       "Drive with voice at Spa Endurance and tune thresholds from session logs (watch the clamp dropping the Bruxelles prompt)",
@@ -56,5 +56,5 @@
     ]
   },
   "created_at": "2026-04-29T14:05:54Z",
-  "updated_at": "2026-07-07T02:20:00Z"
+  "updated_at": "2026-07-09T14:15:00Z"
 }

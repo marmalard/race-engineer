@@ -39,7 +39,6 @@ def _load_corners(
     track_id: str,
     track_directory: str,
     track_length_m: float,
-    track_display: str,
 ) -> list:
     """Named corners, lazy-seeding from lovely-track-data on first use.
 
@@ -85,7 +84,7 @@ def process_ibt(
         laps = Normalizer().normalize_session(
             lap_dfs, lap_numbers, track_length_m
         )
-        report.laps_found = len(laps)
+        report.laps_found = len(lap_dfs)
         valid = [l for l in laps if l.is_valid]
         report.valid_laps = len(valid)
 
@@ -155,7 +154,7 @@ def process_ibt(
         if ref is not None and not is_own_new_pb:
             corners = _load_corners(
                 track_db, track_id, session.track_directory,
-                track_length_m, session.track_name,
+                track_length_m,
             )
             result = build_debrief(best, ref.lap, corners)
             report.debrief_text = format_lap_block(

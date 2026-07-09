@@ -63,6 +63,9 @@ race-engineer/
 │   │   ├── speaker.py            # Non-blocking SAPI voice (latest-wins queue)
 │   │   ├── prompt_scheduler.py   # Distance-triggered in-corner prompts
 │   │   └── feed.py               # In-memory nudge feed + stdlib web display
+│   ├── watcher/
+│   │   ├── scanner.py            # Pure discovery: stability window, dedupe, promotion + plausibility gates
+│   │   └── processor.py          # Per-IBT pipeline: history + PB promotion + debrief
 │   └── race/
 │       ├── models.py             # RaceData (raw) + RaceNarrative (product) dataclasses
 │       ├── ingest.py             # Race IBT + YAML + Data API → RaceData (disk cache, partial mode)
@@ -71,6 +74,7 @@ race-engineer/
 │       └── race_store.py         # data/races.db — narratives, debriefs, chat, keyed (subsession, cust)
 ├── scripts/
 │   ├── live_coach.py             # Terminal entry point (pyirsdk driver)
+│   ├── watch_telemetry.py        # Telemetry folder scan CLI (--watch to poll)
 │   └── record_race_fixture.py    # Record real race API fixtures for integration tests
 ├── data/
 │   ├── tracks.db                 # SQLite track database
@@ -114,7 +118,10 @@ race-engineer/
     ├── test_race_narrative.py
     ├── test_race_render.py
     ├── test_race_store.py
-    └── test_race_ingest.py
+    ├── test_race_ingest.py
+    ├── test_watcher_scanner.py
+    ├── test_watcher_processor.py
+    └── test_watch_telemetry_helpers.py
 ```
 
 ## Key Technical Concepts
@@ -353,6 +360,15 @@ streamlit run app/streamlit_app.py
 - [ ] Full gate activation: needs the driver's OWN G61 lap export paired with its session IBT (tests/fixtures/g61/)
 - [ ] Driving validation: voice audibility/pacing, trail-nudge accuracy, prompt trigger timing (LEAD_M 300m / CLAMP_MARGIN_M 30m / thresholds tunable)
 
+**Stage 3: Telemetry Watcher** (complete, merged 2026-07-09)
+- [x] TrackDB session-history methods — sessions/laps tables activated; record_session pre-creates a stub track row for the FK, healed by the processor's early upsert_track (`core/track/track_db.py`)
+- [x] Scanner — 90s write-stability window, sessions-table dedupe, strictly-faster promotion, `is_plausible_lap` 85 m/s gate (ROAD-ONLY assumption — oval needs a track_type-dependent ceiling), `covers_full_lap` 98% gate (`core/watcher/scanner.py`)
+- [x] Processor — upsert real track row → record history → promote plausible+complete personal_best (never touches g61) → debrief vs best reference (`core/watcher/processor.py`)
+- [x] CLI — scan once or --watch poll every 30s; failures retry next scan (`scripts/watch_telemetry.py`)
+- [x] Normalizer hardening — rejects >100m single-sample forward LapDist jumps (stationary tow/reset teleports that inflated coverage past the 90% check); found via real back-fill corruption (11s "PBs")
+- [x] Back-fill executed over the real telemetry folder: 66 files, 30 plausible PBs across 14+ combos, g61 rows verified untouched, Spa 525 PB = the user's real 2:41.384
+- Watch item: no cleanliness gate on promoted PBs — an off-track-but-complete fast lap can become the reference (conscious tradeoff for a personal tool; revisit before automated reference trust matters)
+
 **Phase 3 (revised per v2 strategy): Race Debrief + Intelligence foundation** (Surface 1 shipped 2026-07-06, branch race-debrief — see `docs/superpowers/specs/2026-07-06-race-debrief-design.md`)
 - [x] Race session ingestion: race IBT + Data API results + session YAML → race narrative (position timeline, gap evolution, incident timing, stint pace) (`core/race/ingest.py`, `core/race/narrative.py`)
 - [x] Debrief generation (existing synthesis voice) + conversational follow-up loop — engineer, not judge; honest, never scolding (`core/coaching/prompts/race_debrief.py`, chat grounded in narrative JSON)
@@ -533,7 +549,7 @@ streamlit run app/streamlit_app.py
 - Deployment: `tailscale serve/funnel 8501` + `streamlit run` from the host PC; `.streamlit/config.toml` sets maxUploadSize 400
 
 ### Test Suite
-- 429 tests passing, 9 skipped (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`)
+- 464 tests passing, 9 skipped (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`)
 - Test fixtures: `tests/fixtures/sample.ibt` (Spa, BMW M2 CS Racing, 2 laps — gitignored)
 - Multi-lap fixture from `C:\Users\antho\Documents\iRacing\telemetry\` (Road America F4, 7 laps)
 - Bathurst fixture also available for corner detection tuning tests

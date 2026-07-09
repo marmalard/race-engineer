@@ -39,6 +39,8 @@
       "Make the app survive session close: streamlit currently runs as a Claude background task — add a Task Scheduler entry or run it in its own terminal for durable friend access",
       "Drive with voice at ANY track now (watcher back-fill gave every combo a PB reference); tune thresholds from session logs (watch the clamp dropping the Bruxelles prompt)",
       "Live coach: speak a startup radio check on sim connect (Crew Chief parity — confirms the audio path before leaving the pits; user request 2026-07-09, incl. reference-loaded status e.g. 'radio check — reference lap 2:39.155 loaded')",
+      "Live coach: startup rundown of session context — read WeekendInfo track temp live and warn about cold-track warmup (user request 2026-07-09 after cold-tire wipeouts at 66F Bathurst: 'takes 2 laps to warm the Porsche'); grows into per-combo remember-notes; seeds Surface 2 briefing content",
+      "Live coach: brief spoken acknowledgment when a lap is discarded (pit/reset/tow) so silence is never ambiguous — pairs with the radio check",
       "After driving: run `scripts/watch_telemetry.py` (or leave --watch running) so new sessions land in history and PBs auto-promote",
       "Close the G61 validation gate fully: export one of YOUR OWN laps from Garage 61 + copy that session's IBT to tests/fixtures/g61/ and set G61_DISPLAYED_LAP_TIME",
       "Next spec: driver profile v1 (racecraft tendencies; reads races.db + watcher sessions/laps tables)"

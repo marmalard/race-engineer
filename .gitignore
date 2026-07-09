@@ -55,3 +55,4 @@ data/live_sessions/
 # Garage 61 CSV exports (reference-lap source files, imported via g61_import)
 *Garage 61*.csv
 data/run/
+.playwright-mcp/

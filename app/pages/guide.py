@@ -74,12 +74,13 @@ _FOUNDER_DATA = """
 |---|---|
 | `data/races.db` | Race narratives, AI debriefs, chat transcripts — keyed `(subsession_id, cust_id)` |
 | `data/race_cache/` | Raw Data API JSON per subsession (never re-fetched) |
-| `data/tracks.db` | Tracks + corner names (lovely-track-data / Crew Chief seeded) |
+| `data/tracks.db` | Tracks + corner names (lovely-track-data / Crew Chief seeded), plus session/lap history written by the watcher |
 | `data/reference_laps.db` | Reference laps for coaching (G61 imports + personal bests) |
 """
 
 _FOUNDER_TOOLS = """
-- **Live voice coach:** `.venv/Scripts/python.exe scripts/live_coach.py [--mute] [--corner-prompts]` — run with iRacing open; speaks lap debriefs between laps.
+- **Live voice coach:** `.venv/Scripts/python.exe scripts/live_coach.py [--mute] [--corner-prompts]` — run with iRacing open; speaks lap debriefs between laps. Works at every track/car combo you have telemetry for (references come from the watcher below; a Garage 61 import beats your PB when present).
+- **Telemetry watcher:** `.venv/Scripts/python.exe scripts/watch_telemetry.py [--watch]` — run after driving (or leave `--watch` polling alongside the sim). Every new session lands in history and your best valid full lap auto-promotes as the reference the live coach uses. Broken laps (tows, resets, laps that stop short of the line) are gated out.
 - **Record race fixtures:** `.venv/Scripts/python.exe scripts/record_race_fixture.py <race.ibt>` — refresh the integration-test fixtures.
 - **Serve to friends:** `tailscale serve 8501` (tailnet-only) or `tailscale funnel 8501` (public URL) with `streamlit run app/streamlit_app.py` behind it. The URL is the only access control — keep it unlisted.
 - **Tests:** `.venv/Scripts/python.exe -m pytest -q`

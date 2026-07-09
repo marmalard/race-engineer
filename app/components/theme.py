@@ -60,6 +60,10 @@ code, pre, kbd {{ font-family: {FONT_MONO}; }}
     background: #0b0e13;
     border-right: 1px solid {BORDER};
 }}
+/* Streamlit auto-builds a multipage nav from app/pages/*.py; those
+   entries bypass our dispatch (no theme, no wiring) — hide it. Routing
+   happens only through the radio below the brand block. */
+[data-testid="stSidebarNav"] {{ display: none; }}
 .re-brand {{
     font-family: {FONT_DISPLAY};
     font-size: 1.25rem;

@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "slug": "race-engineer",
   "name": "Race Engineer",
-  "description": "Racing engineer for iRacing \u2014 v2 thesis: coach the race, not the lap (post-race debrief, field briefing, live PTT engineer). Lap/voice coaching continues as founder tooling and the pace-context foundation.",
+  "description": "Racing engineer for iRacing — v2 thesis: coach the race, not the lap (post-race debrief, field briefing, live PTT engineer). Lap/voice coaching continues as founder tooling and the pace-context foundation.",
   "status": "active",
   "tags": [
     "iracing",
@@ -53,26 +53,24 @@
     },
     "next_actions": [
       "Generate the first real AI debrief + chat on the Oulton race (key rotated + verified; app live at https://desktop-sjdfffr.tail7227a6.ts.net) and check the tone contract (no scolding, no invented facts, 'I don't have that data' when asked outside the narrative)",
-      "Flip tailnet-only serve to public: `tailscale funnel --bg 8501` (user must run/authorize \u2014 classifier correctly blocks Claude from public exposure), then hand the URL + Guide page to the first friend tester",
-      "Make the app survive session close: Task Scheduler entry running streamlit at logon with restart-on-failure (DECIDED 2026-07-09: no Docker now \u2014 rig-side tools (pyirsdk shared memory, SAPI, telemetry folder, Toolbox process spawning) are physically host-bound and uncontainerizable; the web surface only gets containerized at the Phase 6 VPS move if the beta proves demand; 'runs consistently' is an ops problem solved by the scheduler, not packaging)",
+      "Flip tailnet-only serve to public: `tailscale funnel --bg 8501` (user must run/authorize — classifier correctly blocks Claude from public exposure), then hand the URL + Guide page to the first friend tester",
+      "Make the app survive session close: Task Scheduler entry running streamlit at logon with restart-on-failure (DECIDED 2026-07-09: no Docker now — rig-side tools (pyirsdk shared memory, SAPI, telemetry folder, Toolbox process spawning) are physically host-bound and uncontainerizable; the web surface only gets containerized at the Phase 6 VPS move if the beta proves demand; 'runs consistently' is an ops problem solved by the scheduler, not packaging)",
       "Drive with voice at ANY track now (watcher back-fill gave every combo a PB reference); tune thresholds from session logs (watch the clamp dropping the Bruxelles prompt)",
-      "Live coach: speak a startup radio check on sim connect (Crew Chief parity \u2014 confirms the audio path before leaving the pits; user request 2026-07-09, incl. reference-loaded status e.g. 'radio check \u2014 reference lap 2:39.155 loaded')",
-      "Live coach: startup rundown of session context \u2014 read WeekendInfo track temp live and warn about cold-track warmup (user request 2026-07-09 after cold-tire wipeouts at 66F Bathurst: 'takes 2 laps to warm the Porsche'); grows into per-combo remember-notes; seeds Surface 2 briefing content",
-      "Live coach: brief spoken acknowledgment when a lap is discarded (pit/reset/tow) so silence is never ambiguous \u2014 pairs with the radio check",
+      "Live coach: speak a startup radio check on sim connect (Crew Chief parity — confirms the audio path before leaving the pits; user request 2026-07-09, incl. reference-loaded status e.g. 'radio check — reference lap 2:39.155 loaded')",
+      "Live coach: startup rundown of session context — read WeekendInfo track temp live and warn about cold-track warmup (user request 2026-07-09 after cold-tire wipeouts at 66F Bathurst: 'takes 2 laps to warm the Porsche'); grows into per-combo remember-notes; seeds Surface 2 briefing content",
+      "Live coach: brief spoken acknowledgment when a lap is discarded (pit/reset/tow) so silence is never ambiguous — pairs with the radio check",
       "After driving: run `scripts/watch_telemetry.py` (or leave --watch running) so new sessions land in history and PBs auto-promote",
       "Close the G61 validation gate fully: export one of YOUR OWN laps from Garage 61 + copy that session's IBT to tests/fixtures/g61/ and set G61_DISPLAYED_LAP_TIME",
       "Next spec: driver profile v1 (racecraft tendencies; reads races.db + watcher sessions/laps tables)"
     ],
-    "blockers": [
-      "ANTHROPIC_API_KEY in .env not working \u2014 user rotating credentials (blocks scouting reports + AI coaching narrative; deterministic debrief + live voice unaffected, no AI on that path)"
-    ],
+    "blockers": [],
     "roadmap": [
-      "V2 STRATEGY (docs/race-engineer-v2-strategy.md): coach the race, not the lap \u2014 incumbents sell pace, this sells confidence; metric = does official-race volume go up",
+      "V2 STRATEGY (docs/race-engineer-v2-strategy.md): coach the race, not the lap — incumbents sell pace, this sells confidence; metric = does official-race volume go up",
       "Phase 3 (market track): post-race debrief SHIPPED 2026-07-06 (Surface 1: narrative + AI debrief + chat + export + Tailscale); remaining: driver profile v1 incl. racecraft tendencies",
-      "Phase 4: pre-race field briefing \u2014 SoF/split prediction, opponent profiles, strategy plan; the most differentiated surface vs all incumbents",
-      "Phase 5: live PTT engineer \u2014 rolling race-state summarizer over CarIdx arrays, <=2s voice loop, sparse radio discipline; Crew Chief coexistence decision after Phase 4",
+      "Phase 4: pre-race field briefing — SoF/split prediction, opponent profiles, strategy plan; the most differentiated surface vs all incumbents",
+      "Phase 5: live PTT engineer — rolling race-state summarizer over CarIdx arrays, <=2s voice loop, sparse radio discipline; Crew Chief coexistence decision after Phase 4",
       "Validation: 90-day beta with friends/one community; ~20 paying strangers by month 6 = signal; LLC before first dollar",
-      "FUTURE BRAINSTORM (user, 2026-07-09): what does fully AI-native mean for this business \u2014 engineer-as-agent (autonomous per-race ingestion/debrief/briefing per user, not button-driven), ops run by agents (onboarding, support, community distribution of shareable debriefs), accumulated driver-profile corpus as the defensible layer; contrast with 'app with AI features'",
+      "FUTURE BRAINSTORM (user, 2026-07-09): what does fully AI-native mean for this business — engineer-as-agent (autonomous per-race ingestion/debrief/briefing per user, not button-driven), ops run by agents (onboarding, support, community distribution of shareable debriefs), accumulated driver-profile corpus as the defensible layer; contrast with 'app with AI features'",
       "Personal track (parallel): voice threshold tuning from session logs, watcher execution, per-corner technique notes, line-analysis spec"
     ]
   },

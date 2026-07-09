@@ -220,6 +220,132 @@ def test_ingest_race_api_failure_degrades_gracefully(tmp_path, monkeypatch, capl
     assert any("Data API fetch failed" in r.message for r in caplog.records)
 
 
+# --- Fix 2: full-field lap data on small grids ----------------------------------
+
+def _make_stub_meta(player_cust_id: int) -> dict:
+    return {
+        "subsession_id": 12345,
+        "player_cust_id": player_cust_id,
+        "player_car_idx": 0,
+        "driver_name": "Test Driver",
+        "track_id": 1,
+        "track_name": "Test",
+        "track_config": "",
+        "track_directory": "test",
+        "track_length_m": 4000.0,
+        "car_name": "Car",
+        "series_name": "",
+        "session_date": "",
+        "sof": 1400,
+        "roster": [],
+    }
+
+
+def _results_payload(ordered_cust_ids: list[int]) -> dict:
+    """Fake results payload with drivers in finish order (1-based after parse)."""
+    return {
+        "series_name": "",
+        "start_time": "",
+        "session_results": [
+            {
+                "simsession_number": 0,
+                "simsession_type_name": "Race",
+                "results": [
+                    {
+                        "cust_id": cid,
+                        "display_name": f"D{cid}",
+                        "finish_position": i,  # 0-based; parse_results adds 1
+                        "starting_position": i,
+                        "laps_complete": 10,
+                        "incidents": 0,
+                        "oldi_rating": 1400,
+                        "newi_rating": 1400,
+                        "best_lap_time": 1000000,
+                    }
+                    for i, cid in enumerate(ordered_cust_ids)
+                ],
+            }
+        ],
+    }
+
+
+def test_ingest_small_field_fetches_all_drivers(tmp_path, monkeypatch):
+    """Field <= FULL_FIELD_MAX: lap data must be requested for every classified driver."""
+    from core.race.ingest import FULL_FIELD_MAX, ingest_race
+
+    player_cust_id = 1226848
+    field_ids = [player_cust_id] + list(range(1, 11))  # player + 10 others = 11
+    assert len(field_ids) <= FULL_FIELD_MAX, "Test precondition: field must be small"
+
+    stub_ibt = SimpleNamespace(telemetry=pd.DataFrame({"Speed": [0.0]}))
+    monkeypatch.setattr(
+        "core.race.ingest.load_race_ibt",
+        lambda _: (stub_ibt, _make_stub_meta(player_cust_id)),
+    )
+
+    fetched: list[int] = []
+
+    class TrackingAPI:
+        def get_subsession_results(self, _):
+            return _results_payload(field_ids)
+
+        def get_lap_chart_data(self, *_):
+            return []
+
+        def get_lap_data(self, _sub, _sim, cust_id):
+            fetched.append(cust_id)
+            return []  # no lap rows needed for this assertion
+
+    ingest_race(b"fake", TrackingAPI(), cache_dir=tmp_path)
+    assert set(fetched) == set(field_ids), (
+        f"Expected all {len(field_ids)} driver IDs to be fetched, "
+        f"got {sorted(set(fetched))}"
+    )
+
+
+def test_ingest_large_field_fetches_bounded_set(tmp_path, monkeypatch):
+    """Field > FULL_FIELD_MAX: only player + key rivals get lap data (API-call bound)."""
+    from core.race.ingest import FULL_FIELD_MAX, ingest_race
+
+    player_cust_id = 1226848
+    n_others = FULL_FIELD_MAX + 4  # 20 others → total 21 > 16
+    other_ids = list(range(1, n_others + 1))
+    # Player finishes 10th (0-based index 9); adjacent finishers are index 8 and 10
+    player_pos_idx = 9
+    ordered = other_ids[:player_pos_idx] + [player_cust_id] + other_ids[player_pos_idx:]
+    assert len(ordered) > FULL_FIELD_MAX, "Test precondition: field must be large"
+
+    stub_ibt = SimpleNamespace(telemetry=pd.DataFrame({"Speed": [0.0]}))
+    monkeypatch.setattr(
+        "core.race.ingest.load_race_ibt",
+        lambda _: (stub_ibt, _make_stub_meta(player_cust_id)),
+    )
+
+    fetched: list[int] = []
+
+    class TrackingAPI:
+        def get_subsession_results(self, _):
+            return _results_payload(ordered)
+
+        def get_lap_chart_data(self, *_):
+            return []
+
+        def get_lap_data(self, _sub, _sim, cust_id):
+            fetched.append(cust_id)
+            return []
+
+    ingest_race(b"fake", TrackingAPI(), cache_dir=tmp_path)
+
+    fetched_set = set(fetched)
+    assert player_cust_id in fetched_set, "Player must always be in the fetched set"
+    assert len(fetched_set) <= 5, (  # player + max 4 rivals per select_key_rivals cap
+        f"Expected at most 5 drivers fetched on a large field, got {sorted(fetched_set)}"
+    )
+    assert fetched_set < set(ordered), (
+        "Fetched set must be a strict subset of the full field on large grids"
+    )
+
+
 # --- Integration: real Oulton fixtures (skip when absent) -------------------
 
 FIXTURE_DIR = Path("tests/fixtures/race")

@@ -25,6 +25,11 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CACHE_DIR = Path("data/race_cache")
 
+# On grids this size or smaller, fetch lap data for every classified driver so
+# pace_ranking covers the full field rather than just the player's immediate rivals.
+# Above this limit, cap at player + select_key_rivals to bound API calls.
+FULL_FIELD_MAX = 16
+
 RACE_CHANNELS = IBTParser.CORE_CHANNELS + [
     "PlayerCarPosition",
     "PlayerCarClassPosition",
@@ -249,21 +254,34 @@ def ingest_race(
                 )
                 lap_chart = parse_lap_chart_rows(raw_chart)
 
-                # Lap data: player + key rivals only (bounds API calls).
+                # Lap data: full field on small grids (accurate pace ranking);
+                # player + key rivals only on large fields (bounds API calls).
                 # Rival selection needs results + chart, both now loaded.
-                targets = [meta["player_cust_id"]] + select_key_rivals(
-                    results, lap_chart, meta["player_cust_id"]
-                )
-                for cust_id in targets:
-                    raw_laps = _cached_fetch(
-                        sub_cache / f"lap_data_{cust_id}.json",
-                        lambda cid=cust_id: api.get_lap_data(
-                            subsession_id, simsession, cid
-                        ),
+                if len(results) <= FULL_FIELD_MAX:
+                    targets = [r.cust_id for r in results]
+                else:
+                    targets = [meta["player_cust_id"]] + select_key_rivals(
+                        results, lap_chart, meta["player_cust_id"]
                     )
-                    laps = parse_lap_data_rows(raw_laps, cust_id)
-                    if laps:
-                        driver_laps[cust_id] = laps
+                for cust_id in targets:
+                    try:
+                        raw_laps = _cached_fetch(
+                            sub_cache / f"lap_data_{cust_id}.json",
+                            lambda cid=cust_id: api.get_lap_data(
+                                subsession_id, simsession, cid
+                            ),
+                        )
+                        laps = parse_lap_data_rows(raw_laps, cust_id)
+                        if laps:
+                            driver_laps[cust_id] = laps
+                    except Exception as exc:  # noqa: BLE001 — one driver must never nuke the rest
+                        logger.warning(
+                            "Lap data fetch failed for cust_id %s in subsession %s: %s"
+                            " — skipping",
+                            cust_id,
+                            subsession_id,
+                            exc,
+                        )
         except RaceIngestError:
             raise
         except Exception as exc:  # noqa: BLE001 — degrade, never crash

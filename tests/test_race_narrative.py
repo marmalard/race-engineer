@@ -392,6 +392,82 @@ def test_incident_time_lost_deduped_by_lap():
     )
 
 
+# --- Fix 1: lap-1 incident time-lost must be zeroed ----------------------
+
+def test_lap1_incident_time_lost_is_zero_and_attribution_excludes_it():
+    """Incidents on lap 1 must have time_lost_estimate_s == 0.0.
+
+    The lap-1 time mixes the standing-start overhead with any incident
+    penalty, so we cannot isolate the incident cost. Fix: zero the
+    estimate for all lap-1 events. The attribution sum consequently
+    excludes them (adding 0.0 is a no-op).
+    """
+    n = 600
+    lap_col = [1] * 100 + [2] * 100 + [3] * 100 + [4] * 100 + [5] * 100 + [6] * 100
+    # Incident step at tick 50 (lap 1) then at tick 450 (lap 5)
+    inc_col = [0] * 50 + [1] * 400 + [2] * 150
+    df = _ticks(
+        Lap=lap_col,
+        PlayerCarPosition=[5] * n,
+        LapDistPct=[i / 100 % 1.0 for i in range(n)],
+        PlayerCarMyIncidentCount=inc_col,
+        OnPitRoad=[False] * n,
+        SessionFlags=[0] * n,
+        LapCurrentLapTime=[float(i % 100) for i in range(n)],
+    )
+    # Lap 1: 130 s (standing-start lap, looks slow but isn't meaningful)
+    # Lap 5: 120 s (genuine incident lap, vs ~100 s clean median)
+    player_laps_list = _laps(1226848, [130.0, 100.0, 100.5, 100.2, 120.0, 100.3])
+    player_laps_list[0].incident = True  # lap 1
+    player_laps_list[4].incident = True  # lap 5
+    data = RaceData(
+        subsession_id=86748877,
+        player_cust_id=1226848,
+        player_car_idx=6,
+        driver_name="Anthony Moorman",
+        track_id=180,
+        track_name="Oulton Park Circuit",
+        track_config="International",
+        track_directory="oulton international",
+        track_length_m=4286.5,
+        car_name="Mazda MX-5 Cup",
+        series_name="MX-5 Cup",
+        session_date="2026-06-26",
+        sof=1350,
+        player_telemetry=df,
+        roster=[RosterEntry(6, 1226848, "Anthony Moorman", "8", 1420, "D 4.5", "MX-5")],
+        results=[_result(1226848, 3)],
+        lap_chart=[
+            LapChartRow(cust_id=1226848, lap_number=lap, position=5)
+            for lap in range(1, 7)
+        ],
+        driver_laps={1226848: player_laps_list},
+    )
+    narrative = build_narrative(data, corners=[])
+
+    # Lap-1 incident: time_lost must be 0.0 regardless of standing-start overhead
+    lap1_events = [i for i in narrative.incidents if i.lap == 1]
+    assert len(lap1_events) == 1, f"Expected one lap-1 incident, got {len(lap1_events)}"
+    assert lap1_events[0].time_lost_estimate_s == 0.0, (
+        f"Lap-1 time_lost must be 0.0, got {lap1_events[0].time_lost_estimate_s:.2f} "
+        f"(standing-start overhead cannot be isolated)"
+    )
+
+    # Lap-5 incident: time_lost must be positive (120 s vs ~100.25 s clean median)
+    lap5_events = [i for i in narrative.incidents if i.lap == 5]
+    assert len(lap5_events) == 1
+    lap5_lost = lap5_events[0].time_lost_estimate_s
+    assert lap5_lost > 0.0
+
+    # Attribution: incident_time_lost_s must equal only the lap-5 excess
+    assert narrative.attribution is not None
+    assert narrative.attribution.incident_time_lost_s == pytest.approx(lap5_lost, abs=0.2), (
+        f"Attribution must count only lap-5 incident ({lap5_lost:.2f} s), "
+        f"got {narrative.attribution.incident_time_lost_s} "
+        f"(lap-1 overhead is leaking into the sum)"
+    )
+
+
 # --- build_stints direct unit tests (Issue 2) ----------------------------
 
 def test_build_stints_no_pits_single_stint():

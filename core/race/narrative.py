@@ -439,7 +439,9 @@ def build_narrative(data: RaceData, corners: list) -> RaceNarrative:
     incidents = []
     for e in detect_incidents(df):
         time_lost = 0.0
-        if player_median is not None:
+        # Lap 1 mixes the standing-start overhead with any incident penalty;
+        # we cannot isolate the incident cost, so we zero the estimate.
+        if player_median is not None and e["lap"] > 1:
             lap_time = lap_times.get(e["lap"], -1.0)
             if lap_time > 0:
                 time_lost = max(0.0, lap_time - player_median)
@@ -507,8 +509,9 @@ def build_narrative(data: RaceData, corners: list) -> RaceNarrative:
             )
 
     # Gaps to key rivals
-    # NOTE: must match ingest_race's rival selection — ingest only fetched
-    # lap data for rivals returned by this call; fetch-set and render-set are coupled.
+    # NOTE: on large fields (> FULL_FIELD_MAX) ingest_race fetches only player +
+    # key rivals, so the render-set here must be a subset of what was fetched.
+    # On small fields ingest fetches all drivers; any rival selected here has data.
     rivals = select_key_rivals(data.results, data.lap_chart, data.player_cust_id)
     names = {r.cust_id: r.display_name for r in data.results}
     finishes = {r.cust_id: r.finish_position for r in data.results}

@@ -126,7 +126,10 @@ def process_ibt(
             track_id=track_id,
             car=session.car_name,
             session_type=session.session_type or "unknown",
-            session_date=path.stem[-19:],  # iRacing stamps the filename
+            # iRacing stamps filenames "... YYYY-MM-DD HH-MM-SS"; a renamed
+            # file stores a garbage substring here — metadata only, never
+            # parsed back, so it degrades harmlessly.
+            session_date=path.stem[-19:],
             best_lap_time=report.best_lap_time,
             lap_count=len(valid),
             ibt_file_path=str(path),

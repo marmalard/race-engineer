@@ -43,17 +43,20 @@ def is_plausible_lap(
     """True if a lap time is physically achievable for the track length.
 
     A lap whose implied average speed exceeds ``max_avg_speed_mps``
-    (85 m/s ~= 306 km/h) cannot be real — no iRacing car averages that
-    over a full lap. Such "laps" come from towed / reset / aborted laps
-    whose recorded time covers only a fraction of the track distance yet
-    still clears the normalizer's 90% coverage check (a stationary tow
-    teleport inflates LapDist coverage; a car that stops at ~92% around
-    barely clears the bar). Left ungated, one becomes an unbeatable
-    "personal best" and permanently blocks real laps from promotion.
+    cannot be real. This is the promotion path's backstop for broken
+    laps that slip the normalizer's tow-teleport reject (the normalizer
+    now catches >100m single-sample LapDist jumps upstream; this gate
+    stays as defense in depth — the ReferenceStore is the live coach's
+    ground truth, so it must never ingest an impossible lap regardless
+    of upstream validity). Left ungated, a bogus fast "lap" becomes an
+    unbeatable personal best and permanently blocks real laps.
 
-    This is the promotion path's defense in depth — the ReferenceStore is
-    the live coach's ground truth, so it must never ingest an impossible
-    lap regardless of upstream validity.
+    ROAD-CAR ASSUMPTION: the 85 m/s (~306 km/h) default average is far
+    above any road-course lap but BELOW superspeedway averages (Indy 500
+    quali averages ~100+ m/s). If oval support is ever added, this
+    ceiling must become track_type-dependent or legitimate oval PBs will
+    be silently rejected (fail-safe: nothing is promoted, nothing is
+    corrupted).
 
     Fails closed on non-positive lap times; passes when the track length
     is unknown (<= 0), since plausibility cannot be judged without it.

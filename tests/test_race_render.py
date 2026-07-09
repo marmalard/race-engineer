@@ -28,3 +28,14 @@ def test_render_handles_partial_narrative():
 def test_render_never_contains_placeholder_text():
     md = render_narrative_markdown(_minimal_narrative())
     assert "TODO" not in md and "None" not in md
+
+
+def test_render_without_header_block():
+    """include_header=False drops the H1 + summary lines (the app page
+    shows that data in its own header strip) but keeps every section."""
+    md = render_narrative_markdown(_minimal_narrative(), include_header=False)
+    assert "# Race Debrief" not in md
+    assert "SoF" not in md.split("##")[0]  # no summary before first section
+    assert "## Lap 1" in md and "## Incidents" in md and "## Pace" in md
+    # Default is unchanged
+    assert "# Race Debrief" in render_narrative_markdown(_minimal_narrative())

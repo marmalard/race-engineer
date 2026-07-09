@@ -16,26 +16,34 @@ def _fmt_lap_time(seconds: float | None) -> str:
     return f"{int(minutes)}:{rest:06.3f}"
 
 
-def render_narrative_markdown(narrative: RaceNarrative) -> str:
-    """Render the full deterministic narrative as markdown."""
+def render_narrative_markdown(
+    narrative: RaceNarrative, include_header: bool = True
+) -> str:
+    """Render the full deterministic narrative as markdown.
+
+    include_header=False drops the H1 + summary lines for embedding in
+    the app page, which shows that data in its own header strip; the
+    default keeps the standalone/export form unchanged.
+    """
     h = narrative.header
     lines: list[str] = []
 
-    config = f" ({h.track_config})" if h.track_config else ""
-    lines.append(f"# Race Debrief — {h.track_name}{config}")
-    lines.append("")
-    lines.append(
-        f"**{h.driver_name}** · {h.car_name} · {h.series_name} · "
-        f"{h.session_date} · SoF {h.sof} · {h.field_size} cars"
-    )
-    lines.append("")
-    lines.append(
-        f"**P{h.start_position} -> P{h.finish_position}** · "
-        f"{h.incidents}x incidents · "
-        f"iRating {h.irating_old} -> {h.irating_new} "
-        f"({h.irating_new - h.irating_old:+d})"
-    )
-    lines.append("")
+    if include_header:
+        config = f" ({h.track_config})" if h.track_config else ""
+        lines.append(f"# Race Debrief — {h.track_name}{config}")
+        lines.append("")
+        lines.append(
+            f"**{h.driver_name}** · {h.car_name} · {h.series_name} · "
+            f"{h.session_date} · SoF {h.sof} · {h.field_size} cars"
+        )
+        lines.append("")
+        lines.append(
+            f"**P{h.start_position} -> P{h.finish_position}** · "
+            f"{h.incidents}x incidents · "
+            f"iRating {h.irating_old} -> {h.irating_new} "
+            f"({h.irating_new - h.irating_old:+d})"
+        )
+        lines.append("")
 
     if narrative.lap1 is not None:
         l1 = narrative.lap1

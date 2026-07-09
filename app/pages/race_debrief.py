@@ -13,6 +13,14 @@ from pathlib import Path
 import plotly.graph_objects as go
 import streamlit as st
 
+from app.components.theme import (
+    ACCENT,
+    RIVAL_COLORS,
+    TEXT_MUTED,
+    chart_layout,
+    header_strip,
+    section_header,
+)
 from core.race.ingest import (
     RaceIngestError,
     ingest_race,
@@ -131,29 +139,32 @@ def _position_chart(narrative: RaceNarrative) -> go.Figure:
             y=[p.position for p in narrative.position_timeline],
             mode="lines+markers",
             name=narrative.header.driver_name,
+            line=dict(color=ACCENT, width=2.5),
+            marker=dict(size=6),
         )
     )
     fig.update_yaxes(autorange="reversed", dtick=1, title="Position")
     fig.update_xaxes(dtick=1, title="Lap")
-    fig.update_layout(height=300, margin=dict(l=10, r=10, t=30, b=10))
+    fig.update_layout(**chart_layout())
     return fig
 
 
 def _gap_chart(narrative: RaceNarrative) -> go.Figure:
     fig = go.Figure()
-    for rival in narrative.gaps:
+    for i, rival in enumerate(narrative.gaps):
         fig.add_trace(
             go.Scatter(
                 x=[g.lap for g in rival.gaps],
                 y=[g.gap_s for g in rival.gaps],
                 mode="lines",
                 name=f"{rival.display_name} (P{rival.finish_position})",
+                line=dict(color=RIVAL_COLORS[i % len(RIVAL_COLORS)], width=2),
             )
         )
-    fig.add_hline(y=0.0, line_dash="dot")
+    fig.add_hline(y=0.0, line_dash="dot", line_color=TEXT_MUTED)
     fig.update_yaxes(title="Gap (s) — positive = rival ahead")
     fig.update_xaxes(dtick=1, title="Lap")
-    fig.update_layout(height=300, margin=dict(l=10, r=10, t=30, b=10))
+    fig.update_layout(**chart_layout())
     return fig
 
 
@@ -161,7 +172,7 @@ def _render_debrief_and_chat(narrative: RaceNarrative, store: RaceStore):
     h = narrative.header
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
 
-    st.subheader("Engineer's debrief")
+    section_header("\U0001f399 Engineer's debrief")
     debrief_text = store.get_debrief(h.subsession_id, h.cust_id)
 
     if not api_key:
@@ -192,9 +203,10 @@ def _render_debrief_and_chat(narrative: RaceNarrative, store: RaceStore):
                         )
                         st.rerun()
         else:
-            st.markdown(debrief_text)
+            with st.container(border=True):
+                st.markdown(debrief_text)
 
-            st.subheader("Ask the engineer")
+            section_header("Ask the engineer")
             history = store.get_chat(h.subsession_id, h.cust_id)
             for msg in history:
                 with st.chat_message(msg["role"]):
@@ -305,6 +317,15 @@ def render_race_debrief_page():
             "are missing. This can happen when official results couldn't be "
             "fetched or lap data was too thin."
         )
+
+    config = f" ({h.track_config})" if h.track_config else ""
+    header_strip([
+        f"<b>{h.track_name}{config}</b>",
+        h.car_name,
+        h.series_name,
+        h.session_date[:10],
+        f"<b>{h.driver_name}</b>",
+    ])
     cols = st.columns(4)
     cols[0].metric("Finish", f"P{h.finish_position}", f"from P{h.start_position}")
     if h.irating_new > 0:
@@ -314,10 +335,13 @@ def render_race_debrief_page():
     cols[2].metric("SoF", h.sof)
     cols[3].metric("Incidents", f"{h.incidents}x")
 
+    section_header("Position")
     st.plotly_chart(_position_chart(narrative), use_container_width=True)
     if narrative.gaps:
+        section_header("Gaps to rivals")
         st.plotly_chart(_gap_chart(narrative), use_container_width=True)
 
-    st.markdown(render_narrative_markdown(narrative))
+    section_header("Race story")
+    st.markdown(render_narrative_markdown(narrative, include_header=False))
     st.divider()
     _render_debrief_and_chat(narrative, store)

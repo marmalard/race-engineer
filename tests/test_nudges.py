@@ -134,15 +134,7 @@ def test_speech_uses_car_lengths_not_meters():
     assert "15m" not in n.speech
 
 
-def test_prompt_is_terse_imperative_with_corner():
-    """In-corner prompts are quantity-free — the magnitude was spoken
-    between laps; at speed the driver needs only the instruction."""
-    n = nudge_from_diagnosis(_diag(label="La Source", braking=-15.0, min_speed=-0.5))
-    assert n.prompt == "La Source — brake later."
-    assert "car length" not in n.prompt
-
-
-def test_every_rung_has_speech_and_prompt():
+def test_every_rung_has_speech():
     rungs = [
         _diag(min_speed=-4.0, drv_min=55.0, ref_min=59.0),  # flat lift
         _diag(min_speed=-4.0, drv_min=16.0, ref_min=20.0),  # apex speed
@@ -155,8 +147,8 @@ def test_every_rung_has_speech_and_prompt():
     for d in rungs:
         n = nudge_from_diagnosis(d)
         assert n is not None
-        assert n.speech and n.prompt
-        assert n.corner in n.speech and n.corner in n.prompt
+        assert n.speech
+        assert n.corner in n.speech
 
 
 def test_release_threshold_boundary():

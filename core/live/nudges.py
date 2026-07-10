@@ -46,7 +46,6 @@ class Nudge:
     message: str
     detail: str  # the justifying number, e.g. "-14 km/h" or "15m"
     speech: str  # full between-lap spoken sentence (includes corner name)
-    prompt: str  # terse in-corner imperative (includes corner name)
 
 
 def _kmh(ms: float) -> float:
@@ -88,7 +87,6 @@ def nudge_from_diagnosis(diag: RegionDiagnosis) -> "Nudge | None":
                 message="carry it flat, you lifted",
                 detail=detail,
                 speech=f"{corner}. Carry it flat, you lifted.",
-                prompt=f"{corner} — carry it flat.",
             )
         return Nudge(
             corner=corner,
@@ -98,7 +96,6 @@ def nudge_from_diagnosis(diag: RegionDiagnosis) -> "Nudge | None":
                 f"{corner}. Carry more apex speed, you had "
                 f"{deficit_kmh:.0f} k more on the reference."
             ),
-            prompt=f"{corner} — carry more speed.",
         )
 
     # 2) Braking-point error.
@@ -111,14 +108,12 @@ def nudge_from_diagnosis(diag: RegionDiagnosis) -> "Nudge | None":
                 message="brake later",
                 detail=f"{meters:.0f}m",
                 speech=f"{corner}. Brake {lengths} later.",
-                prompt=f"{corner} — brake later.",
             )
         return Nudge(
             corner=corner,
             message="brake earlier",
             detail=f"{meters:.0f}m",
             speech=f"{corner}. Brake {lengths} earlier.",
-            prompt=f"{corner} — brake earlier.",
         )
 
     # 3) Brake release (trail braking) — fires only when the reference
@@ -135,7 +130,6 @@ def nudge_from_diagnosis(diag: RegionDiagnosis) -> "Nudge | None":
             message="carry the brakes deeper",
             detail=f"{meters:.0f}m",
             speech=f"{corner}. Release the brakes more slowly, carry them {lengths} deeper.",
-            prompt=f"{corner} — carry the brakes deeper.",
         )
 
     # 4) Exit-speed deficit — slow onto the following straight.
@@ -151,7 +145,6 @@ def nudge_from_diagnosis(diag: RegionDiagnosis) -> "Nudge | None":
                 f"{corner}. Prioritize the exit, you're "
                 f"{deficit_kmh:.0f} k slow onto the straight."
             ),
-            prompt=f"{corner} — prioritize the exit.",
         )
 
     # 5) Late throttle pickup.
@@ -161,7 +154,6 @@ def nudge_from_diagnosis(diag: RegionDiagnosis) -> "Nudge | None":
             message="back to power earlier",
             detail=f"{diag.throttle_delta_m:.0f}m",
             speech=f"{corner}. Back to power earlier.",
-            prompt=f"{corner} — power earlier.",
         )
 
     return None

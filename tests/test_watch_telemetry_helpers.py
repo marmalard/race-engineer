@@ -66,12 +66,12 @@ def test_process_candidate_routes_race_to_race_processor(monkeypatch, tmp_path):
     monkeypatch.setattr(
         wt, "process_race_ibt",
         lambda *a, **k: called.__setitem__("race", called["race"] + 1)
-        or wt.RaceReport(path="r"),
+        or wt.RaceReport(path=Path("r")),
     )
     monkeypatch.setattr(
         wt, "process_ibt",
         lambda *a, **k: called.__setitem__("lap", called["lap"] + 1)
-        or wt.SessionReport(path="l"),
+        or wt.SessionReport(path=Path("l")),
     )
 
     cand = IbtCandidate(path=tmp_path / "x.ibt", mtime=0.0)

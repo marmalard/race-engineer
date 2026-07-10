@@ -53,7 +53,7 @@ def _gather_candidates(folder: Path) -> "list[IbtCandidate] | None":
 
 def _format_report(r: SessionReport) -> str:
     """One printable block per processed file."""
-    name = Path(r.path).name
+    name = r.path.name
     if r.error is not None:
         return f"FAILED {name}: {r.error} (will retry next scan)"
     lines = [
@@ -76,6 +76,8 @@ def _format_report(r: SessionReport) -> str:
 
 def _make_api():
     """LiveIRacingAPI from env creds, or None (partial-capture mode)."""
+    # TODO: near-duplicate of app/pages/race_debrief.py::_make_api — extract to
+    # core.benchmark.iracing_api.make_api_from_env() when a third call site appears.
     client_id = os.environ.get("IRACING_CLIENT_ID", "")
     client_secret = os.environ.get("IRACING_CLIENT_SECRET", "")
     username = os.environ.get("IRACING_USERNAME", "")
@@ -87,7 +89,8 @@ def _make_api():
 
 
 def _format_race_report(r: RaceReport) -> str:
-    name = Path(r.path).name
+    """One printable block per race IBT (captured / partial / deferred / failed)."""
+    name = r.path.name
     if r.error is not None:
         return f"FAILED {name}: {r.error} (will retry next scan)"
     if r.deferred:

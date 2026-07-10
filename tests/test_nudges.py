@@ -312,3 +312,15 @@ def test_radio_check_without_reference():
         "Radio check, reading you. No reference for this combo — "
         "I'll set a baseline from your first lap."
     )
+
+
+def test_discard_speech_reset():
+    from core.live.nudges import format_discard_speech
+    from core.live.session_reader import DiscardReason
+    assert format_discard_speech(DiscardReason.RESET) == "Reset — scratch that lap."
+
+
+def test_discard_speech_pit():
+    from core.live.nudges import format_discard_speech
+    from core.live.session_reader import DiscardReason
+    assert format_discard_speech(DiscardReason.PIT) == "In the pits — that lap won't count."

@@ -15,10 +15,18 @@ single.
 """
 
 from dataclasses import dataclass
+from enum import Enum
 
 import pandas as pd
 
 from core.live.lap_buffer import LapBuffer
+
+
+class DiscardReason(str, Enum):
+    """Why a lap the driver was working on was thrown away."""
+
+    RESET = "reset"   # backward Lap jump: reset / tow
+    PIT = "pit"       # a pit-touched lap that closed
 
 
 @dataclass

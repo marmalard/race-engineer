@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from core.coaching.debrief import RegionDiagnosis
+from core.live.session_reader import DiscardReason
 
 if TYPE_CHECKING:
     from core.benchmark.reference_store import ReferenceLapMeta
@@ -334,3 +335,11 @@ def format_lap_block(
     for n in nudges:
         lines.append(f"  {n.corner} - {n.message}  ({n.detail})")
     return "\n".join(lines)
+
+
+def format_discard_speech(reason: DiscardReason) -> str:
+    """Brief spoken acknowledgment that a lap was thrown away, so silence is
+    never ambiguous."""
+    if reason is DiscardReason.PIT:
+        return "In the pits — that lap won't count."
+    return "Reset — scratch that lap."

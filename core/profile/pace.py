@@ -25,6 +25,9 @@ def build_readiness(
     that session's lap rows (missing keys = no laps recorded)."""
     practice = [s for s in sessions if s.session_type != "Race"]
     by_combo: dict[tuple[str, str], list[SessionRow]] = {}
+    # session_date is "YYYY-MM-DD HH-MM-SS" from the watcher — lexical sort
+    # is correct for that format. A renamed IBT stores a garbage substring
+    # (metadata-only by design) and sorts arbitrarily; acceptable degradation.
     for s in sorted(practice, key=lambda s: s.session_date):
         by_combo.setdefault((s.track_id, s.car), []).append(s)
 

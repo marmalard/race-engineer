@@ -78,6 +78,28 @@ _FOUNDER_DATA = """
 | `data/reference_laps.db` | Reference laps for coaching (G61 imports + personal bests) |
 """
 
+_RUNNING = """
+**Start the app once from a terminal. Start everything else from Toolbox.**
+(Full copy lives in `RUN.md` at the repo root — reachable even when the app is
+down, since this page isn't.)
+
+**1. Start the app** — open a terminal in the project folder and run:
+
+```
+.venv\\Scripts\\streamlit.exe run app\\streamlit_app.py
+```
+
+Leave it open (it *is* the app), then browse to **http://localhost:8501** —
+or the Network URL it prints, from your iPad on the same Wi-Fi.
+
+**2. Everything else → the 🎛 Toolbox page.** Once the app is up, start/stop the
+**Telemetry watcher** (turns your races into references + history — leave it
+running) and the **Live voice coach** (coaches you by voice while you drive)
+from buttons there. Each shows 🟢 Running / ⚪ Stopped.
+
+Rule of thumb: **terminal starts the app, Toolbox starts the rest.**
+"""
+
 _FOUNDER_TOOLS = """
 - **🎛 Toolbox page** — start/stop/status for the live coach and watcher without touching a terminal, plus a live tail of session activity. Host machine only.
 - **Live voice coach:** `.venv/Scripts/python.exe scripts/live_coach.py [--mute] [--corner-prompts]` — run with iRacing open; speaks lap debriefs between laps. Works at every track/car combo you have telemetry for (references come from the watcher below; a Garage 61 import beats your PB when present).
@@ -100,6 +122,9 @@ def render_guide_page() -> None:
 
     section_header("How to read your debrief")
     st.markdown(_HONEST_NOTES)
+
+    section_header("Starting the services")
+    st.markdown(_RUNNING)
 
     section_header("The rest of the app")
     st.markdown(_FOUNDER_PAGES)

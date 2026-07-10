@@ -68,7 +68,8 @@ race-engineer/
 │   │   └── process_control.py    # ManagedProcess: detached spawn, PID files (data/run/), tree-kill — Toolbox backend
 │   ├── watcher/
 │   │   ├── scanner.py            # Pure discovery: stability window, dedupe, promotion + plausibility gates
-│   │   └── processor.py          # Per-IBT pipeline: history + PB promotion + debrief
+│   │   ├── processor.py          # Per-IBT pipeline: history + PB promotion + debrief (practice/qual/test)
+│   │   └── race_processor.py     # Race IBT auto-capture → races.db (age-gated full/partial/defer, no PB)
 │   └── race/
 │       ├── models.py             # RaceData (raw) + RaceNarrative (product) dataclasses
 │       ├── ingest.py             # Race IBT + YAML + Data API → RaceData (disk cache, partial mode)
@@ -380,7 +381,17 @@ streamlit run app/streamlit_app.py
 - [x] CLI — scan once or --watch poll every 30s; failures retry next scan (`scripts/watch_telemetry.py`)
 - [x] Normalizer hardening — rejects >100m single-sample forward LapDist jumps (stationary tow/reset teleports that inflated coverage past the 90% check); found via real back-fill corruption (11s "PBs")
 - [x] Back-fill executed over the real telemetry folder: 66 files, 30 plausible PBs across 14+ combos, g61 rows verified untouched, Spa 525 PB = the user's real 2:41.384
-- Watch item: no cleanliness gate on promoted PBs — an off-track-but-complete fast lap can become the reference (conscious tradeoff for a personal tool; revisit before automated reference trust matters)
+- Watch item: no cleanliness gate on promoted PBs — an off-track-but-complete fast lap can become the reference (conscious tradeoff for a personal tool; revisit before automated reference trust matters; the deferred track-limits-asterisk spec closes this)
+
+**Auto Race-Capture — watcher SP1** (complete, merged 2026-07-10 — spec/plan in docs/superpowers/specs+plans/2026-07-10-auto-race-capture*)
+- [x] `classify_ibt` — race iff `WeekendInfo.EventType == "Race"` + truthy SubSessionID; CLI routes via a cheap `parse_session_only` header read, races → race processor, everything else → the unchanged lap path (`core/watcher/race_processor.py`, `scripts/watch_telemetry.py`)
+- [x] `process_race_ibt` — `ingest_race` → `build_narrative` → `races.db` (INSERT-OR-REPLACE keyed (subsession, cust)); records a "Race" session-history row (marks processed) + player race laps; never raises
+- [x] Durability-first timing — `decide_capture(results_ready, have_creds, file_age_s)`: full when Data-API results ready; DEFER (save nothing, retry next 30s scan) while file younger than GRACE_MINUTES=5 with creds; PARTIAL after grace or without creds (the IBT-only signals — incidents/cautions/stints — are the perishable part; API results are durable and refillable later via the page). Ordering invariant: `save_race` BEFORE marking processed — a save failure retries, never loses the race
+- [x] Race laps can NO LONGER become PB references — structural fix (race path has no ReferenceStore); previously every race IBT ran the lap path and could promote traffic/fuel laps
+- [x] `_cached_fetch` hardening — an empty (results-not-posted-yet) API response is returned uncached instead of poisoning `data/race_cache` and stranding the race as partial forever (also fixes the debrief page re-open case)
+- [x] No AI on the capture path — deterministic narrative only; AI debrief stays on-demand on the page
+- Watch item: a race captured partial (slow results) is not auto-upgraded to full by the watcher — re-open it on the debrief page to refill API data (chosen over persisted retry state)
+- Next (SP2): Driver Profile v1 — derive-on-demand over races.db: 4 racecraft tendencies (lap-1 net, pace-vs-result gap, incident patterns, trajectory/fade) + pace/consistency/readiness layer from watcher practice history; profile page + compact debrief-prompt injection
 
 **Phase 3 (revised per v2 strategy): Race Debrief + Intelligence foundation** (Surface 1 shipped 2026-07-06, branch race-debrief — see `docs/superpowers/specs/2026-07-06-race-debrief-design.md`)
 - [x] Race session ingestion: race IBT + Data API results + session YAML → race narrative (position timeline, gap evolution, incident timing, stint pace) (`core/race/ingest.py`, `core/race/narrative.py`)
@@ -562,7 +573,7 @@ streamlit run app/streamlit_app.py
 - Deployment: `tailscale serve/funnel 8501` + `streamlit run` from the host PC; `.streamlit/config.toml` sets maxUploadSize 400
 
 ### Test Suite
-- 473 tests passing, 9 skipped (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`)
+- 501 tests passing, 9 skipped (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`); the 4 race-capture integration tests need the gitignored Oulton fixtures (skip elsewhere)
 - Test fixtures: `tests/fixtures/sample.ibt` (Spa, BMW M2 CS Racing, 2 laps — gitignored)
 - Multi-lap fixture from `C:\Users\antho\Documents\iRacing\telemetry\` (Road America F4, 7 laps)
 - Bathurst fixture also available for corner detection tuning tests

@@ -276,8 +276,16 @@ def test_approach_cue_coarse_buckets():
     from core.live.nudges import approach_cue_from_diagnosis
     assert approach_cue_from_diagnosis(_diag(braking=-9.0, min_speed=-0.2)) == \
         "Coming up — brake a bit later."
+    assert approach_cue_from_diagnosis(_diag(braking=-15.0, min_speed=-0.2)) == \
+        "Coming up — brake a couple car lengths later."
     assert approach_cue_from_diagnosis(_diag(braking=-30.0, min_speed=-0.2)) == \
         "Coming up — brake a lot later."
+
+
+def test_approach_cue_flat_corner_says_dont_lift():
+    from core.live.nudges import approach_cue_from_diagnosis
+    cue = approach_cue_from_diagnosis(_diag(min_speed=-4.0, drv_min=55.0, ref_min=59.0))
+    assert cue == "Coming up — carry it flat, don't lift."
 
 
 def test_approach_cue_below_threshold_returns_none():

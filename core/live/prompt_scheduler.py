@@ -15,7 +15,7 @@ is dropped entirely.
 from dataclasses import dataclass
 
 from core.coaching.debrief import RegionDiagnosis
-from core.live.nudges import nudge_from_diagnosis
+from core.live.nudges import approach_cue_from_diagnosis
 from core.track.models import Corner
 
 # Tunable constants — expected to be adjusted from real driving, like the
@@ -84,8 +84,8 @@ def build_schedule(
     for diag in diagnoses:
         if len(prompts) >= max_prompts:
             break
-        nudge = nudge_from_diagnosis(diag)
-        if nudge is None:
+        cue = approach_cue_from_diagnosis(diag)
+        if cue is None:
             continue
         anchor = (
             diag.reference_brake_onset_m
@@ -97,7 +97,7 @@ def build_schedule(
         )
         if trigger is None:
             continue
-        prompts.append(ScheduledPrompt(trigger_m=trigger, text=nudge.prompt))
+        prompts.append(ScheduledPrompt(trigger_m=trigger, text=cue))
     return prompts
 
 

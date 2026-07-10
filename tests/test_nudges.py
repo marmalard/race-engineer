@@ -134,15 +134,7 @@ def test_speech_uses_car_lengths_not_meters():
     assert "15m" not in n.speech
 
 
-def test_prompt_is_terse_imperative_with_corner():
-    """In-corner prompts are quantity-free — the magnitude was spoken
-    between laps; at speed the driver needs only the instruction."""
-    n = nudge_from_diagnosis(_diag(label="La Source", braking=-15.0, min_speed=-0.5))
-    assert n.prompt == "La Source — brake later."
-    assert "car length" not in n.prompt
-
-
-def test_every_rung_has_speech_and_prompt():
+def test_every_rung_has_speech():
     rungs = [
         _diag(min_speed=-4.0, drv_min=55.0, ref_min=59.0),  # flat lift
         _diag(min_speed=-4.0, drv_min=16.0, ref_min=20.0),  # apex speed
@@ -155,8 +147,8 @@ def test_every_rung_has_speech_and_prompt():
     for d in rungs:
         n = nudge_from_diagnosis(d)
         assert n is not None
-        assert n.speech and n.prompt
-        assert n.corner in n.speech and n.corner in n.prompt
+        assert n.speech
+        assert n.corner in n.speech
 
 
 def test_release_threshold_boundary():
@@ -241,3 +233,98 @@ def test_speech_lap_time_minute_rollover_and_padding():
     from core.live.nudges import _speech_lap_time
     assert _speech_lap_time(119.97) == "2 00.0"
     assert _speech_lap_time(65.03) == "1 05.0"
+
+
+def test_approach_cue_single_fault_no_corner_name():
+    from core.live.nudges import approach_cue_from_diagnosis
+    cue = approach_cue_from_diagnosis(_diag(label="La Source", braking=-15.0, min_speed=-0.2))
+    assert cue == "Coming up — brake a couple car lengths later."
+    assert "La Source" not in cue
+
+
+def test_approach_cue_combines_top_two_faults():
+    from core.live.nudges import approach_cue_from_diagnosis
+    cue = approach_cue_from_diagnosis(
+        _diag(braking=-15.0, throttle=30.0, min_speed=-0.2)
+    )
+    assert cue == (
+        "Coming up — brake a couple car lengths later, "
+        "get to throttle earlier on exit."
+    )
+
+
+def test_approach_cue_caps_at_two_faults():
+    from core.live.nudges import approach_cue_from_diagnosis
+    # apex + braking + throttle all fire; only the top two (apex, braking) speak
+    cue = approach_cue_from_diagnosis(_diag(
+        min_speed=-4.0, drv_min=16.0, ref_min=20.0,
+        braking=-15.0, throttle=30.0,
+    ))
+    assert cue == "Coming up — carry more apex speed, brake a couple car lengths later."
+    assert "throttle" not in cue
+
+
+def test_approach_cue_coarse_buckets():
+    from core.live.nudges import approach_cue_from_diagnosis
+    assert approach_cue_from_diagnosis(_diag(braking=-9.0, min_speed=-0.2)) == \
+        "Coming up — brake a bit later."
+    assert approach_cue_from_diagnosis(_diag(braking=-15.0, min_speed=-0.2)) == \
+        "Coming up — brake a couple car lengths later."
+    assert approach_cue_from_diagnosis(_diag(braking=-30.0, min_speed=-0.2)) == \
+        "Coming up — brake a lot later."
+
+
+def test_approach_cue_flat_corner_says_dont_lift():
+    from core.live.nudges import approach_cue_from_diagnosis
+    cue = approach_cue_from_diagnosis(_diag(min_speed=-4.0, drv_min=55.0, ref_min=59.0))
+    assert cue == "Coming up — carry it flat, don't lift."
+
+
+def test_approach_cue_below_threshold_returns_none():
+    from core.live.nudges import approach_cue_from_diagnosis
+    assert approach_cue_from_diagnosis(
+        _diag(braking=-2.0, min_speed=-0.5, throttle=3.0)
+    ) is None
+
+
+def test_radio_check_with_reference_speaks_time():
+    from types import SimpleNamespace
+    from core.live.nudges import format_radio_check
+    line = format_radio_check(SimpleNamespace(lap_time=127.744))
+    assert line == (
+        "Radio check, reading you. Reference lap 2 07.7, loaded. "
+        "Coaching from lap one."
+    )
+
+
+def test_radio_check_without_reference():
+    from core.live.nudges import format_radio_check
+    line = format_radio_check(None)
+    assert line == (
+        "Radio check, reading you. No reference for this combo — "
+        "I'll set a baseline from your first lap."
+    )
+
+
+def test_discard_speech_reset():
+    from core.live.nudges import format_discard_speech
+    from core.live.session_reader import DiscardReason
+    assert format_discard_speech(DiscardReason.RESET) == "Reset — scratch that lap."
+
+
+def test_discard_speech_pit():
+    from core.live.nudges import format_discard_speech
+    from core.live.session_reader import DiscardReason
+    assert format_discard_speech(DiscardReason.PIT) == "In the pits — that lap won't count."
+
+
+def test_approach_cue_release_rung():
+    from core.live.nudges import approach_cue_from_diagnosis
+    cue = approach_cue_from_diagnosis(_diag(release=-15.0, min_speed=-0.5))
+    assert cue == "Coming up — carry the brakes deeper."
+
+
+def test_approach_cue_exit_rung():
+    from core.live.nudges import approach_cue_from_diagnosis
+    cue = approach_cue_from_diagnosis(_diag(exit_speed=-3.0, min_speed=-0.5))
+    assert cue == "Coming up — prioritize the exit."

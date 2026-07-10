@@ -9,8 +9,13 @@ spike so only meaningful deltas speak.
 """
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from core.coaching.debrief import RegionDiagnosis
+from core.live.session_reader import DiscardReason
+
+if TYPE_CHECKING:
+    from core.benchmark.reference_store import ReferenceLapMeta
 
 # Salience thresholds — below these, a delta is not worth a nudge.
 BRAKING_THRESHOLD_M = 8.0
@@ -26,6 +31,12 @@ FLAT_CORNER_MIN_SPEED_MS = 50.0
 # onto their own visual markers far better than raw meters at speed.
 CAR_LENGTH_M = 4.5
 
+# Approach-cue magnitude buckets (car lengths) — coarse on purpose; a driver
+# can't act on fake-exact meters at speed. Tunable from data/live_sessions logs.
+APPROACH_CUE_MAX_FAULTS = 2
+COARSE_A_BIT_MAX_LENGTHS = 2.5
+COARSE_COUPLE_MAX_LENGTHS = 5.0
+
 
 @dataclass
 class Nudge:
@@ -35,7 +46,6 @@ class Nudge:
     message: str
     detail: str  # the justifying number, e.g. "-14 km/h" or "15m"
     speech: str  # full between-lap spoken sentence (includes corner name)
-    prompt: str  # terse in-corner imperative (includes corner name)
 
 
 def _kmh(ms: float) -> float:
@@ -77,7 +87,6 @@ def nudge_from_diagnosis(diag: RegionDiagnosis) -> "Nudge | None":
                 message="carry it flat, you lifted",
                 detail=detail,
                 speech=f"{corner}. Carry it flat, you lifted.",
-                prompt=f"{corner} — carry it flat.",
             )
         return Nudge(
             corner=corner,
@@ -87,7 +96,6 @@ def nudge_from_diagnosis(diag: RegionDiagnosis) -> "Nudge | None":
                 f"{corner}. Carry more apex speed, you had "
                 f"{deficit_kmh:.0f} k more on the reference."
             ),
-            prompt=f"{corner} — carry more speed.",
         )
 
     # 2) Braking-point error.
@@ -100,14 +108,12 @@ def nudge_from_diagnosis(diag: RegionDiagnosis) -> "Nudge | None":
                 message="brake later",
                 detail=f"{meters:.0f}m",
                 speech=f"{corner}. Brake {lengths} later.",
-                prompt=f"{corner} — brake later.",
             )
         return Nudge(
             corner=corner,
             message="brake earlier",
             detail=f"{meters:.0f}m",
             speech=f"{corner}. Brake {lengths} earlier.",
-            prompt=f"{corner} — brake earlier.",
         )
 
     # 3) Brake release (trail braking) — fires only when the reference
@@ -124,7 +130,6 @@ def nudge_from_diagnosis(diag: RegionDiagnosis) -> "Nudge | None":
             message="carry the brakes deeper",
             detail=f"{meters:.0f}m",
             speech=f"{corner}. Release the brakes more slowly, carry them {lengths} deeper.",
-            prompt=f"{corner} — carry the brakes deeper.",
         )
 
     # 4) Exit-speed deficit — slow onto the following straight.
@@ -140,7 +145,6 @@ def nudge_from_diagnosis(diag: RegionDiagnosis) -> "Nudge | None":
                 f"{corner}. Prioritize the exit, you're "
                 f"{deficit_kmh:.0f} k slow onto the straight."
             ),
-            prompt=f"{corner} — prioritize the exit.",
         )
 
     # 5) Late throttle pickup.
@@ -150,10 +154,57 @@ def nudge_from_diagnosis(diag: RegionDiagnosis) -> "Nudge | None":
             message="back to power earlier",
             detail=f"{diag.throttle_delta_m:.0f}m",
             speech=f"{corner}. Back to power earlier.",
-            prompt=f"{corner} — power earlier.",
         )
 
     return None
+
+
+def _coarse_length_phrase(meters: float) -> str:
+    """Coarse braking magnitude in car lengths: 'a bit' / 'a couple car
+    lengths' / 'a lot'. No fake precision — the driver adjusts a marker."""
+    lengths = abs(meters) / CAR_LENGTH_M
+    if lengths < COARSE_A_BIT_MAX_LENGTHS:
+        return "a bit"
+    if lengths < COARSE_COUPLE_MAX_LENGTHS:
+        return "a couple car lengths"
+    return "a lot"
+
+
+def approach_cue_from_diagnosis(diag: RegionDiagnosis) -> "str | None":
+    """One combined approach cue for a corner, or None if nothing crosses
+    threshold. Spoken ~300m before the corner, so it names no corner ('here')
+    and joins the top APPROACH_CUE_MAX_FAULTS faults by the salience ladder:
+    lift > braking > release > exit > throttle."""
+    faults: list[str] = []
+
+    if diag.min_speed_delta_ms <= -MIN_SPEED_THRESHOLD_MS:
+        if diag.reference_min_speed_ms >= FLAT_CORNER_MIN_SPEED_MS:
+            faults.append("carry it flat, don't lift")
+        else:
+            faults.append("carry more apex speed")
+
+    if diag.braking_delta_m is not None and abs(diag.braking_delta_m) >= BRAKING_THRESHOLD_M:
+        coarse = _coarse_length_phrase(diag.braking_delta_m)
+        faults.append(
+            f"brake {coarse} later" if diag.braking_delta_m < 0
+            else f"brake {coarse} earlier"
+        )
+
+    if (
+        diag.brake_release_delta_m is not None
+        and diag.brake_release_delta_m <= -RELEASE_THRESHOLD_M
+    ):
+        faults.append("carry the brakes deeper")
+
+    if diag.exit_speed_delta_ms <= -EXIT_SPEED_THRESHOLD_MS:
+        faults.append("prioritize the exit")
+
+    if diag.throttle_delta_m is not None and diag.throttle_delta_m >= THROTTLE_THRESHOLD_M:
+        faults.append("get to throttle earlier on exit")
+
+    if not faults:
+        return None
+    return "Coming up — " + ", ".join(faults[:APPROACH_CUE_MAX_FAULTS]) + "."
 
 
 def _fmt_lap_time(seconds: float) -> str:
@@ -187,6 +238,22 @@ def _speech_delta(total_delta: float) -> str:
     if tenths == 1:
         return "Up a tenth." if total_delta > 0 else "A tenth quicker."
     return f"Up {tenths} tenths." if total_delta > 0 else f"{tenths} tenths quicker."
+
+
+def format_radio_check(reference: "ReferenceLapMeta | None") -> str:
+    """Spoken on sim connect — always, so the audio path is confirmed even
+    when no reference exists (that was the silent case). For testing, any
+    object with a `.lap_time: float` attribute is accepted (no runtime
+    isinstance check is performed)."""
+    if reference is None:
+        return (
+            "Radio check, reading you. No reference for this combo — "
+            "I'll set a baseline from your first lap."
+        )
+    return (
+        "Radio check, reading you. Reference lap "
+        f"{_speech_lap_time(reference.lap_time)}, loaded. Coaching from lap one."
+    )
 
 
 def format_lap_speech(
@@ -260,3 +327,11 @@ def format_lap_block(
     for n in nudges:
         lines.append(f"  {n.corner} - {n.message}  ({n.detail})")
     return "\n".join(lines)
+
+
+def format_discard_speech(reason: DiscardReason) -> str:
+    """Brief spoken acknowledgment that a lap was thrown away, so silence is
+    never ambiguous."""
+    if reason is DiscardReason.PIT:
+        return "In the pits — that lap won't count."
+    return "Reset — scratch that lap."

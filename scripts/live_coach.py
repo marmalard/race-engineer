@@ -32,9 +32,10 @@ from core.coaching.debrief import build_debrief  # noqa: E402
 from core.live.feed import NudgeFeed, start_web_display  # noqa: E402
 from core.live.lap_buffer import SAMPLE_CHANNELS  # noqa: E402
 from core.live.nudges import (  # noqa: E402
-    _speech_lap_time,
+    format_discard_speech,
     format_lap_block,
     format_lap_speech,
+    format_radio_check,
 )
 from core.live.prompt_scheduler import PromptScheduler, build_schedule  # noqa: E402
 from core.live.session_reader import LapBoundaryTracker  # noqa: E402
@@ -132,9 +133,11 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Live between-lap coach")
     parser.add_argument("--mute", action="store_true",
                         help="disable voice output")
-    parser.add_argument("--corner-prompts", action="store_true",
-                        help="speak approach prompts before flagged corners "
-                             "(phase 2, validate --mute-less laps first)")
+    parser.add_argument("--no-corner-prompts", dest="corner_prompts",
+                        action="store_false",
+                        help="disable approach cues before flagged corners "
+                             "(on by default)")
+    parser.set_defaults(corner_prompts=True)
     return parser.parse_args()
 
 
@@ -261,20 +264,28 @@ def main() -> None:
                         + (f" ({ref.meta.driver_name})"
                            if ref.meta.driver_name else "")
                     )
-                    speaker.say(
-                        f"Reference lap loaded, "
-                        f"{_speech_lap_time(ref.meta.lap_time)}. "
-                        "Coaching from lap one."
-                    )
                     print(f"Connected: {track_display}.")
                 else:
                     print(f"Connected: {track_display}. "
                           "Drive a lap to set baseline.")
+                speaker.say(
+                    format_radio_check(ref.meta if ref is not None else None)
+                )
 
             ir.freeze_var_buffer_latest()
             sample = {ch: ir[ch] for ch in READ_CHANNELS}
 
-            completed = tracker.feed(sample)
+            tick = tracker.feed(sample)
+            completed = tick.completed
+            if tick.discarded is not None:
+                discard_speech = format_discard_speech(tick.discarded)
+                emit(discard_speech)
+                speaker.say(discard_speech)
+                if session_log is not None:
+                    session_log.log(
+                        "discard", reason=tick.discarded.value,
+                        speech=discard_speech,
+                    )
 
             # LapDist is None while towed/out-of-world; feeding 0.0 then would
             # look like a start/finish wrap and false-fire a pending prompt.
@@ -366,6 +377,15 @@ def main() -> None:
                         if (reference_lap is None
                                 and nlap.lap_time < session_best.lap_time):
                             session_best = nlap
+                else:
+                    invalid_speech = "That lap won't count — data's incomplete."
+                    emit(invalid_speech)
+                    speaker.say(invalid_speech)
+                    if session_log is not None:
+                        session_log.log(
+                            "invalid", lap=nlap.lap_number,
+                            speech=invalid_speech,
+                        )
 
             time.sleep(TICK_SECONDS)
     except KeyboardInterrupt:

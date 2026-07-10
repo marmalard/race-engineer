@@ -39,7 +39,8 @@ def test_trigger_placed_lead_before_brake_onset():
     schedule = build_schedule([_diag(onset=800.0)], [], TRACK_LEN)
     assert len(schedule) == 1
     assert schedule[0].trigger_m == 500.0
-    assert schedule[0].text.startswith("La Source")
+    assert schedule[0].text.startswith("Coming up — brake")
+    assert "La Source" not in schedule[0].text  # name dropped in approach cue
 
 
 def test_trigger_falls_back_to_region_start_without_onset():

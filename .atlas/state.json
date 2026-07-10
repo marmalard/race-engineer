@@ -46,19 +46,18 @@
     ]
   },
   "state": {
-    "current_phase": "All queued build work done (467 tests): Surface 1 shipped + Pit Wall UX + Guide page + telemetry watcher merged with real back-fill (30 PBs, every combo now live-coachable). App live on tailnet. Next: user validates AI debrief tone + funnel to friend #1; next build spec is driver profile v1 (brainstorm with user).",
+    "current_phase": "All queued build work done (486 tests): Surface 1 + Pit Wall UX + Guide + telemetry watcher, PLUS Live Voice Coach UX round 2 shipped 2026-07-10 (radio check, discard acknowledgment, name-dropped approach cue on by default) from the first real drive. App live on tailnet. Next: user validates AI debrief tone + funnel to friend #1 + driving-validate round 2; next build spec is driver profile v1 (brainstorm with user).",
     "last_session": {
-      "at": "2026-07-09T22:15:00Z",
-      "summary": "Shipped the watcher (with back-fill corruption hunt: normalizer teleport fix + plausibility/coverage promotion gates), fixed the Surface 1 wrinkles, then from the user's first real practice test built the Toolbox page (start/stop/status for coach + watcher, session-activity tail, scan-now) and queued three voice-UX items from field feedback (radio check, cold-track startup rundown, discard acknowledgment); guide updated; future brainstorm captured: what makes this business fully AI-native."
+      "at": "2026-07-10T00:30:00Z",
+      "summary": "From the user's first real drive (Bathurst/992 Cup), brainstormed→spec→plan→shipped Live Voice Coach UX round 2 via subagent-driven TDD (8 tasks, spec+quality review each, final holistic review): startup radio check (always speaks on connect), discard acknowledgment (TickResult+DiscardReason RESET/PIT, normalizer-invalid line, garage resets silent), and the headline fix for 'named corners are spatially confusing' — an enriched approach cue that drops the corner name ('Coming up — brake a couple car lengths later, throttle earlier on exit'), combines the top-2 faults, coarse car-length magnitude, now ON BY DEFAULT. Merged+pushed to master (4eaa865), 486 tests. Track-limits asterisk deferred to its own spec (agreed)."
     },
     "next_actions": [
       "Generate the first real AI debrief + chat on the Oulton race (key rotated + verified; app live at https://desktop-sjdfffr.tail7227a6.ts.net) and check the tone contract (no scolding, no invented facts, 'I don't have that data' when asked outside the narrative)",
       "Flip tailnet-only serve to public: `tailscale funnel --bg 8501` (user must run/authorize — classifier correctly blocks Claude from public exposure), then hand the URL + Guide page to the first friend tester",
       "Make the app survive session close: Task Scheduler entry running streamlit at logon with restart-on-failure (DECIDED 2026-07-09: no Docker now — rig-side tools (pyirsdk shared memory, SAPI, telemetry folder, Toolbox process spawning) are physically host-bound and uncontainerizable; the web surface only gets containerized at the Phase 6 VPS move if the beta proves demand; 'runs consistently' is an ops problem solved by the scheduler, not packaging)",
-      "Drive with voice at ANY track now (watcher back-fill gave every combo a PB reference); tune thresholds from session logs (watch the clamp dropping the Bruxelles prompt)",
-      "Live coach: speak a startup radio check on sim connect (Crew Chief parity — confirms the audio path before leaving the pits; user request 2026-07-09, incl. reference-loaded status e.g. 'radio check — reference lap 2:39.155 loaded')",
-      "Live coach: startup rundown of session context — read WeekendInfo track temp live and warn about cold-track warmup (user request 2026-07-09 after cold-tire wipeouts at 66F Bathurst: 'takes 2 laps to warm the Porsche'); grows into per-combo remember-notes; seeds Surface 2 briefing content",
-      "Live coach: brief spoken acknowledgment when a lap is discarded (pit/reset/tow) so silence is never ambiguous — pairs with the radio check",
+      "Driving-validate Live Voice UX round 2 (shipped 2026-07-10): radio-check audibility on connect, discard/invalid line timing (reset/pit/off-track), approach-cue phrasing + lead time (now on by default, name-dropped combined cues); tune COARSE_*_MAX_LENGTHS + LEAD_M from data/live_sessions logs (watch the clamp dropping the Bruxelles prompt)",
+      "Live coach: startup rundown of session context — read WeekendInfo track temp live and warn about cold-track warmup (user request 2026-07-09 after cold-tire wipeouts at 66F Bathurst: 'takes 2 laps to warm the Porsche'); grows into per-combo remember-notes; seeds Surface 2 briefing content (NOT in round 2 — still queued)",
+      "Deferred spec (agreed 2026-07-10): track-limits asterisk — keep clean-telemetry laps with a minor infraction, coach them, but flag the TIME as not counting (PlayerCarMyIncidentCount delta + PlayerTrackSurface OffTrack + LapDist→corner); also closes the watcher's 'no cleanliness gate on promoted PBs' item",
       "After driving: run `scripts/watch_telemetry.py` (or leave --watch running) so new sessions land in history and PBs auto-promote",
       "Close the G61 validation gate fully: export one of YOUR OWN laps from Garage 61 + copy that session's IBT to tests/fixtures/g61/ and set G61_DISPLAYED_LAP_TIME",
       "Next spec: driver profile v1 (racecraft tendencies; reads races.db + watcher sessions/laps tables)"
@@ -75,5 +74,5 @@
     ]
   },
   "created_at": "2026-04-29T14:05:54Z",
-  "updated_at": "2026-07-09T22:40:00Z"
+  "updated_at": "2026-07-10T00:35:00Z"
 }

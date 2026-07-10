@@ -93,13 +93,13 @@ def _load_corners(
         return []
 
 
-def _profile_block(cust_id: int) -> str:
+def _profile_block(store: RaceStore, cust_id: int) -> str:
     """Compact cross-race profile context for the AI; "" on any failure."""
     try:
         from core.profile.builder import load_profile
         from core.profile.render import profile_prompt_block
 
-        profile = load_profile(RaceStore(), TrackDB(TRACKS_DB), cust_id)
+        profile = load_profile(store, TrackDB(TRACKS_DB), cust_id)
         return profile_prompt_block(profile)
     except Exception:  # noqa: BLE001 — profile must never break the debrief
         return ""
@@ -206,7 +206,9 @@ def _render_debrief_and_chat(narrative: RaceNarrative, store: RaceStore):
                         synth = Synthesizer(api_key=api_key)
                         report = synth.generate_race_debrief(
                             narrative,
-                            profile_block=_profile_block(narrative.header.cust_id),
+                            profile_block=_profile_block(
+                                store, narrative.header.cust_id
+                            ),
                         )
                     except Exception:
                         logger.exception("generate_race_debrief failed")
@@ -235,7 +237,9 @@ def _render_debrief_and_chat(narrative: RaceNarrative, store: RaceStore):
                             narrative,
                             debrief_text,
                             history + [{"role": "user", "content": question}],
-                            profile_block=_profile_block(narrative.header.cust_id),
+                            profile_block=_profile_block(
+                                store, narrative.header.cust_id
+                            ),
                         )
                     except Exception:
                         logger.exception("race_chat_reply failed")

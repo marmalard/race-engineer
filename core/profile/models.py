@@ -13,6 +13,9 @@ READINESS_MIN_LAPS = 10      # ...and 10 valid laps
 RECURRING_CORNER_MIN = 2     # a corner is "recurring trouble" at 2+ incidents
 CONSISTENCY_WINDOW_SESSIONS = 3
 CONSISTENCY_MIN_LAPS = 5
+REPRESENTATIVE_FACTOR = 1.10  # a lap counts as clean only within 110% of the
+                               # combo best — same 10% pace-threshold precedent
+                               # as the coaching analyzer's disrupted-lap filter
 
 
 @dataclass

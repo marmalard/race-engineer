@@ -106,6 +106,20 @@ def test_consistency_none_below_min_laps():
     assert combos[0].consistency_s is None      # 4 < CONSISTENCY_MIN_LAPS
 
 
+def test_outlier_laps_excluded_from_count_and_consistency():
+    """Out-laps/crawl laps (telemetry-valid but > 110% of best) don't count."""
+    sessions = [_sess("a", "2026-07-01"), _sess("b", "2026-07-02")]
+    laps = {
+        "a": _laps([100.0, 101.0, 250.0, 240.0, 100.5]),   # 2 crawl laps
+        "b": _laps([100.2, 100.4, 300.0, 100.1, 100.3]),   # 1 crawl lap
+    }
+    combos = build_readiness(sessions, laps)
+    c = combos[0]
+    assert c.valid_laps == 7                    # 10 valid - 3 outliers
+    assert c.consistency_s is not None
+    assert c.consistency_s < 1.0                # crawl laps out of the stdev
+
+
 def test_sorted_by_valid_laps_desc():
     sessions = [
         _sess("a", "2026-07-01"),

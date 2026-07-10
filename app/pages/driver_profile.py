@@ -92,5 +92,6 @@ def render_driver_profile_page() -> None:
             # caption = greyed, matching the racecraft collecting-data style
             st.caption(
                 f"{combo.track_name} / {combo.car} — collecting data "
-                f"({combo.sessions} sessions, {combo.valid_laps} clean laps)."
+                f"({combo.sessions} {'session' if combo.sessions == 1 else 'sessions'}, "
+                f"{combo.valid_laps} {'clean lap' if combo.valid_laps == 1 else 'clean laps'})."
             )

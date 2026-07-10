@@ -119,7 +119,7 @@ def test_verdict_readiness():
                        best_lap=159.2, pb_trend_s=1.2, consistency_s=0.4,
                        enough_data=True)
     assert verdict_readiness(c) == (
-        "Spa / M2: 14 sessions, 89 clean laps. PB down 1.2s over the run; "
+        "Spa / M2: 14 sessions, 89 clean laps. Session best down 1.2s over the run; "
         "recent laps within ±0.4s."
     )
 
@@ -197,4 +197,4 @@ def test_profile_markdown_mixes_ready_and_collecting():
     assert "**6** races captured" in md
     assert "Pace vs result" in md
     assert "collecting data (2 of 3 races captured)" in md   # trajectory
-    assert "Bathurst / 992 — collecting data (1 sessions, 4 clean laps)" in md
+    assert "Bathurst / 992 — collecting data (1 session, 4 clean laps)" in md

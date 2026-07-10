@@ -28,6 +28,11 @@ def _signed(x: float) -> str:
     return f"{x:+.1f}"
 
 
+def _plural(n: int, word: str) -> str:
+    """Return 'N word' or 'N words' depending on n."""
+    return f"{n} {word}{'' if n == 1 else 's'}"
+
+
 def verdict_starts(t: StartsTendency) -> str:
     m = t.mean_lap1_net or 0.0
     if m <= -NEUTRAL_BAND:
@@ -91,13 +96,13 @@ def verdict_trajectory(t: TrajectoryTendency) -> str:
 
 def verdict_readiness(c: ComboReadiness) -> str:
     line = (
-        f"{c.track_name} / {c.car}: {c.sessions} sessions, "
-        f"{c.valid_laps} clean laps."
+        f"{c.track_name} / {c.car}: {_plural(c.sessions, 'session')}, "
+        f"{_plural(c.valid_laps, 'clean lap')}."
     )
     extras = []
     if c.pb_trend_s is not None:
         direction = "down" if c.pb_trend_s >= 0 else "up"
-        extras.append(f"PB {direction} {abs(c.pb_trend_s):.1f}s over the run")
+        extras.append(f"Session best {direction} {abs(c.pb_trend_s):.1f}s over the run")
     if c.consistency_s is not None:
         extras.append(f"recent laps within ±{c.consistency_s:.1f}s")
     if extras:
@@ -194,6 +199,6 @@ def profile_markdown(p: DriverProfile) -> str:
         else:
             lines.append(
                 f"- {c.track_name} / {c.car} — collecting data "
-                f"({c.sessions} sessions, {c.valid_laps} clean laps)."
+                f"({_plural(c.sessions, 'session')}, {_plural(c.valid_laps, 'clean lap')})."
             )
     return "\n".join(lines)

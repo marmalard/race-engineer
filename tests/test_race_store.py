@@ -63,3 +63,31 @@ def test_list_races_returns_meta_newest_first(store):
     assert meta.subsession_id == 86748877
     assert meta.driver_name == "Anthony Moorman"
     assert meta.finish_position == 6
+
+
+def test_get_narratives_filters_and_orders(tmp_path):
+    from core.race.race_store import RaceStore
+
+    store = RaceStore(tmp_path / "races.db")
+
+    n1 = _minimal_narrative()
+    n1.header.subsession_id = 1
+    n1.header.cust_id = 100
+
+    n2 = _minimal_narrative()
+    n2.header.subsession_id = 2
+    n2.header.cust_id = 100
+
+    other = _minimal_narrative()
+    other.header.subsession_id = 3
+    other.header.cust_id = 999
+
+    store.save_race(n1, ibt_file_path="a")
+    store.save_race(n2, ibt_file_path="b")
+    store.save_race(other, ibt_file_path="c")
+
+    got = store.get_narratives(100)
+    # ORDER BY created_at DESC, subsession_id DESC — subsession_id tiebreaker
+    # makes the order deterministic even if all three saves share a timestamp.
+    assert [n.header.subsession_id for n in got] == [2, 1]
+    assert store.get_narratives(12345) == []

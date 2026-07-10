@@ -85,7 +85,7 @@ Sign convention throughout: **positive = gained places** (grid 7 → P5 after la
    - `mean_stint_fade_s` = mean of stint `trend_s` over stints where not None (positive = slower second half)
    - Verdict e.g.: *"You gain +1.8 places over a race on average, but fade late (+0.3s second-half pace)."*
 
-Each tendency dataclass: the metric fields + `sample: int` + `enough_data: bool` (`sample >= RACECRAFT_MIN_RACES`) + `verdict: str` (deterministic, built in `render.py`).
+Each tendency dataclass: the metric fields + `sample: int` + `enough_data: bool` (`sample >= RACECRAFT_MIN_RACES`). Verdict one-liners are NOT stored on the dataclasses — `render.py` computes them on demand from the metrics (keeps the math modules presentation-free; one place to tune wording).
 
 ## Pace / readiness layer (`pace.py`)
 
@@ -125,7 +125,7 @@ Loads narratives + session history, calls the two pure builders, assembles `Driv
 
 - `build_race_debrief_prompt(narrative, profile_block: str = "")` — inserts the block (when non-empty) between the header line and the race data. Same optional param on `build_race_chat_system`. Defaults keep every existing caller/test working.
 - **Tone contract amendment** (required): rule 2 currently says facts MUST come from the race data JSON. Amend to: facts must come from the race data JSON **or the driver-profile block when present**; profile facts are cross-race tendencies and must be cited as such ("across your last 6 races"), never presented as facts about *this* race. Everything else in the contract stands.
-- The debrief page (`app/pages/race_debrief.py`) builds the block via `load_profile` + `profile_prompt_block` (wrapped in try/except → `""`) and passes it to both prompt builders. **Cache note:** the existing AI-debrief session-state cache is keyed by a hash of the analysis inputs — the profile block must join that key so a changed profile invalidates the cached debrief.
+- The injection threads through `Synthesizer.generate_race_debrief(narrative, profile_block="")` and `race_chat_reply(..., profile_block="")` (optional params, defaults preserve existing callers). The debrief page builds the block via `load_profile` + `profile_prompt_block` (wrapped in try/except → `""`) and passes it to both. **Staleness note:** a generated debrief is persisted in `races.db` as a point-in-time artifact and is NOT regenerated when the profile later changes (the existing Regenerate button picks up the current profile); chat rebuilds its system prompt every turn, so it always sees the current profile.
 
 ## Profile page (`app/pages/driver_profile.py`)
 

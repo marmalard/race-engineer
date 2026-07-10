@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from core.race.ingest import DEFAULT_CACHE_DIR, ingest_race
+from core.race.models import DriverLap, RaceData
 from core.race.narrative import build_narrative
 from core.race.race_store import RaceStore
 from core.track.lovely_seeder import seed_track_from_lovely
@@ -65,7 +66,7 @@ def decide_capture(
     return "defer"
 
 
-def _load_corners(track_db: TrackDB, data) -> list:
+def _load_corners(track_db: TrackDB, data: RaceData) -> list:
     """Named corners for incident/place-change labeling, lazy-seeding from
     lovely-track-data. Creates the track row when missing (a race may be the
     first time this track is seen). Corner names are enhancement only — any
@@ -94,14 +95,17 @@ def _load_corners(track_db: TrackDB, data) -> list:
         return []
 
 
-def _record_race_history(track_db: TrackDB, path: Path, data) -> None:
+def _is_valid_race_lap(lap: DriverLap) -> bool:
+    """A timed, incident-free race lap (usable for pace history)."""
+    return lap.lap_time > 0 and not lap.incident
+
+
+def _record_race_history(track_db: TrackDB, path: Path, data: RaceData) -> None:
     """Record a 'Race' session row (marks the IBT processed via the path-based
     dedupe set) and the player's race laps for the pace layer. NO PB promotion
     — race laps (traffic, fuel) must never become reference laps."""
     player_laps = data.driver_laps.get(data.player_cust_id, [])
-    valid_times = [
-        l.lap_time for l in player_laps if l.lap_time > 0 and not l.incident
-    ]
+    valid_times = [l.lap_time for l in player_laps if _is_valid_race_lap(l)]
     best = min(valid_times) if valid_times else None
     track_db.record_session(
         session_id=path.stem,
@@ -117,7 +121,7 @@ def _record_race_history(track_db: TrackDB, path: Path, data) -> None:
         track_db.record_laps(
             path.stem,
             [
-                (l.lap_number, l.lap_time, l.lap_time > 0 and not l.incident)
+                (l.lap_number, l.lap_time, _is_valid_race_lap(l))
                 for l in player_laps
             ],
         )

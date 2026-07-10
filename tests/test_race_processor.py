@@ -4,10 +4,13 @@ from pathlib import Path
 
 import pytest
 
+from core.race.race_store import RaceStore
+from core.track.track_db import TrackDB
 from core.watcher.race_processor import (
     RaceReport,
     classify_ibt,
     decide_capture,
+    process_race_ibt,
 )
 
 
@@ -50,10 +53,6 @@ def test_race_report_defaults():
     r = RaceReport(path=Path("x"))
     assert not r.captured and not r.partial and not r.deferred and r.error is None
 
-
-from core.race.race_store import RaceStore
-from core.track.track_db import TrackDB
-from core.watcher.race_processor import process_race_ibt
 
 FIXTURE_IBT = Path("tests/fixtures/race/race.ibt")
 FIXTURE_CACHE = Path("tests/fixtures/race/cache")

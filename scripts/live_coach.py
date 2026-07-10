@@ -275,14 +275,15 @@ def main() -> None:
             ir.freeze_var_buffer_latest()
             sample = {ch: ir[ch] for ch in READ_CHANNELS}
 
-            result = tracker.feed(sample)
-            completed = result.completed
-            if result.discarded is not None:
-                discard_speech = format_discard_speech(result.discarded)
+            tick = tracker.feed(sample)
+            completed = tick.completed
+            if tick.discarded is not None:
+                discard_speech = format_discard_speech(tick.discarded)
+                emit(discard_speech)
                 speaker.say(discard_speech)
                 if session_log is not None:
                     session_log.log(
-                        "discard", reason=result.discarded.value,
+                        "discard", reason=tick.discarded.value,
                         speech=discard_speech,
                     )
 
@@ -378,6 +379,7 @@ def main() -> None:
                             session_best = nlap
                 else:
                     invalid_speech = "That lap won't count — data's incomplete."
+                    emit(invalid_speech)
                     speaker.say(invalid_speech)
                     if session_log is not None:
                         session_log.log(

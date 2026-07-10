@@ -93,6 +93,18 @@ def _load_corners(
         return []
 
 
+def _profile_block(cust_id: int) -> str:
+    """Compact cross-race profile context for the AI; "" on any failure."""
+    try:
+        from core.profile.builder import load_profile
+        from core.profile.render import profile_prompt_block
+
+        profile = load_profile(RaceStore(), TrackDB(TRACKS_DB), cust_id)
+        return profile_prompt_block(profile)
+    except Exception:  # noqa: BLE001 — profile must never break the debrief
+        return ""
+
+
 @st.cache_data(show_spinner=False, ttl=300)
 def _scan_race_ibts(folder: str) -> list[dict]:
     """Cheap scan of the host telemetry folder for race IBTs."""
@@ -192,7 +204,10 @@ def _render_debrief_and_chat(narrative: RaceNarrative, store: RaceStore):
                 with st.spinner("Engineer is reviewing the race..."):
                     try:
                         synth = Synthesizer(api_key=api_key)
-                        report = synth.generate_race_debrief(narrative)
+                        report = synth.generate_race_debrief(
+                            narrative,
+                            profile_block=_profile_block(narrative.header.cust_id),
+                        )
                     except Exception:
                         logger.exception("generate_race_debrief failed")
                         st.error(_AI_ERROR)
@@ -220,6 +235,7 @@ def _render_debrief_and_chat(narrative: RaceNarrative, store: RaceStore):
                             narrative,
                             debrief_text,
                             history + [{"role": "user", "content": question}],
+                            profile_block=_profile_block(narrative.header.cust_id),
                         )
                     except Exception:
                         logger.exception("race_chat_reply failed")

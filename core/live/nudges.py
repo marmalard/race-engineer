@@ -9,8 +9,12 @@ spike so only meaningful deltas speak.
 """
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from core.coaching.debrief import RegionDiagnosis
+
+if TYPE_CHECKING:
+    from core.benchmark.reference_store import ReferenceLapMeta
 
 # Salience thresholds — below these, a delta is not worth a nudge.
 BRAKING_THRESHOLD_M = 8.0
@@ -241,6 +245,21 @@ def _speech_delta(total_delta: float) -> str:
     if tenths == 1:
         return "Up a tenth." if total_delta > 0 else "A tenth quicker."
     return f"Up {tenths} tenths." if total_delta > 0 else f"{tenths} tenths quicker."
+
+
+def format_radio_check(reference: "ReferenceLapMeta | None") -> str:
+    """Spoken on sim connect — always, so the audio path is confirmed even
+    when no reference exists (that was the silent case). Duck-typed: any
+    object with a `.lap_time` float works."""
+    if reference is None:
+        return (
+            "Radio check, reading you. No reference for this combo — "
+            "I'll set a baseline from your first lap."
+        )
+    return (
+        "Radio check, reading you. Reference lap "
+        f"{_speech_lap_time(reference.lap_time)}, loaded. Coaching from lap one."
+    )
 
 
 def format_lap_speech(

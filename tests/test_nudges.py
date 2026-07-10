@@ -293,3 +293,22 @@ def test_approach_cue_below_threshold_returns_none():
     assert approach_cue_from_diagnosis(
         _diag(braking=-2.0, min_speed=-0.5, throttle=3.0)
     ) is None
+
+
+def test_radio_check_with_reference_speaks_time():
+    from types import SimpleNamespace
+    from core.live.nudges import format_radio_check
+    line = format_radio_check(SimpleNamespace(lap_time=127.744))
+    assert line == (
+        "Radio check, reading you. Reference lap 2 07.7, loaded. "
+        "Coaching from lap one."
+    )
+
+
+def test_radio_check_without_reference():
+    from core.live.nudges import format_radio_check
+    line = format_radio_check(None)
+    assert line == (
+        "Radio check, reading you. No reference for this combo — "
+        "I'll set a baseline from your first lap."
+    )

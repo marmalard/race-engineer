@@ -92,6 +92,8 @@ Each tendency dataclass: the metric fields + `sample: int` + `enough_data: bool`
 `build_readiness(sessions: list[SessionRow], laps: dict[str, list[LapRow]]) -> list[ComboReadiness]`
 
 - Input: the watcher's session history, **excluding `session_type == "Race"` rows** (race pace lives in the racecraft layer; traffic/fuel laps would pollute practice consistency).
+- **Representative-lap filter (added during real-data verification):** only laps within `REPRESENTATIVE_FACTOR` (110%) of the combo's best lap count toward `valid_laps`, `enough_data`, and `consistency_s`. The watcher's `is_valid` means telemetry-valid, not pace-representative — out-laps and crawl laps produced ±358s "consistency" on real data. Same 10% pace-threshold precedent as the coaching analyzer's disrupted-lap filter.
+- **Wording note:** the trend verdict says "Session best down/up X.Xs" (not "PB") — the metric compares first-session best to latest-session best; an actual PB (minimum) can never rise.
 - Grouped per combo `(track_id, car)`. Per combo (`ComboReadiness`):
   - `sessions: int`, `valid_laps: int`, `last_driven: str` (most recent session_date)
   - `best_lap: float | None` (min session best), `pb_trend_s: float | None` = earliest session's best − latest session's best across sessions that have one (positive = getting faster)

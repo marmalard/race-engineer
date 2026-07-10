@@ -37,8 +37,17 @@ class CompletedLap:
     dataframe: pd.DataFrame
 
 
+@dataclass
+class TickResult:
+    """The outcome of one fed tick: a completed lap, a discard reason, or
+    neither (still buffering). At most one of the two is ever set."""
+
+    completed: CompletedLap | None = None
+    discarded: DiscardReason | None = None
+
+
 class LapBoundaryTracker:
-    """Accumulates ticks and emits CompletedLap on valid lap boundaries."""
+    """Accumulates ticks and emits a TickResult on each fed tick."""
 
     def __init__(self, min_lap_samples: int = 100) -> None:
         self.min_lap_samples = min_lap_samples
@@ -46,33 +55,50 @@ class LapBoundaryTracker:
         self._current_lap: int | None = None
         self._touched_pit = False
 
-    def feed(self, sample: dict) -> CompletedLap | None:
-        """Process one tick. Returns a CompletedLap iff this tick closed a
-        valid lap, else None."""
+    def feed(self, sample: dict) -> TickResult:
+        """Process one tick. Returns a TickResult describing whether this tick
+        closed a valid lap, discarded an in-progress lap, or neither."""
         lap = int(sample["Lap"])
 
         # First tick of the session: start tracking, no boundary yet.
         if self._current_lap is None:
             self._start_lap(lap, sample)
-            return None
+            return TickResult()
 
         # Lap unchanged: keep buffering this lap.
         if lap == self._current_lap:
             if sample.get("OnPitRoad"):
                 self._touched_pit = True
             self._buffer.add(sample)
-            return None
+            return TickResult()
 
-        # Lap went backward (reset / tow): discard and restart cleanly.
+        # Lap went backward (reset / tow): discard and restart cleanly. Only
+        # announce it if a real attempt was in the buffer — garage/pit-box
+        # resets with tiny buffers stay silent.
         if lap < self._current_lap:
+            was_real = (
+                self._current_lap >= 1
+                and len(self._buffer) >= self.min_lap_samples
+            )
             self._start_lap(lap, sample)
-            return None
+            return TickResult(
+                discarded=DiscardReason.RESET if was_real else None
+            )
 
         # Lap incremented: the buffered lap is complete. Decide whether to
         # emit it, then start the new lap with this tick.
         completed = self._close_current_lap()
+        discarded = None
+        if (
+            completed is None
+            and self._touched_pit
+            and self._current_lap is not None
+            and self._current_lap >= 1
+            and len(self._buffer) >= self.min_lap_samples
+        ):
+            discarded = DiscardReason.PIT
         self._start_lap(lap, sample)
-        return completed
+        return TickResult(completed=completed, discarded=discarded)
 
     def _start_lap(self, lap: int, first_sample: dict) -> None:
         self._buffer.clear()

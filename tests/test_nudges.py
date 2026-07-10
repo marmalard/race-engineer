@@ -316,3 +316,15 @@ def test_discard_speech_pit():
     from core.live.nudges import format_discard_speech
     from core.live.session_reader import DiscardReason
     assert format_discard_speech(DiscardReason.PIT) == "In the pits — that lap won't count."
+
+
+def test_approach_cue_release_rung():
+    from core.live.nudges import approach_cue_from_diagnosis
+    cue = approach_cue_from_diagnosis(_diag(release=-15.0, min_speed=-0.5))
+    assert cue == "Coming up — carry the brakes deeper."
+
+
+def test_approach_cue_exit_rung():
+    from core.live.nudges import approach_cue_from_diagnosis
+    cue = approach_cue_from_diagnosis(_diag(exit_speed=-3.0, min_speed=-0.5))
+    assert cue == "Coming up — prioritize the exit."

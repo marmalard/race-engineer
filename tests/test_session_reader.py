@@ -145,3 +145,14 @@ def test_emitted_dataframe_is_normalizer_shaped():
     _drive_lap(tracker, lap_num=1, n=300)
     out = tracker.feed(_tick(2, 0.0, 6.0))
     assert list(out.completed.dataframe.columns) == SAMPLE_CHANNELS
+
+
+def test_pit_fragment_below_threshold_is_silent():
+    """A short pit-touched fragment (below min_lap_samples) that closes must
+    not announce PIT — same noise-gating as the tiny-buffer reset case."""
+    tracker = LapBoundaryTracker(min_lap_samples=100)
+    for i in range(40):
+        tracker.feed(_tick(1, float(i), i * 0.02, on_pit=True))
+    out = tracker.feed(_tick(2, 0.0, 1.0))
+    assert out.completed is None
+    assert out.discarded is None

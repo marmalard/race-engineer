@@ -77,7 +77,8 @@ def verdict_trajectory(t: TrajectoryTendency) -> str:
     if net >= NEUTRAL_BAND:
         head = f"You gain {_signed(net)} places over a race on average"
     elif net <= -NEUTRAL_BAND:
-        head = f"You lose {_signed(net)} places over a race on average"
+        # abs(): "You lose -1.8 places" would be a double negative.
+        head = f"You lose {abs(net):.1f} places over a race on average"
     else:
         head = "You finish about where you start"
     fade = t.mean_stint_fade_s   # dual-pool: gate on None-ness, not enough_data

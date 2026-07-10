@@ -104,6 +104,15 @@ def test_verdict_trajectory_flat_no_fade():
     assert verdict_trajectory(t) == "You finish about where you start."
 
 
+def test_verdict_trajectory_losing_reads_naturally():
+    """No double negative: 'You lose 1.8 places', not 'You lose -1.8'."""
+    t = TrajectoryTendency(mean_race_net=-1.8, mean_stint_fade_s=None,
+                           sample=4, enough_data=True)
+    assert verdict_trajectory(t) == (
+        "You lose 1.8 places over a race on average."
+    )
+
+
 def test_verdict_readiness():
     c = ComboReadiness(track_id="525", track_name="Spa", car="M2",
                        sessions=14, valid_laps=89, last_driven="2026-07-08",

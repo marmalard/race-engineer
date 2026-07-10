@@ -12,6 +12,7 @@ only does argv, folder listing, and printing.
 """
 
 import argparse
+import os
 import sys
 import time
 from pathlib import Path
@@ -22,13 +23,21 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from core.benchmark.reference_store import ReferenceStore  # noqa: E402
+from core.race.race_store import RaceStore  # noqa: E402
+from core.telemetry.ibt_parser import IBTParser  # noqa: E402
 from core.track.track_db import TrackDB  # noqa: E402
 from core.watcher.processor import SessionReport, process_ibt  # noqa: E402
+from core.watcher.race_processor import (  # noqa: E402
+    RaceReport,
+    classify_ibt,
+    process_race_ibt,
+)
 from core.watcher.scanner import IbtCandidate, find_new_ibts  # noqa: E402
 
 TELEMETRY_DIR = Path(r"C:\Users\antho\Documents\iRacing\telemetry")
 DB_PATH = Path("data/tracks.db")
 REFERENCE_DB = Path("data/reference_laps.db")
+RACES_DB = Path("data/races.db")
 POLL_SECONDS = 30.0
 
 
@@ -44,10 +53,11 @@ def _gather_candidates(folder: Path) -> "list[IbtCandidate] | None":
 
 def _format_report(r: SessionReport) -> str:
     """One printable block per processed file."""
+    name = Path(r.path).name
     if r.error is not None:
-        return f"FAILED {r.path.name}: {r.error} (will retry next scan)"
+        return f"FAILED {name}: {r.error} (will retry next scan)"
     lines = [
-        f"{r.path.name}",
+        f"{name}",
         f"  {r.track} - {r.car}: "
         f"{r.valid_laps}/{r.laps_found} valid laps"
         + (
@@ -64,20 +74,59 @@ def _format_report(r: SessionReport) -> str:
     return "\n".join(lines)
 
 
-def _scan_once(folder: Path) -> int:
+def _make_api():
+    """LiveIRacingAPI from env creds, or None (partial-capture mode)."""
+    client_id = os.environ.get("IRACING_CLIENT_ID", "")
+    client_secret = os.environ.get("IRACING_CLIENT_SECRET", "")
+    username = os.environ.get("IRACING_USERNAME", "")
+    password = os.environ.get("IRACING_PASSWORD", "")
+    if not all([client_id, client_secret, username, password]):
+        return None
+    from core.benchmark.iracing_api import LiveIRacingAPI
+    return LiveIRacingAPI(client_id, client_secret, username, password)
+
+
+def _format_race_report(r: RaceReport) -> str:
+    name = Path(r.path).name
+    if r.error is not None:
+        return f"FAILED {name}: {r.error} (will retry next scan)"
+    if r.deferred:
+        return (f"{name}\n  Race {r.track} — results not ready, "
+                f"will retry (subsession {r.subsession_id})")
+    tag = " (partial — no results yet)" if r.partial else ""
+    return (f"{name}\n  Race captured{tag}: {r.track}, {r.car}, "
+            f"P{r.start_position}→P{r.finish_position} "
+            f"(subsession {r.subsession_id})")
+
+
+def _process_candidate(cand, api, track_db, ref_store, race_store, now) -> str:
+    """Route one candidate to the race or lap processor; return a print block."""
+    try:
+        session = IBTParser().parse_session_only(cand.path)
+        weekend = (session.raw or {}).get("WeekendInfo", {}) or {}
+    except Exception as exc:  # noqa: BLE001 — unreadable/half-written file, retry
+        return (f"FAILED {cand.path.name}: {type(exc).__name__}: {exc} "
+                "(will retry next scan)")
+    if classify_ibt(weekend) == "race":
+        return _format_race_report(process_race_ibt(
+            cand.path, api, race_store, track_db,
+            now=now, file_mtime=cand.mtime,
+        ))
+    return _format_report(process_ibt(cand.path, track_db, ref_store))
+
+
+def _scan_once(folder: Path, track_db, ref_store, race_store, api) -> int:
     """One pass. Returns number of files processed (0 is fine)."""
     candidates = _gather_candidates(folder)
     if candidates is None:
         print(f"Telemetry folder not found: {folder}")
         raise SystemExit(1)
-    track_db = TrackDB(DB_PATH)
-    ref_store = ReferenceStore(REFERENCE_DB)
     new = find_new_ibts(
-        candidates, processed=track_db.processed_ibt_paths(),
-        now=time.time(),
+        candidates, processed=track_db.processed_ibt_paths(), now=time.time(),
     )
     for cand in new:
-        print(_format_report(process_ibt(cand.path, track_db, ref_store)))
+        print(_process_candidate(cand, api, track_db, ref_store, race_store,
+                                 time.time()))
         print()
     return len(new)
 
@@ -85,17 +134,27 @@ def _scan_once(folder: Path) -> int:
 def main() -> None:
     args = _parse_args()
     folder = Path(args.folder)
-    n = _scan_once(folder)
-    if not args.watch:
-        print(f"Processed {n} new file(s).")
-        return
-    print(f"Watching {folder} (every {POLL_SECONDS:.0f}s, Ctrl-C to stop)...")
+    track_db = TrackDB(DB_PATH)
+    ref_store = ReferenceStore(REFERENCE_DB)
+    race_store = RaceStore(RACES_DB)
+    api = _make_api()
+    if api is None:
+        print("No iRacing API creds — races will be captured partial "
+              "(positions/results absent); practice unaffected.")
     try:
+        n = _scan_once(folder, track_db, ref_store, race_store, api)
+        if not args.watch:
+            print(f"Processed {n} new file(s).")
+            return
+        print(f"Watching {folder} (every {POLL_SECONDS:.0f}s, Ctrl-C to stop)...")
         while True:
             time.sleep(POLL_SECONDS)
-            _scan_once(folder)
+            _scan_once(folder, track_db, ref_store, race_store, api)
     except KeyboardInterrupt:
         print("\nStopped.")
+    finally:
+        if api is not None:
+            api.close()
 
 
 def _parse_args() -> argparse.Namespace:

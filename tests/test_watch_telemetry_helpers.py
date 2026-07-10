@@ -42,3 +42,46 @@ def test_format_report_error():
     r = SessionReport(path=Path("C:/tel/bad.ibt"), error="ValueError: nope")
     text = watch_telemetry._format_report(r)
     assert "bad.ibt" in text and "nope" in text
+
+
+def test_process_candidate_routes_race_to_race_processor(monkeypatch, tmp_path):
+    """A race IBT goes to process_race_ibt; a lap IBT goes to process_ibt.
+    Proves races never hit the PB-promoting lap path."""
+    import scripts.watch_telemetry as wt
+    from core.watcher.scanner import IbtCandidate
+
+    called = {"race": 0, "lap": 0}
+
+    class _FakeSession:
+        event = "Race"
+
+        def __init__(self):
+            self.raw = {"WeekendInfo": {"EventType": _FakeSession.event,
+                                        "SubSessionID": 42}}
+
+    monkeypatch.setattr(
+        wt.IBTParser, "parse_session_only",
+        lambda self, p: _FakeSession(),
+    )
+    monkeypatch.setattr(
+        wt, "process_race_ibt",
+        lambda *a, **k: called.__setitem__("race", called["race"] + 1)
+        or wt.RaceReport(path="r"),
+    )
+    monkeypatch.setattr(
+        wt, "process_ibt",
+        lambda *a, **k: called.__setitem__("lap", called["lap"] + 1)
+        or wt.SessionReport(path="l"),
+    )
+
+    cand = IbtCandidate(path=tmp_path / "x.ibt", mtime=0.0)
+
+    _FakeSession.event = "Race"
+    wt._process_candidate(cand, api=None, track_db=None, ref_store=None,
+                          race_store=None, now=1.0)
+    assert called == {"race": 1, "lap": 0}
+
+    _FakeSession.event = "Practice"
+    wt._process_candidate(cand, api=None, track_db=None, ref_store=None,
+                          race_store=None, now=1.0)
+    assert called == {"race": 1, "lap": 1}

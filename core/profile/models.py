@@ -30,7 +30,7 @@ class StartsTendency:
 class PaceVsResultTendency:
     """The headline: do results match pace? Positive = finishing worse."""
 
-    mean_positions_left: float | None = None
+    mean_positions_left: float | None = None    # positive = finishing worse than pace deserved
     mean_incident_time_lost_s: float | None = None
     mean_actual_position: float | None = None
     mean_deserved_position: float | None = None
@@ -40,8 +40,10 @@ class PaceVsResultTendency:
 
 @dataclass
 class IncidentTendency:
+    """Incident rate, timing, and recurring trouble corners."""
+
     mean_incident_points: float | None = None
-    lap1_share: float | None = None            # fraction of events on lap 1
+    lap1_share: float | None = None            # fraction of events on lap 1 (None when no events)
     recurring_corners: list[tuple[str, int]] = field(default_factory=list)
     sample: int = 0
     enough_data: bool = False
@@ -49,7 +51,13 @@ class IncidentTendency:
 
 @dataclass
 class TrajectoryTendency:
-    """Start->finish net (positive = gained) and late-race fade."""
+    """Start->finish net (positive = gained) and late-race fade.
+
+    DUAL POOL: sample/enough_data cover the position-complete races that
+    feed mean_race_net; mean_stint_fade_s pools stint trends from ALL
+    races (partial captures included) — gate the fade field on its own
+    None-ness, not on enough_data.
+    """
 
     mean_race_net: float | None = None
     mean_stint_fade_s: float | None = None      # positive = slower 2nd half

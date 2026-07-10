@@ -44,6 +44,8 @@ def _incident(lap=1, corner="Old Hall") -> IncidentEvent:
 
 
 def _narr(lap1=None, attribution=None, events=(), stints=(), **header_kw):
+    # events= populates RaceNarrative.incidents (the event list);
+    # incidents= (via header_kw) sets NarrativeHeader.incidents (the count).
     return RaceNarrative(
         header=_header(**header_kw), lap1=lap1, attribution=attribution,
         incidents=list(events), stints=list(stints),

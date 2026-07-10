@@ -65,7 +65,12 @@ def _incidents(narratives: list[RaceNarrative]) -> IncidentTendency:
         key=lambda x: (-x[1], x[0]),
     )
     return IncidentTendency(
-        mean_incident_points=mean([n.header.incidents for n in narratives]),
+        # Guarded by the early return above; keep the inline guard too so a
+        # future refactor of that guard can't turn this into StatisticsError.
+        mean_incident_points=(
+            mean([n.header.incidents for n in narratives])
+            if narratives else None
+        ),
         lap1_share=(
             sum(1 for e in events if e.lap <= 1) / len(events)
             if events else None
@@ -77,6 +82,11 @@ def _incidents(narratives: list[RaceNarrative]) -> IncidentTendency:
 
 
 def _trajectory(narratives: list[RaceNarrative]) -> TrajectoryTendency:
+    # DUAL-POOL contract: mean_race_net / sample / enough_data come from
+    # position-complete narratives ONLY; mean_stint_fade_s pools stint
+    # trends from ALL narratives (a partial capture has stints but no
+    # positions). Consumers must gate the fade field on its own
+    # None-ness, not on enough_data — see TrajectoryTendency.
     # Partial captures without results have 0/absent positions — skip them.
     with_pos = [
         n.header for n in narratives

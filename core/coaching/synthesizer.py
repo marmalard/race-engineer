@@ -176,7 +176,7 @@ class Synthesizer:
         Args:
             narrative: The deterministic race narrative.
             profile_block: Optional pre-formatted driver-profile block
-                (from ``render_profile_block``). When provided, cross-race
+                (from ``profile_prompt_block``). When provided, cross-race
                 tendencies may be cited in the debrief.
         """
         response = self.client.messages.create(

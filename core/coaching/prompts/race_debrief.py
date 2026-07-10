@@ -44,7 +44,7 @@ def build_race_debrief_prompt(
     Args:
         narrative: The deterministic race narrative.
         profile_block: Optional pre-formatted driver-profile block (from
-            ``render_profile_block``). Inserted before the race JSON when
+            ``profile_prompt_block``). Inserted before the race JSON when
             provided so the model can cite cross-race tendencies.
     """
     h = narrative.header

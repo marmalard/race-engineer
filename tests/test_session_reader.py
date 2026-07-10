@@ -47,6 +47,7 @@ def test_no_emission_during_a_lap():
     tracker = LapBoundaryTracker(min_lap_samples=100)
     results = _drive_lap(tracker, lap_num=1)
     assert all(r.completed is None for r in results)
+    assert all(r.discarded is None for r in results)
 
 
 def test_lap_completes_on_increment():
@@ -78,6 +79,7 @@ def test_clean_flying_lap_after_pit_lap_emits():
     out = tracker.feed(_tick(3, 0.0, 12.0))  # closes lap 2
     assert isinstance(out.completed, CompletedLap)
     assert out.completed.lap_number == 2
+    assert out.discarded is None
 
 
 def test_in_lap_to_pit_suppressed():

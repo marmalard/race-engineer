@@ -85,8 +85,10 @@ class LapBoundaryTracker:
                 discarded=DiscardReason.RESET if was_real else None
             )
 
-        # Lap incremented: the buffered lap is complete. Decide whether to
-        # emit it, then start the new lap with this tick.
+        # Lap incremented: the buffered lap is complete. Capture the buffer
+        # size BEFORE closing so the PIT check does not depend on whether
+        # _close_current_lap happens to leave the buffer intact.
+        buffer_size = len(self._buffer)
         completed = self._close_current_lap()
         discarded = None
         if (
@@ -94,7 +96,7 @@ class LapBoundaryTracker:
             and self._touched_pit
             and self._current_lap is not None
             and self._current_lap >= 1
-            and len(self._buffer) >= self.min_lap_samples
+            and buffer_size >= self.min_lap_samples
         ):
             discarded = DiscardReason.PIT
         self._start_lap(lap, sample)

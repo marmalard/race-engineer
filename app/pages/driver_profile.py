@@ -89,7 +89,8 @@ def render_driver_profile_page() -> None:
         if combo.enough_data:
             st.markdown(f"- {verdict_readiness(combo)}")
         else:
-            st.markdown(
-                f"- {combo.track_name} / {combo.car} — collecting data "
+            # caption = greyed, matching the racecraft collecting-data style
+            st.caption(
+                f"{combo.track_name} / {combo.car} — collecting data "
                 f"({combo.sessions} sessions, {combo.valid_laps} clean laps)."
             )

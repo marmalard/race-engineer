@@ -249,8 +249,9 @@ def _speech_delta(total_delta: float) -> str:
 
 def format_radio_check(reference: "ReferenceLapMeta | None") -> str:
     """Spoken on sim connect — always, so the audio path is confirmed even
-    when no reference exists (that was the silent case). Duck-typed: any
-    object with a `.lap_time` float works."""
+    when no reference exists (that was the silent case). For testing, any
+    object with a `.lap_time: float` attribute is accepted (no runtime
+    isinstance check is performed)."""
     if reference is None:
         return (
             "Radio check, reading you. No reference for this combo — "

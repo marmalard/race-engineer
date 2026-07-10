@@ -145,6 +145,13 @@ def _cached_fetch(cache_path: Path, fetch: Callable[[], dict | list]):
                 cache_path,
             )
     data = fetch()
+    # A falsy result means the API had nothing yet (e.g. official results not
+    # posted). Do NOT cache it — a persisted empty would poison every later
+    # retry, stranding the race as partial forever. Return it uncached so the
+    # next attempt re-fetches. A legitimately-empty payload simply re-fetches
+    # next time — negligible cost, never incorrect.
+    if not data:
+        return data
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = cache_path.with_suffix(cache_path.suffix + ".tmp")
     tmp_path.write_text(json.dumps(data), encoding="utf-8")

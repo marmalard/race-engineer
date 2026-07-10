@@ -26,6 +26,12 @@ FLAT_CORNER_MIN_SPEED_MS = 50.0
 # onto their own visual markers far better than raw meters at speed.
 CAR_LENGTH_M = 4.5
 
+# Approach-cue magnitude buckets (car lengths) — coarse on purpose; a driver
+# can't act on fake-exact meters at speed. Tunable from data/live_sessions logs.
+APPROACH_CUE_MAX_FAULTS = 2
+COARSE_A_BIT_MAX_LENGTHS = 2.5
+COARSE_COUPLE_MAX_LENGTHS = 5.0
+
 
 @dataclass
 class Nudge:
@@ -154,6 +160,54 @@ def nudge_from_diagnosis(diag: RegionDiagnosis) -> "Nudge | None":
         )
 
     return None
+
+
+def _coarse_length_phrase(meters: float) -> str:
+    """Coarse braking magnitude in car lengths: 'a bit' / 'a couple car
+    lengths' / 'a lot'. No fake precision — the driver adjusts a marker."""
+    lengths = abs(meters) / CAR_LENGTH_M
+    if lengths < COARSE_A_BIT_MAX_LENGTHS:
+        return "a bit"
+    if lengths < COARSE_COUPLE_MAX_LENGTHS:
+        return "a couple car lengths"
+    return "a lot"
+
+
+def approach_cue_from_diagnosis(diag: RegionDiagnosis) -> "str | None":
+    """One combined approach cue for a corner, or None if nothing crosses
+    threshold. Spoken ~300m before the corner, so it names no corner ('here')
+    and joins the top APPROACH_CUE_MAX_FAULTS faults by the salience ladder:
+    lift > braking > release > exit > throttle."""
+    faults: list[str] = []
+
+    if diag.min_speed_delta_ms <= -MIN_SPEED_THRESHOLD_MS:
+        if diag.reference_min_speed_ms >= FLAT_CORNER_MIN_SPEED_MS:
+            faults.append("carry it flat, don't lift")
+        else:
+            faults.append("carry more apex speed")
+
+    if diag.braking_delta_m is not None and abs(diag.braking_delta_m) >= BRAKING_THRESHOLD_M:
+        coarse = _coarse_length_phrase(diag.braking_delta_m)
+        faults.append(
+            f"brake {coarse} later" if diag.braking_delta_m < 0
+            else f"brake {coarse} earlier"
+        )
+
+    if (
+        diag.brake_release_delta_m is not None
+        and diag.brake_release_delta_m <= -RELEASE_THRESHOLD_M
+    ):
+        faults.append("carry the brakes deeper")
+
+    if diag.exit_speed_delta_ms <= -EXIT_SPEED_THRESHOLD_MS:
+        faults.append("prioritize the exit")
+
+    if diag.throttle_delta_m is not None and diag.throttle_delta_m >= THROTTLE_THRESHOLD_M:
+        faults.append("get to throttle earlier on exit")
+
+    if not faults:
+        return None
+    return "Coming up — " + ", ".join(faults[:APPROACH_CUE_MAX_FAULTS]) + "."
 
 
 def _fmt_lap_time(seconds: float) -> str:

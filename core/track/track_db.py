@@ -1,6 +1,7 @@
 """SQLite-backed track and corner database."""
 
 import sqlite3
+from dataclasses import dataclass
 from pathlib import Path
 
 from core.track.models import (
@@ -10,6 +11,29 @@ from core.track.models import (
     TrackCharacter,
     TrackType,
 )
+
+
+@dataclass
+class SessionRow:
+    """One sessions-table row for profile/history reads (no laps payload)."""
+
+    session_id: str
+    track_id: str
+    track_name: str
+    car: str
+    session_type: str
+    session_date: str
+    best_lap_time: float | None
+    lap_count: int
+
+
+@dataclass
+class LapRow:
+    """One laps-table row."""
+
+    lap_number: int
+    lap_time: float
+    is_valid: bool
 
 
 class TrackDB:
@@ -307,3 +331,50 @@ class TrackDB:
             for seg in segments
         ]
         self.upsert_corners(track_id, corners)
+
+    def list_session_history(self) -> list[SessionRow]:
+        """All recorded sessions, oldest first, with the track name joined."""
+        conn = self._get_conn()
+        try:
+            rows = conn.execute(
+                """
+                SELECT s.session_id, s.track_id,
+                       COALESCE(t.name, s.track_id) AS track_name,
+                       s.car, s.session_type, s.session_date,
+                       s.best_lap_time, s.lap_count
+                FROM sessions s
+                LEFT JOIN tracks t ON t.track_id = s.track_id
+                ORDER BY s.session_date
+                """
+            ).fetchall()
+            return [
+                SessionRow(
+                    session_id=r["session_id"],
+                    track_id=r["track_id"] or "",
+                    track_name=r["track_name"] or "",
+                    car=r["car"] or "",
+                    session_type=r["session_type"] or "",
+                    session_date=str(r["session_date"] or ""),
+                    best_lap_time=r["best_lap_time"],
+                    lap_count=r["lap_count"] or 0,
+                )
+                for r in rows
+            ]
+        finally:
+            conn.close()
+
+    def get_session_laps(self, session_id: str) -> list[LapRow]:
+        """Lap rows for one session, in lap order. Empty when unknown."""
+        conn = self._get_conn()
+        try:
+            rows = conn.execute(
+                "SELECT lap_number, lap_time, is_valid FROM laps "
+                "WHERE session_id = ? ORDER BY lap_number",
+                (session_id,),
+            ).fetchall()
+            return [
+                LapRow(lap_number=r["lap_number"], lap_time=r["lap_time"], is_valid=bool(r["is_valid"]))
+                for r in rows
+            ]
+        finally:
+            conn.close()

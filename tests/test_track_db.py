@@ -336,3 +336,35 @@ def test_record_laps_replaces_on_rerun(tmp_path):
 
 def test_processed_paths_empty_on_fresh_db(tmp_path):
     assert TrackDB(tmp_path / "t.db").processed_ibt_paths() == set()
+
+
+def test_list_session_history_and_laps_roundtrip(tmp_path):
+    from core.track.track_db import LapRow, SessionRow, TrackDB
+
+    db = TrackDB(tmp_path / "t.db")
+    db.record_session(
+        session_id="s1", track_id="525", car="M2",
+        session_type="practice", session_date="2026-07-01 10-00-00",
+        best_lap_time=100.5, lap_count=3, ibt_file_path="x.ibt",
+    )
+    db.record_laps("s1", [(1, 101.0, True), (2, 100.5, True), (3, 130.0, False)])
+    db.record_session(
+        session_id="s2", track_id="525", car="M2",
+        session_type="Race", session_date="2026-07-02 10-00-00",
+        best_lap_time=99.9, lap_count=1, ibt_file_path="y.ibt",
+    )
+
+    sessions = db.list_session_history()
+    assert [s.session_id for s in sessions] == ["s1", "s2"]  # date order
+    s1 = sessions[0]
+    assert isinstance(s1, SessionRow)
+    assert (s1.track_id, s1.car, s1.session_type) == ("525", "M2", "practice")
+    assert s1.best_lap_time == 100.5 and s1.lap_count == 3
+    assert s1.session_date == "2026-07-01 10-00-00"
+
+    laps = db.get_session_laps("s1")
+    assert [(l.lap_number, l.lap_time, l.is_valid) for l in laps] == [
+        (1, 101.0, True), (2, 100.5, True), (3, 130.0, False),
+    ]
+    assert isinstance(laps[0], LapRow)
+    assert db.get_session_laps("nope") == []

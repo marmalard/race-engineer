@@ -166,11 +166,18 @@ class Synthesizer:
     MAX_CHAT_HISTORY = 20
 
     def generate_race_debrief(
-        self, narrative: "RaceNarrative"
+        self, narrative: "RaceNarrative", profile_block: str = ""
     ) -> RaceDebriefReport:
         """Generate the race debrief from the deterministic narrative.
 
-        No web search — every fact comes from the narrative JSON.
+        No web search — every fact comes from the narrative JSON and the
+        optional driver-profile block.
+
+        Args:
+            narrative: The deterministic race narrative.
+            profile_block: Optional pre-formatted driver-profile block
+                (from ``render_profile_block``). When provided, cross-race
+                tendencies may be cited in the debrief.
         """
         response = self.client.messages.create(
             model=self.model,
@@ -179,7 +186,7 @@ class Synthesizer:
             messages=[
                 {
                     "role": "user",
-                    "content": build_race_debrief_prompt(narrative),
+                    "content": build_race_debrief_prompt(narrative, profile_block),
                 }
             ],
         )
@@ -198,6 +205,7 @@ class Synthesizer:
         narrative: "RaceNarrative",
         debrief_text: str,
         history: list[dict],
+        profile_block: str = "",
     ) -> str:
         """One follow-up chat turn, grounded in the narrative + debrief.
 
@@ -207,6 +215,14 @@ class Synthesizer:
         Guard: if the capped slice starts with an assistant turn (which the
         Anthropic Messages API rejects), the leading assistant message is
         dropped so the first sent message always has role 'user'.
+
+        Args:
+            narrative: The deterministic race narrative.
+            debrief_text: The already-delivered debrief text.
+            history: Conversation history, newest last.
+            profile_block: Optional pre-formatted driver-profile block.
+                When provided, the model can cite cross-race tendencies
+                in its follow-up answers.
         """
         msgs = history[-self.MAX_CHAT_HISTORY:]
         if msgs and msgs[0]["role"] != "user":
@@ -214,7 +230,7 @@ class Synthesizer:
         response = self.client.messages.create(
             model=self.model,
             max_tokens=800,
-            system=build_race_chat_system(narrative, debrief_text),
+            system=build_race_chat_system(narrative, debrief_text, profile_block),
             messages=msgs,
         )
         return self._extract_text(response)

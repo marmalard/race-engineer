@@ -1,13 +1,19 @@
 """Tests for ManagedProcess — real detached processes, throwaway run dir."""
 
+import os
+import subprocess
 import sys
 import time
+from pathlib import Path
 
 import pytest
 
 from core.live.process_control import ManagedProcess
 
 SLEEPER = [sys.executable, "-c", "import time; time.sleep(60)"]
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_CREATE_NO_WINDOW = 0x08000000  # checker gets its own (hidden) console
 
 
 @pytest.fixture
@@ -44,6 +50,35 @@ def test_stop_terminates_and_clears_pidfile(proc, tmp_path):
 
 def test_stop_when_not_running_returns_false(proc):
     assert proc.stop() is False
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows console-affinity bug")
+def test_is_running_visible_from_another_console(proc, tmp_path):
+    """A live process must report running from a checker in a DIFFERENT console.
+
+    This is the Toolbox reality: Streamlit (its own console) checks a watcher
+    spawned from a terminal. os.kill(pid, 0) on Windows is
+    GenerateConsoleCtrlEvent(CTRL_C_EVENT), which only reaches process groups
+    on the CALLER'S console — from any other console it raises WinError 87
+    and a live process reads as stopped.
+    """
+    proc.start()
+    assert proc.is_running()  # sanity: visible from the parent
+
+    checker = (
+        "import sys; sys.path.insert(0, sys.argv[1]);"
+        "from pathlib import Path;"
+        "from core.live.process_control import ManagedProcess;"
+        "p = ManagedProcess('test-sleeper', [], run_dir=Path(sys.argv[2]));"
+        "print(p.is_running())"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", checker, str(_REPO_ROOT), str(tmp_path)],
+        capture_output=True, text=True, creationflags=_CREATE_NO_WINDOW,
+    )
+    assert out.stdout.strip() == "True", (
+        f"stdout={out.stdout!r} stderr={out.stderr[-300:]!r}"
+    )
 
 
 def test_stale_pidfile_treated_as_not_running(tmp_path):

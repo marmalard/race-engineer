@@ -157,6 +157,23 @@ def test_cached_fetch_writes_then_reads_cache(tmp_path):
     assert json.loads(path.read_text())["value"] == 42
 
 
+def test_cached_fetch_does_not_cache_empty_result(tmp_path):
+    """A falsy (not-ready) fetch result must not be persisted, so a later
+    non-empty fetch re-fetches instead of reading a poisoned empty cache."""
+    path = tmp_path / "sub" / "results.json"
+    calls = {"n": 0}
+
+    def empty_then_full():
+        calls["n"] += 1
+        return {} if calls["n"] == 1 else {"session_results": [1]}
+
+    assert _cached_fetch(path, empty_then_full) == {}
+    assert not path.exists()  # empty result NOT written to disk
+    assert _cached_fetch(path, empty_then_full) == {"session_results": [1]}
+    assert calls["n"] == 2  # re-fetched, not served from a poisoned cache
+    assert path.exists()
+
+
 def test_cached_fetch_recovers_from_corrupt_cache(tmp_path):
     """A corrupt cache file must be treated as a miss: re-fetch and repair."""
     path = tmp_path / "results.json"

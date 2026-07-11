@@ -22,6 +22,35 @@ DEFAULT_RUN_DIR = Path("data/run")
 _DETACHED_PROCESS = 0x00000008
 _CREATE_NEW_PROCESS_GROUP = 0x00000200
 
+# Windows liveness check. os.kill(pid, 0) is NOT an existence probe there:
+# signal 0 is CTRL_C_EVENT, delivered via GenerateConsoleCtrlEvent, which only
+# reaches process groups on the CALLER'S console — checked from any other
+# console (Streamlit vs the terminal that spawned the tool) it raises
+# WinError 87 and a live process reads as stopped. Ask the kernel instead.
+_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+_STILL_ACTIVE = 259
+_ERROR_ACCESS_DENIED = 5
+
+
+def _pid_alive_windows(pid: int) -> bool:
+    """True when the PID names a live process (kernel query, console-free)."""
+    import ctypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    handle = kernel32.OpenProcess(
+        _PROCESS_QUERY_LIMITED_INFORMATION, False, pid
+    )
+    if not handle:
+        # Can't open: no such process — unless it exists but is off-limits.
+        return ctypes.get_last_error() == _ERROR_ACCESS_DENIED
+    try:
+        code = ctypes.c_ulong()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+            return False
+        return code.value == _STILL_ACTIVE
+    finally:
+        kernel32.CloseHandle(handle)
+
 
 class ManagedProcess:
     """One named background tool: start detached, track, stop by tree."""
@@ -59,8 +88,10 @@ class ManagedProcess:
         pid = self.pid()
         if pid is None:
             return False
+        if os.name == "nt":
+            return _pid_alive_windows(pid)
         try:
-            os.kill(pid, 0)  # signal 0 = existence check (OpenProcess on Win)
+            os.kill(pid, 0)  # POSIX: signal 0 = existence check
             return True
         except OSError:
             return False

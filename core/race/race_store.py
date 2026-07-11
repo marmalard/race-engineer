@@ -138,6 +138,24 @@ class RaceStore:
             return None
         return RaceNarrative.from_dict(json.loads(row["narrative_json"]))
 
+    def get_narratives(self, cust_id: int) -> list[RaceNarrative]:
+        """All stored narratives for one driver, newest first.
+
+        Dozens of rows at most for a personal store — loading them all is
+        the profile engine's intended access pattern (derive on demand).
+        """
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT narrative_json FROM races "
+                "WHERE cust_id = ? "
+                "ORDER BY created_at DESC, subsession_id DESC",
+                (cust_id,),
+            ).fetchall()
+        return [
+            RaceNarrative.from_dict(json.loads(r["narrative_json"]))
+            for r in rows
+        ]
+
     def list_races(self) -> list[StoredRaceMeta]:
         """Scalar metadata for all stored races, newest first."""
         with self._conn() as conn:

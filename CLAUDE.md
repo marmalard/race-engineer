@@ -70,6 +70,12 @@ race-engineer/
 │   │   ├── scanner.py            # Pure discovery: stability window, dedupe, promotion + plausibility gates
 │   │   ├── processor.py          # Per-IBT pipeline: history + PB promotion + debrief (practice/qual/test)
 │   │   └── race_processor.py     # Race IBT auto-capture → races.db (age-gated full/partial/defer, no PB)
+│   ├── profile/
+│   │   ├── models.py             # Tendency/readiness/profile dataclasses + thresholds
+│   │   ├── racecraft.py          # PURE: narratives → 4 racecraft tendencies (per-tendency samples)
+│   │   ├── pace.py               # PURE: session history → per-combo readiness (representative-lap filter)
+│   │   ├── render.py             # Verdict lines, page markdown, capped prompt block
+│   │   └── builder.py            # load_profile — the package's only I/O; degrades to empty
 │   └── race/
 │       ├── models.py             # RaceData (raw) + RaceNarrative (product) dataclasses
 │       ├── ingest.py             # Race IBT + YAML + Data API → RaceData (disk cache, partial mode)
@@ -391,7 +397,16 @@ streamlit run app/streamlit_app.py
 - [x] `_cached_fetch` hardening — an empty (results-not-posted-yet) API response is returned uncached instead of poisoning `data/race_cache` and stranding the race as partial forever (also fixes the debrief page re-open case)
 - [x] No AI on the capture path — deterministic narrative only; AI debrief stays on-demand on the page
 - Watch item: a race captured partial (slow results) is not auto-upgraded to full by the watcher — re-open it on the debrief page to refill API data (chosen over persisted retry state)
-- Next (SP2): Driver Profile v1 — derive-on-demand over races.db: 4 racecraft tendencies (lap-1 net, pace-vs-result gap, incident patterns, trajectory/fade) + pace/consistency/readiness layer from watcher practice history; profile page + compact debrief-prompt injection
+**Driver Profile v1 — SP2** (complete, merged 2026-07-11 — spec/plan in docs/superpowers/specs+plans/2026-07-10-driver-profile-v1*)
+- [x] `core/profile/` package — derive-on-demand (NO profile table): `load_profile(race_store, track_db, cust_id)` recomputes fresh from races.db + tracks.db every render; any store failure degrades to an empty profile (never breaks a page)
+- [x] 4 racecraft tendencies (GLOBAL across all races, any combo — racecraft is a driver trait): starts (lap-1/2 net, positive = gained), pace-vs-result (the headline: actual − pace-deserved position), incidents (rate, lap-1 share, recurring corners ≥2×), trajectory (start→finish net + stint fade). Per-tendency samples — partial captures contribute what they can. Unlock at RACECRAFT_MIN_RACES=3
+- [x] Per-combo practice readiness (Race-type sessions EXCLUDED): sessions, clean laps, session-best trend, recent-window consistency (last 3 sessions). Unlock at 2 sessions + 10 laps. **Representative-lap filter** (110% of combo best, REPRESENTATIVE_FACTOR) — added after real-data verification showed ±358s "consistency" from out-laps/crawl laps (watcher is_valid = telemetry-valid, NOT pace-representative)
+- [x] TrajectoryTendency DUAL-POOL contract: sample/enough_data cover position-complete races; mean_stint_fade_s pools ALL races — consumers gate fade on its own None-ness
+- [x] Verdict one-liners exact-string tested in render.py (like nudges); wording notes: "Session best down X.Xs" not "PB" (a PB can't rise); no double negatives ("You lose 1.8 places")
+- [x] Driver Profile page (display only) + registration; `_resolve_cust_id` = most-frequent cust_id, selectbox when several
+- [x] Debrief injection: `profile_prompt_block` (enough-data only, 5-combo cap, 2000-char two-stage cap, "" below threshold) threaded through Synthesizer into debrief + chat; tone-contract rule 2 amended — profile facts permitted but must be cited as cross-race tendencies with the profile-stated race count, never as facts about this race
+- [x] Store reads added: TrackDB.list_session_history/get_session_laps (SessionRow/LapRow), RaceStore.get_narratives(cust_id) (newest first, subsession tiebreaker — same-timestamp saves are real)
+- With today's data (1 race): racecraft shows "collecting 1 of 3"; readiness lit across ~29 combos; prompt block builds from readiness alone (correct per spec)
 
 **Phase 3 (revised per v2 strategy): Race Debrief + Intelligence foundation** (Surface 1 shipped 2026-07-06, branch race-debrief — see `docs/superpowers/specs/2026-07-06-race-debrief-design.md`)
 - [x] Race session ingestion: race IBT + Data API results + session YAML → race narrative (position timeline, gap evolution, incident timing, stint pace) (`core/race/ingest.py`, `core/race/narrative.py`)
@@ -399,8 +414,8 @@ streamlit run app/streamlit_app.py
 - [x] iRating attribution: lost to pace or to incidents/decisions? (transparent accounting — pace-deserved position vs actual + labeled time-lost estimates, no counterfactual elo model)
 - [x] Persistence + markdown export + Streamlit page (`core/race/race_store.py` → data/races.db keyed (subsession_id, cust_id); `app/pages/race_debrief.py`)
 - [x] Friend-testable deployment: Tailscale serve/funnel, upload-first UX (400 MB limit), shared host creds — see README "Friend-testable deployment"
-- [ ] Founder validation of the Oulton narrative + first real AI debrief (blocked on ANTHROPIC_API_KEY rotation)
-- [ ] Driver profile v1: technique tendencies + racecraft tendencies (lap-1, restarts, defense, incident patterns) — reads races.db + the watcher's sessions/laps tables (separate spec)
+- [ ] Founder validation of the Oulton narrative + first real AI debrief (key rotated + verified; now also exercises the profile injection)
+- [x] Driver profile v1 SHIPPED 2026-07-11 (racecraft + practice-readiness layers — see "Driver Profile v1 — SP2" section; technique tendencies deferred, needs loss-region persistence)
 
 **Phase 4 (revised): Pre-Race Briefing / Field Scouting**
 - [ ] Field analysis from Data API: SoF/split prediction, opponent profiles (pace, aggression, incident history)
@@ -573,7 +588,7 @@ streamlit run app/streamlit_app.py
 - Deployment: `tailscale serve/funnel 8501` + `streamlit run` from the host PC; `.streamlit/config.toml` sets maxUploadSize 400
 
 ### Test Suite
-- 501 tests passing, 9 skipped (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`); the 4 race-capture integration tests need the gitignored Oulton fixtures (skip elsewhere)
+- 546 tests passing, 9 skipped (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`); the 4 race-capture integration tests need the gitignored Oulton fixtures (skip elsewhere)
 - Test fixtures: `tests/fixtures/sample.ibt` (Spa, BMW M2 CS Racing, 2 laps — gitignored)
 - Multi-lap fixture from `C:\Users\antho\Documents\iRacing\telemetry\` (Road America F4, 7 laps)
 - Bathurst fixture also available for corner detection tuning tests

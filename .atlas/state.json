@@ -46,10 +46,10 @@
     ]
   },
   "state": {
-    "current_phase": "All queued build work done (501 tests): Surface 1 + Pit Wall UX + Guide + telemetry watcher + Live Voice Coach UX round 2, PLUS auto race-capture (watcher SP1) shipped 2026-07-10 — the watcher now captures finished races into races.db automatically (durability-first age-gated retry; race laps can no longer pollute PB references). App live on tailnet. Next build: Driver Profile v1 (SP2 — design largely agreed in brainstorm, needs spec). User validation queue: AI debrief tone, funnel to friend #1, driving-validate voice round 2. START THE APP: `.venv\\Scripts\\streamlit.exe run app\\streamlit_app.py` → http://localhost:8501; watcher + live voice coach start from the in-app Toolbox page. Full runbook in RUN.md. NOTE: restart the watcher to pick up race capture.",
+    "current_phase": "Phase 3 (race intelligence foundation) BUILD-COMPLETE (546 tests): Surface 1 debrief + auto race-capture (SP1) + Driver Profile v1 (SP2, shipped 2026-07-11 — racecraft tendencies + practice readiness, profile page, debrief-prompt injection). The profile fills itself as the watcher captures races/practice. App live on tailnet. NEXT BUILD: Phase 4 pre-race field briefing (brainstorm with user). User validation queue: AI debrief tone (now with profile injection), funnel to friend #1, driving-validate voice round 2. START THE APP: `.venv\\Scripts\\streamlit.exe run app\\streamlit_app.py` → http://localhost:8501; watcher + live voice coach start from the in-app Toolbox page. Full runbook in RUN.md. NOTE: restart the watcher to pick up race capture.",
     "last_session": {
-      "at": "2026-07-10T19:30:00Z",
-      "summary": "Shipped auto race-capture (watcher SP1) via subagent-driven TDD (5 tasks, spec+quality review each, final holistic review verifying the durability invariants): watcher routes race IBTs to a new race_processor (ingest→narrative→races.db) with age-gated full/partial/defer capture; fixed race-laps-as-PB pollution (structural) and _cached_fetch empty-response poisoning. Merged to master (501 tests). Sequencing came from the user's durability concern (IBTs are ephemeral) + insight that practice data matters for non-racers' confidence — Driver Profile v1 (SP2) now includes a pace/readiness layer and is the next spec. G61 re-checked: dev API now exists but is lap-centric — parked as an SP2 pace-layer source. (Earlier same day: app+watcher started for live test, RUN.md runbook added.)"
+      "at": "2026-07-11T01:30:00Z",
+      "summary": "Shipped Driver Profile v1 (SP2) via subagent-driven TDD (9 tasks, spec+quality review each, final holistic review): core/profile package (4 global racecraft tendencies from races.db + per-combo practice readiness from watcher history, derive-on-demand, degrades to empty), Driver Profile page, and profile injection into the debrief/chat prompts with a tone-contract amendment (cross-race facts must be cited as such). Real-data verification caught garbage consistency (±358s from out-laps) → representative-lap filter (110% of combo best, analyzer precedent) + 'Session best' wording fix. Merged+pushed (7052943), remote feature branch cleaned. Thresholds discussed with user: racecraft is GLOBAL across combos (3 races any combo), readiness per-combo (2 sessions+10 laps). Encoding near-miss: Set-Content mangled synthesizer.py — caught, restored, memory rule hardened to ALL text files."
     },
     "next_actions": [
       "Generate the first real AI debrief + chat on the Oulton race (key rotated + verified; app live at https://desktop-sjdfffr.tail7227a6.ts.net) and check the tone contract (no scolding, no invented facts, 'I don't have that data' when asked outside the narrative)",
@@ -61,12 +61,14 @@
       "Restart the telemetry watcher (Toolbox) so it picks up the new race-capture code (shipped 2026-07-10) — races then land in races.db automatically after every official race",
       "After driving: run `scripts/watch_telemetry.py` (or leave --watch running) so new sessions land in history, PBs auto-promote, and races auto-capture",
       "Close the G61 validation gate fully: export one of YOUR OWN laps from Garage 61 + copy that session's IBT to tests/fixtures/g61/ and set G61_DISPLAYED_LAP_TIME",
-      "Next spec: Driver Profile v1 (SP2) — brainstorm largely done 2026-07-10: derive-on-demand engine over races.db (no new table), 4 racecraft tendencies (lap-1 net, pace-vs-result gap [headline], incident rate/timing/corners, trajectory+fade) PLUS a pace/consistency/readiness layer from watcher practice data (user insight: non-racers need practice-based confidence signals), profile page + compact injection into the race-debrief prompt; G61 dev API (now real, lap-centric, token+OAuth) parked as an optional pace-layer/backfill source"
+      "Check the Driver Profile page after a few more races (racecraft tendencies unlock at 3 captured races; readiness already lit across ~29 combos) — and tune REPRESENTATIVE_FACTOR/thresholds if verdicts feel off",
+      "Next spec: Phase 4 pre-race field briefing (brainstorm with user) — SoF/split prediction, opponent profiles from Data API, strategy plan; the profile's readiness layer plugs in as the personal-history side; population pace via result_search_series unlocks the 'is my pace ready for this split' answer",
+      "Backlog: G61 dev API (real, lap-centric, token+OAuth) as an optional pace-layer/backfill source; track-limits asterisk spec; technique tendencies (needs loss-region persistence)"
     ],
     "blockers": [],
     "roadmap": [
       "V2 STRATEGY (docs/race-engineer-v2-strategy.md): coach the race, not the lap — incumbents sell pace, this sells confidence; metric = does official-race volume go up",
-      "Phase 3 (market track): post-race debrief SHIPPED 2026-07-06 (Surface 1); auto race-capture SHIPPED 2026-07-10 (watcher SP1 — races.db now populates itself); remaining: Driver Profile v1 (SP2, racecraft + pace/readiness layers)",
+      "Phase 3 (market track) COMPLETE: post-race debrief 2026-07-06 (Surface 1) + auto race-capture 2026-07-10 (SP1) + Driver Profile v1 2026-07-11 (SP2 — racecraft tendencies + practice readiness + debrief injection; the accumulating defensible layer)",
       "Phase 4: pre-race field briefing — SoF/split prediction, opponent profiles, strategy plan; the most differentiated surface vs all incumbents",
       "Phase 5: live PTT engineer — rolling race-state summarizer over CarIdx arrays, <=2s voice loop, sparse radio discipline; Crew Chief coexistence decision after Phase 4",
       "Validation: 90-day beta with friends/one community; ~20 paying strangers by month 6 = signal; LLC before first dollar",
@@ -75,5 +77,5 @@
     ]
   },
   "created_at": "2026-04-29T14:05:54Z",
-  "updated_at": "2026-07-10T19:35:00Z"
+  "updated_at": "2026-07-11T01:35:00Z"
 }

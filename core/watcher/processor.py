@@ -11,6 +11,8 @@ from pathlib import Path
 from core.benchmark.reference_store import ReferenceStore
 from core.coaching.debrief import build_debrief
 from core.live.nudges import format_lap_block
+from core.race.narrative import corner_name_at
+from core.telemetry.cleanliness import check_lap_cleanliness
 from core.telemetry.ibt_parser import IBTParser
 from core.telemetry.normalizer import Normalizer
 from core.track.lovely_seeder import seed_track_from_lovely
@@ -30,6 +32,8 @@ class SessionReport:
     valid_laps: int = 0
     best_lap_time: float | None = None
     promoted: bool = False
+    best_lap_dirty: bool = False
+    dirty_note: str | None = None
     debrief_text: str | None = None
     error: str | None = None
 
@@ -105,6 +109,26 @@ def process_ibt(
         best = min(plausible, key=lambda l: l.lap_time) if plausible else None
         report.best_lap_time = best.lap_time if best else None
 
+        # Cleanliness: any mid-lap incident-count rise makes a lap's TIME
+        # untrustworthy as a reference, even though its telemetry is fine.
+        # We still coach it (best stays the debrief target below) — we just
+        # never promote it. Keyed by lap number to join raw frames to
+        # normalized laps.
+        cleanliness = {
+            int(df["Lap"].iloc[0]): check_lap_cleanliness(df)
+            for df in lap_dfs if len(df) > 0
+        }
+
+        def _is_clean(lap) -> bool:
+            c = cleanliness.get(lap.lap_number)
+            return c.clean if c is not None else True   # fail-open
+
+        clean_plausible = [l for l in plausible if _is_clean(l)]
+        candidate = (
+            min(clean_plausible, key=lambda l: l.lap_time)
+            if clean_plausible else None
+        )
+
         # Upsert the real track row BEFORE record_session so that
         # record_session's INSERT OR IGNORE sees a populated row rather
         # than writing a stub (track_id, track_id) that would obscure
@@ -144,21 +168,46 @@ def process_ibt(
 
         # Promotion: compare against the existing personal_best ONLY —
         # a faster g61 lap must not block recording the driver's own PB.
+        # Only promote the fastest CLEAN lap (candidate); a dirty best is
+        # still coached/reported (see debrief block below).
         existing_pb = next(
             (m for m in ref_store.list_all()
              if m.track_id == track_id and m.car == session.car_name
              and m.source == "personal_best"),
             None,
         )
-        if should_promote(
-            best.lap_time,
+        if candidate is not None and should_promote(
+            candidate.lap_time,
             existing_pb.lap_time if existing_pb else None,
         ):
             ref_store.save(
-                track_id, session.car_name, best,
+                track_id, session.car_name, candidate,
                 source="personal_best", driver_name=session.driver_name,
             )
             report.promoted = True
+
+        if not _is_clean(best):
+            report.best_lap_dirty = True
+            first = cleanliness[best.lap_number].marks[0]
+            corners = _load_corners(
+                track_db, track_id, session.track_directory, track_length_m,
+            )
+            where = (
+                corner_name_at(corners, first.distance_m)
+                or f"~{first.distance_m / 1000:.1f} km from start/finish"
+            )
+            fmt = lambda t: f"{int(t // 60)}:{t % 60:06.3f}"  # noqa: E731
+            if candidate is not None:
+                report.dirty_note = (
+                    f"fastest lap ({fmt(best.lap_time)}) had an incident at "
+                    f"{where} — best clean lap ({fmt(candidate.lap_time)}) "
+                    "used for promotion instead"
+                )
+            else:
+                report.dirty_note = (
+                    f"fastest lap ({fmt(best.lap_time)}) had an incident at "
+                    f"{where} — no clean lap to promote"
+                )
 
         # Debrief the best lap against the best available reference —
         # unless that reference IS the lap we just promoted (first session

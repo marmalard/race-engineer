@@ -328,3 +328,57 @@ def test_approach_cue_exit_rung():
     from core.live.nudges import approach_cue_from_diagnosis
     cue = approach_cue_from_diagnosis(_diag(exit_speed=-3.0, min_speed=-0.5))
     assert cue == "Coming up — prioritize the exit."
+
+
+def _corner_list():
+    from core.track.models import Corner
+    return [Corner(corner_id=None, track_id="t", corner_number=1,
+                   name="Old Hall", distance_start_meters=180.0,
+                   distance_end_meters=260.0, corner_type=None)]
+
+
+def test_asterisk_track_limits_named_corner():
+    from core.live.nudges import format_asterisk_speech
+    from core.telemetry.cleanliness import IncidentMark
+    s = format_asterisk_speech([IncidentMark(200.0, 1)], _corner_list())
+    assert s == " — but track limits at Old Hall, that time won't count."
+
+
+def test_asterisk_spin_and_contact_phrasing():
+    from core.live.nudges import format_asterisk_speech
+    from core.telemetry.cleanliness import IncidentMark
+    assert format_asterisk_speech([IncidentMark(200.0, 2)], _corner_list()) == \
+        " — but you lost it at Old Hall, that time won't count."
+    assert format_asterisk_speech([IncidentMark(200.0, 4)], _corner_list()) == \
+        " — but contact at Old Hall, that time won't count."
+
+
+def test_asterisk_multiple_marks_and_fallback_corner():
+    from core.live.nudges import format_asterisk_speech
+    from core.telemetry.cleanliness import IncidentMark
+    s = format_asterisk_speech(
+        [IncidentMark(200.0, 1), IncidentMark(900.0, 1)], _corner_list()
+    )
+    assert s == (
+        " — but track limits at Old Hall (and 1 more), that time won't count."
+    )
+    assert format_asterisk_speech([IncidentMark(900.0, 1)], []) == \
+        " — but track limits out there, that time won't count."
+
+
+def test_asterisk_empty_marks_is_empty():
+    from core.live.nudges import format_asterisk_speech
+    assert format_asterisk_speech([], _corner_list()) == ""
+
+
+def test_dirty_baseline_speech():
+    from core.live.nudges import format_dirty_baseline_speech
+    from core.telemetry.cleanliness import IncidentMark
+    assert format_dirty_baseline_speech([IncidentMark(200.0, 1)]) == (
+        "That lap had track limits — I won't use it as the baseline. "
+        "Give me a clean one."
+    )
+    assert format_dirty_baseline_speech([IncidentMark(200.0, 4)]) == (
+        "That lap had contact — I won't use it as the baseline. "
+        "Give me a clean one."
+    )

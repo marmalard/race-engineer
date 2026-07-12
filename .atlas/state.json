@@ -46,7 +46,7 @@
     ]
   },
   "state": {
-    "current_phase": "Phase 3 (race intelligence foundation) BUILD-COMPLETE (546 tests): Surface 1 debrief + auto race-capture (SP1) + Driver Profile v1 (SP2, shipped 2026-07-11 — racecraft tendencies + practice readiness, profile page, debrief-prompt injection). The profile fills itself as the watcher captures races/practice. App live on tailnet. NEXT BUILD: Phase 4 pre-race field briefing (brainstorm with user). User validation queue: AI debrief tone (now with profile injection), funnel to friend #1, driving-validate voice round 2. START THE APP: `.venv\\Scripts\\streamlit.exe run app\\streamlit_app.py` → http://localhost:8501; watcher + live voice coach start from the in-app Toolbox page. Full runbook in RUN.md. NOTE: restart the watcher to pick up race capture.",
+    "current_phase": "Phase 3 COMPLETE + hardening done (564 tests): Surface 1 debrief + auto race-capture (SP1) + Driver Profile v1 (SP2) + track-limits asterisk (2026-07-12 — dirty laps coached but never promoted/baselined; references now trustworthy). NEXT BUILD: Phase 4 pre-race field briefing (brainstorm with user); a desktop-launcher spec+plan (one-click rig start/stop, from parallel session) is written and awaiting execution. User validation queue: AI debrief tone (with profile injection), funnel to friend #1, driving-validate voice round 2 + the asterisk. START THE APP: `.venv\\Scripts\\streamlit.exe run app\\streamlit_app.py` → http://localhost:8501; watcher + live voice coach start from the in-app Toolbox page. Full runbook in RUN.md. NOTE: restart the watcher AND live coach (Toolbox) to pick up race capture + the asterisk.",
     "last_session": {
       "at": "2026-07-12T02:00:00Z",
       "summary": "Shipped the track-limits asterisk (lap cleanliness) via subagent-driven TDD (5 tasks + final holistic review): pure detector (any mid-lap PlayerCarMyIncidentCount rise), watcher PB gate (dirty laps coached but never promoted — fastest CLEAN lap promotes; closes the no-cleanliness-gate watch item; invariant verified: no dirty lap reaches the ReferenceStore by any path), live voice asterisk ('but track limits at {corner}, that time won't count' + dirty-baseline refusal). Discovery: the real Spa sample fixture is all-dirty — back-filled PBs may include dirty times (not re-audited; clean faster laps displace them; re-audit script a possible follow-up). Merged+pushed (c916d1c), 564 tests."
@@ -59,7 +59,8 @@
       "Live coach: startup rundown of session context — read WeekendInfo track temp live and warn about cold-track warmup (user request 2026-07-09 after cold-tire wipeouts at 66F Bathurst: 'takes 2 laps to warm the Porsche'); grows into per-combo remember-notes; seeds Surface 2 briefing content (NOT in round 2 — still queued)",
       "Driving-validate the track-limits asterisk (shipped 2026-07-12): run wide on purpose — expect 'but track limits at {corner}, that time won't count' appended to the lap summary, and a dirty first lap refused as baseline; check the watcher's NOTE line after the session",
       "Possible follow-up: PB re-audit script — back-filled references may include dirty laps (the real Spa fixture proved it); one-shot script re-checking stored PBs' source IBTs against the cleanliness gate",
-      "Restart the telemetry watcher (Toolbox) so it picks up the new race-capture code (shipped 2026-07-10) — races then land in races.db automatically after every official race",
+      "Restart the telemetry watcher AND live coach (Toolbox) so they pick up race capture (2026-07-10) + the cleanliness asterisk (2026-07-12)",
+      "Execute the desktop-launcher plan (spec+plan committed 2026-07-12 from parallel session — one-click rig start/stop)",
       "After driving: run `scripts/watch_telemetry.py` (or leave --watch running) so new sessions land in history, PBs auto-promote, and races auto-capture",
       "Close the G61 validation gate fully: export one of YOUR OWN laps from Garage 61 + copy that session's IBT to tests/fixtures/g61/ and set G61_DISPLAYED_LAP_TIME",
       "Check the Driver Profile page after a few more races (racecraft tendencies unlock at 3 captured races; readiness already lit across ~29 combos) — and tune REPRESENTATIVE_FACTOR/thresholds if verdicts feel off",
@@ -78,5 +79,5 @@
     ]
   },
   "created_at": "2026-04-29T14:05:54Z",
-  "updated_at": "2026-07-12T02:05:00Z"
+  "updated_at": "2026-07-12T02:20:00Z"
 }

@@ -10,7 +10,7 @@ from pathlib import Path
 
 from core.benchmark.reference_store import ReferenceStore
 from core.coaching.debrief import build_debrief
-from core.live.nudges import format_lap_block
+from core.live.nudges import format_lap_block, incident_noun
 from core.race.narrative import corner_name_at
 from core.telemetry.cleanliness import check_lap_cleanliness
 from core.telemetry.ibt_parser import IBTParser
@@ -201,17 +201,18 @@ def process_ibt(
                 corner_name_at(corners, first.distance_m)
                 or f"~{first.distance_m / 1000:.1f} km from start/finish"
             )
+            what = incident_noun(first.delta)  # 'track limits' / 'contact' ...
             if candidate is not None:
                 report.dirty_note = (
-                    f"fastest lap ({_fmt_lap_time(best.lap_time)}) had an "
-                    f"incident at {where} — best clean lap "
+                    f"fastest lap ({_fmt_lap_time(best.lap_time)}) had "
+                    f"{what} at {where} — best clean lap "
                     f"({_fmt_lap_time(candidate.lap_time)}) used for "
                     "promotion instead"
                 )
             else:
                 report.dirty_note = (
-                    f"fastest lap ({_fmt_lap_time(best.lap_time)}) had an "
-                    f"incident at {where} — no clean lap to promote"
+                    f"fastest lap ({_fmt_lap_time(best.lap_time)}) had "
+                    f"{what} at {where} — no clean lap to promote"
                 )
 
         # Debrief the best lap against the best available reference —

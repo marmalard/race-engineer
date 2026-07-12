@@ -332,10 +332,17 @@ def format_lap_block(
 
 
 # Spoken phrasing per incident-count delta. Verb form for the asterisk
-# clause; noun form for the baseline-refusal line. Unknown deltas (never
-# observed, defensive) fall back to the generic noun/verb.
+# clause; noun form for the baseline-refusal line and the watcher's dirty
+# note. Unknown deltas (never observed, defensive) fall back to the
+# generic noun/verb.
 _ASTERISK_VERB = {1: "track limits", 2: "you lost it", 4: "contact"}
 _ASTERISK_NOUN = {1: "track limits", 2: "a moment", 4: "contact"}
+
+
+def incident_noun(delta: int) -> str:
+    """Public noun phrase for an incident delta ('track limits', 'contact')
+    — shared with the watcher's dirty note so wording stays consistent."""
+    return _ASTERISK_NOUN.get(delta, "an incident")
 
 
 def format_asterisk_speech(

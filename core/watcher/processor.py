@@ -38,6 +38,11 @@ class SessionReport:
     error: str | None = None
 
 
+def _fmt_lap_time(t: float) -> str:
+    """100.5 -> '1:40.500' for the human-readable dirty note."""
+    return f"{int(t // 60)}:{t % 60:06.3f}"
+
+
 def _load_corners(
     track_db: TrackDB,
     track_id: str,
@@ -196,17 +201,17 @@ def process_ibt(
                 corner_name_at(corners, first.distance_m)
                 or f"~{first.distance_m / 1000:.1f} km from start/finish"
             )
-            fmt = lambda t: f"{int(t // 60)}:{t % 60:06.3f}"  # noqa: E731
             if candidate is not None:
                 report.dirty_note = (
-                    f"fastest lap ({fmt(best.lap_time)}) had an incident at "
-                    f"{where} — best clean lap ({fmt(candidate.lap_time)}) "
-                    "used for promotion instead"
+                    f"fastest lap ({_fmt_lap_time(best.lap_time)}) had an "
+                    f"incident at {where} — best clean lap "
+                    f"({_fmt_lap_time(candidate.lap_time)}) used for "
+                    "promotion instead"
                 )
             else:
                 report.dirty_note = (
-                    f"fastest lap ({fmt(best.lap_time)}) had an incident at "
-                    f"{where} — no clean lap to promote"
+                    f"fastest lap ({_fmt_lap_time(best.lap_time)}) had an "
+                    f"incident at {where} — no clean lap to promote"
                 )
 
         # Debrief the best lap against the best available reference —

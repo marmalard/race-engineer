@@ -39,7 +39,12 @@ def test_process_records_promotes_and_reports(sample_ibt_path, dbs):
     # Session recorded -> path is now deduped
     assert str(sample_ibt_path) in track_db.processed_ibt_paths()
     # sample.ibt has incidents on every lap -> all dirty -> no PB promoted
-    # (the cleanliness gate correctly blocks dirty laps from ReferenceStore)
+    # (the cleanliness gate correctly blocks dirty laps from ReferenceStore).
+    # Pin that assumption: if the fixture is ever swapped for a clean one,
+    # this must fail loudly rather than silently flip to the else branch.
+    assert report.best_lap_dirty, (
+        "expected sample.ibt to have dirty laps — fixture changed?"
+    )
     if report.best_lap_dirty:
         assert not report.promoted
         assert ref_store.list_all() == []

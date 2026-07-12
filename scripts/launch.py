@@ -31,6 +31,10 @@ URL = f"http://localhost:{PORT}"
 VENV_PY = _ROOT / ".venv" / "Scripts" / "python.exe"
 PORT_WAIT_TIMEOUT_S = 15.0
 PORT_POLL_INTERVAL_S = 0.3
+STREAMLIT_CMD = [
+    str(VENV_PY), "-m", "streamlit", "run",
+    "app/streamlit_app.py", "--server.headless", "true",
+]
 
 
 def is_port_listening(port: int, host: str = HOST) -> bool:
@@ -94,11 +98,7 @@ def main() -> int:
 
     # Streamlit as a child of this console so closing the window stops it.
     print("Starting Streamlit ...")
-    proc = subprocess.Popen(
-        [str(VENV_PY), "-m", "streamlit", "run",
-         "app/streamlit_app.py", "--server.headless", "true"],
-        cwd=str(_ROOT),
-    )
+    proc = subprocess.Popen(STREAMLIT_CMD, cwd=str(_ROOT))
 
     if wait_for_port(PORT):
         print(f"Opening {URL}")

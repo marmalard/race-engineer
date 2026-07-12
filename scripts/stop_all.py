@@ -2,8 +2,8 @@
 
 Invoked by stop-race-engineer.bat. Stops the telemetry-watcher and
 live-coach ManagedProcesses (PID-file tree-kill), then finds Streamlit
-(no PID file - it runs as the launcher console's child) by command line
-and tree-kills it.
+(no PID file - it runs as the launcher console's child) by command-line
+fragments and tree-kills it.
 """
 
 from __future__ import annotations
@@ -20,7 +20,12 @@ from core.live.process_control import ManagedProcess  # noqa: E402
 
 _MANAGED = ("telemetry-watcher", "live-coach")
 _RUN_DIR = _ROOT / "data" / "run"
-_STREAMLIT_MARKER = "streamlit run app/streamlit_app.py"
+# A python.exe is 'our Streamlit' when its command line contains ALL of
+# these fragments. str(_ROOT) scopes to this repo (the venv interpreter /
+# console-script path carries it); the other two match both launch styles
+# ('-m streamlit run app/streamlit_app.py' and 'streamlit.exe run
+# app/streamlit_app.py').
+_CMDLINE_FRAGMENTS = (str(_ROOT), "streamlit", "streamlit_app.py")
 
 
 def _parse_pids(stdout: str) -> list[int]:
@@ -44,10 +49,13 @@ def stop_managed() -> None:
 
 
 def _streamlit_pids() -> list[int]:
-    """PIDs of python processes running the app's Streamlit server."""
+    """PIDs of python processes running this repo's Streamlit server."""
+    conds = " -and ".join(
+        f"$_.CommandLine -like '*{frag}*'" for frag in _CMDLINE_FRAGMENTS
+    )
     ps = (
         "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | "
-        "Where-Object { $_.CommandLine -like '*" + _STREAMLIT_MARKER + "*' } | "
+        "Where-Object { " + conds + " } | "
         "ForEach-Object { $_.ProcessId }"
     )
     result = subprocess.run(

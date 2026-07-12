@@ -60,14 +60,24 @@ def wait_for_port(
 
 
 def _watcher() -> ManagedProcess:
+    """The Toolbox-compatible telemetry watcher (same name and command).
+
+    run_dir is pinned under the repo root — the default is CWD-relative,
+    and a PID file landing elsewhere would desync the Toolbox's
+    running/stopped state (the orphan-process failure this launcher
+    exists to prevent).
+    """
     return ManagedProcess(
         "telemetry-watcher",
         [str(VENV_PY), "scripts/watch_telemetry.py", "--watch"],
+        run_dir=_ROOT / "data" / "run",
         workdir=_ROOT,
     )
 
 
 def main() -> int:
+    """Start the rig: watcher (detached) + Streamlit (console child),
+    then open the browser. Returns Streamlit's exit code."""
     # Idempotency: if the app is already up, just surface it.
     if is_port_listening(PORT):
         print(f"Race Engineer already running at {URL} - opening browser.")

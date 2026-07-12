@@ -32,11 +32,14 @@ from core.coaching.debrief import build_debrief  # noqa: E402
 from core.live.feed import NudgeFeed, start_web_display  # noqa: E402
 from core.live.lap_buffer import SAMPLE_CHANNELS  # noqa: E402
 from core.live.nudges import (  # noqa: E402
+    format_asterisk_speech,
+    format_dirty_baseline_speech,
     format_discard_speech,
     format_lap_block,
     format_lap_speech,
     format_radio_check,
 )
+from core.telemetry.cleanliness import IncidentTracker  # noqa: E402
 from core.live.prompt_scheduler import PromptScheduler, build_schedule  # noqa: E402
 from core.live.session_reader import LapBoundaryTracker  # noqa: E402
 from core.live.session_log import SessionLog  # noqa: E402
@@ -51,7 +54,9 @@ REFERENCE_DB = Path("data/reference_laps.db")
 LOG_DIR = Path("data/live_sessions")
 # Channels the tracker + buffer need: the normalizer-ready set plus the
 # boundary/validity flags the state machine reads.
-READ_CHANNELS = SAMPLE_CHANNELS + ["Lap", "OnPitRoad", "PlayerTrackSurface"]
+READ_CHANNELS = SAMPLE_CHANNELS + [
+    "Lap", "OnPitRoad", "PlayerTrackSurface", "PlayerCarMyIncidentCount",
+]
 TICK_SECONDS = 1.0 / 60.0
 
 
@@ -206,6 +211,7 @@ def main() -> None:
     tracker = LapBoundaryTracker()
     normalizer = Normalizer()
     scheduler = PromptScheduler()
+    incident_tracker = IncidentTracker()
     session_log: SessionLog | None = None
     reference_lap = None       # stored (G61/PB) lap; never replaced mid-session
     session_best = None        # fallback comparison lap when no stored reference
@@ -233,6 +239,7 @@ def main() -> None:
                 reference_lap = ref.lap if ref is not None else None
                 session_best = None
                 scheduler.set_schedule([])
+                incident_tracker = IncidentTracker()
                 prev_flagged = set()
                 prev_delta = None
                 meta_loaded = True
@@ -286,6 +293,13 @@ def main() -> None:
                         "discard", reason=tick.discarded.value,
                         speech=discard_speech,
                     )
+                incident_tracker.reset()
+            else:
+                _dist = sample.get("LapDist")
+                if _dist is not None and not sample.get("OnPitRoad"):
+                    incident_tracker.feed(
+                        sample.get("PlayerCarMyIncidentCount"), float(_dist),
+                    )
 
             # LapDist is None while towed/out-of-world; feeding 0.0 then would
             # look like a start/finish wrap and false-fire a pending prompt.
@@ -308,6 +322,7 @@ def main() -> None:
                     scheduler.reset_position()
 
             if completed is not None:
+                marks = incident_tracker.close_lap()
                 scheduler.rearm()
                 # track_length_m was captured at connect time and is stable
                 # for the session, so reuse it rather than re-reading the YAML.
@@ -320,26 +335,44 @@ def main() -> None:
                         else session_best
                     )
                     if comparison is None:
-                        session_best = nlap
-                        emit(format_lap_block(
-                            nlap.lap_number, nlap.lap_time, 0.0, [],
-                            is_baseline=True,
-                        ))
-                        speech, prev_flagged = format_lap_speech(
-                            nlap.lap_time, 0.0, [], is_baseline=True,
-                        )
-                        speaker.say(speech)
-                        if session_log is not None:
-                            session_log.log(
-                                "baseline", lap=nlap.lap_number,
-                                lap_time=nlap.lap_time, speech=speech,
+                        if marks:
+                            skip_speech = format_dirty_baseline_speech(marks)
+                            emit(skip_speech)
+                            speaker.say(skip_speech)
+                            if session_log is not None:
+                                session_log.log(
+                                    "dirty_baseline_skipped",
+                                    lap=nlap.lap_number,
+                                    lap_time=nlap.lap_time,
+                                    marks=[
+                                        {"distance_m": m.distance_m,
+                                         "delta": m.delta}
+                                        for m in marks
+                                    ],
+                                    speech=skip_speech,
+                                )
+                        else:
+                            session_best = nlap
+                            emit(format_lap_block(
+                                nlap.lap_number, nlap.lap_time, 0.0, [],
+                                is_baseline=True,
+                            ))
+                            speech, prev_flagged = format_lap_speech(
+                                nlap.lap_time, 0.0, [], is_baseline=True,
                             )
+                            speaker.say(speech)
+                            if session_log is not None:
+                                session_log.log(
+                                    "baseline", lap=nlap.lap_number,
+                                    lap_time=nlap.lap_time, speech=speech,
+                                )
                     else:
                         result = build_debrief(nlap, comparison, corners)
+                        asterisk = format_asterisk_speech(marks, corners)
                         emit(format_lap_block(
                             nlap.lap_number, nlap.lap_time,
                             result.total_time_delta, result.diagnoses,
-                        ))
+                        ) + asterisk)
                         # prev_delta compares deltas against a FIXED reference;
                         # in session-best fallback mode the baseline moves after
                         # each PB lap, so `improved` is approximate there.
@@ -352,6 +385,7 @@ def main() -> None:
                             result.diagnoses,
                             prev_flagged=prev_flagged, improved=improved,
                         )
+                        speech += asterisk
                         speaker.say(speech)
                         if session_log is not None:
                             session_log.log(
@@ -359,6 +393,12 @@ def main() -> None:
                                 lap_time=nlap.lap_time,
                                 delta=result.total_time_delta,
                                 improved=improved, speech=speech,
+                                dirty=bool(marks),
+                                marks=[
+                                    {"distance_m": m.distance_m,
+                                     "delta": m.delta}
+                                    for m in marks
+                                ],
                                 diagnoses=[
                                     _diag_fields(d) for d in result.diagnoses
                                 ],
@@ -374,7 +414,7 @@ def main() -> None:
                                     {"trigger_m": p.trigger_m, "text": p.text}
                                     for p in schedule
                                 ])
-                        if (reference_lap is None
+                        if (reference_lap is None and not marks
                                 and nlap.lap_time < session_best.lap_time):
                             session_best = nlap
                 else:

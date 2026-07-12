@@ -34,6 +34,9 @@ PORT_POLL_INTERVAL_S = 0.3
 STREAMLIT_CMD = [
     str(VENV_PY), "-m", "streamlit", "run",
     "app/streamlit_app.py", "--server.headless", "true",
+    # Pin the port: if two launches race past the idempotency guard,
+    # the loser fails fast instead of silently binding 8502.
+    "--server.port", str(PORT),
 ]
 
 

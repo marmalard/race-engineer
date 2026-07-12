@@ -48,8 +48,8 @@
   "state": {
     "current_phase": "Phase 3 (race intelligence foundation) BUILD-COMPLETE (546 tests): Surface 1 debrief + auto race-capture (SP1) + Driver Profile v1 (SP2, shipped 2026-07-11 — racecraft tendencies + practice readiness, profile page, debrief-prompt injection). The profile fills itself as the watcher captures races/practice. App live on tailnet. NEXT BUILD: Phase 4 pre-race field briefing (brainstorm with user). User validation queue: AI debrief tone (now with profile injection), funnel to friend #1, driving-validate voice round 2. START THE APP: `.venv\\Scripts\\streamlit.exe run app\\streamlit_app.py` → http://localhost:8501; watcher + live voice coach start from the in-app Toolbox page. Full runbook in RUN.md. NOTE: restart the watcher to pick up race capture.",
     "last_session": {
-      "at": "2026-07-11T01:30:00Z",
-      "summary": "Shipped Driver Profile v1 (SP2) via subagent-driven TDD (9 tasks, spec+quality review each, final holistic review): core/profile package (4 global racecraft tendencies from races.db + per-combo practice readiness from watcher history, derive-on-demand, degrades to empty), Driver Profile page, and profile injection into the debrief/chat prompts with a tone-contract amendment (cross-race facts must be cited as such). Real-data verification caught garbage consistency (±358s from out-laps) → representative-lap filter (110% of combo best, analyzer precedent) + 'Session best' wording fix. Merged+pushed (7052943), remote feature branch cleaned. Thresholds discussed with user: racecraft is GLOBAL across combos (3 races any combo), readiness per-combo (2 sessions+10 laps). Encoding near-miss: Set-Content mangled synthesizer.py — caught, restored, memory rule hardened to ALL text files."
+      "at": "2026-07-12T02:00:00Z",
+      "summary": "Shipped the track-limits asterisk (lap cleanliness) via subagent-driven TDD (5 tasks + final holistic review): pure detector (any mid-lap PlayerCarMyIncidentCount rise), watcher PB gate (dirty laps coached but never promoted — fastest CLEAN lap promotes; closes the no-cleanliness-gate watch item; invariant verified: no dirty lap reaches the ReferenceStore by any path), live voice asterisk ('but track limits at {corner}, that time won't count' + dirty-baseline refusal). Discovery: the real Spa sample fixture is all-dirty — back-filled PBs may include dirty times (not re-audited; clean faster laps displace them; re-audit script a possible follow-up). Merged+pushed (c916d1c), 564 tests."
     },
     "next_actions": [
       "Generate the first real AI debrief + chat on the Oulton race (key rotated + verified; app live at https://desktop-sjdfffr.tail7227a6.ts.net) and check the tone contract (no scolding, no invented facts, 'I don't have that data' when asked outside the narrative)",
@@ -57,13 +57,14 @@
       "Make the app survive session close: Task Scheduler entry running streamlit at logon with restart-on-failure (DECIDED 2026-07-09: no Docker now — rig-side tools (pyirsdk shared memory, SAPI, telemetry folder, Toolbox process spawning) are physically host-bound and uncontainerizable; the web surface only gets containerized at the Phase 6 VPS move if the beta proves demand; 'runs consistently' is an ops problem solved by the scheduler, not packaging)",
       "Driving-validate Live Voice UX round 2 (shipped 2026-07-10): radio-check audibility on connect, discard/invalid line timing (reset/pit/off-track), approach-cue phrasing + lead time (now on by default, name-dropped combined cues); tune COARSE_*_MAX_LENGTHS + LEAD_M from data/live_sessions logs (watch the clamp dropping the Bruxelles prompt)",
       "Live coach: startup rundown of session context — read WeekendInfo track temp live and warn about cold-track warmup (user request 2026-07-09 after cold-tire wipeouts at 66F Bathurst: 'takes 2 laps to warm the Porsche'); grows into per-combo remember-notes; seeds Surface 2 briefing content (NOT in round 2 — still queued)",
-      "Deferred spec (agreed 2026-07-10): track-limits asterisk — keep clean-telemetry laps with a minor infraction, coach them, but flag the TIME as not counting (PlayerCarMyIncidentCount delta + PlayerTrackSurface OffTrack + LapDist→corner); also closes the watcher's 'no cleanliness gate on promoted PBs' item",
+      "Driving-validate the track-limits asterisk (shipped 2026-07-12): run wide on purpose — expect 'but track limits at {corner}, that time won't count' appended to the lap summary, and a dirty first lap refused as baseline; check the watcher's NOTE line after the session",
+      "Possible follow-up: PB re-audit script — back-filled references may include dirty laps (the real Spa fixture proved it); one-shot script re-checking stored PBs' source IBTs against the cleanliness gate",
       "Restart the telemetry watcher (Toolbox) so it picks up the new race-capture code (shipped 2026-07-10) — races then land in races.db automatically after every official race",
       "After driving: run `scripts/watch_telemetry.py` (or leave --watch running) so new sessions land in history, PBs auto-promote, and races auto-capture",
       "Close the G61 validation gate fully: export one of YOUR OWN laps from Garage 61 + copy that session's IBT to tests/fixtures/g61/ and set G61_DISPLAYED_LAP_TIME",
       "Check the Driver Profile page after a few more races (racecraft tendencies unlock at 3 captured races; readiness already lit across ~29 combos) — and tune REPRESENTATIVE_FACTOR/thresholds if verdicts feel off",
       "Next spec: Phase 4 pre-race field briefing (brainstorm with user) — SoF/split prediction, opponent profiles from Data API, strategy plan; the profile's readiness layer plugs in as the personal-history side; population pace via result_search_series unlocks the 'is my pace ready for this split' answer",
-      "Backlog: G61 dev API (real, lap-centric, token+OAuth) as an optional pace-layer/backfill source; track-limits asterisk spec; technique tendencies (needs loss-region persistence)"
+      "Backlog: G61 dev API (real, lap-centric, token+OAuth) as an optional pace-layer/backfill source; technique tendencies (needs loss-region persistence); cold-track startup rundown (voice); Task Scheduler durability; profile combo display doesn't show track config"
     ],
     "blockers": [],
     "roadmap": [
@@ -77,5 +78,5 @@
     ]
   },
   "created_at": "2026-04-29T14:05:54Z",
-  "updated_at": "2026-07-11T01:35:00Z"
+  "updated_at": "2026-07-12T02:05:00Z"
 }

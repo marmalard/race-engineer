@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING
 
 from core.coaching.debrief import RegionDiagnosis
 from core.live.session_reader import DiscardReason
+from core.race.narrative import corner_name_at
+from core.telemetry.cleanliness import IncidentMark
 
 if TYPE_CHECKING:
     from core.benchmark.reference_store import ReferenceLapMeta
@@ -327,6 +329,47 @@ def format_lap_block(
     for n in nudges:
         lines.append(f"  {n.corner} - {n.message}  ({n.detail})")
     return "\n".join(lines)
+
+
+# Spoken phrasing per incident-count delta. Verb form for the asterisk
+# clause; noun form for the baseline-refusal line and the watcher's dirty
+# note. Unknown deltas (never observed, defensive) fall back to the
+# generic noun/verb.
+_ASTERISK_VERB = {1: "track limits", 2: "you lost it", 4: "contact"}
+_ASTERISK_NOUN = {1: "track limits", 2: "a moment", 4: "contact"}
+
+
+def incident_noun(delta: int) -> str:
+    """Public noun phrase for an incident delta ('track limits', 'contact')
+    — shared with the watcher's dirty note so wording stays consistent."""
+    return _ASTERISK_NOUN.get(delta, "an incident")
+
+
+def format_asterisk_speech(
+    marks: "list[IncidentMark]", corners: list
+) -> str:
+    """Appended to the normal lap speech when a valid lap is dirty.
+
+    Phrases the FIRST (earliest) mark; extra marks become '(and N more)'.
+    Empty marks -> "" (clean lap, nothing to append)."""
+    if not marks:
+        return ""
+    first = marks[0]
+    phrase = _ASTERISK_VERB.get(first.delta, "an incident")
+    corner = corner_name_at(corners, first.distance_m)
+    extra = f" (and {len(marks) - 1} more)" if len(marks) > 1 else ""
+    if corner:
+        return f" — but {phrase} at {corner}{extra}, that time won't count."
+    return f" — but {phrase} out there{extra}, that time won't count."
+
+
+def format_dirty_baseline_speech(marks: "list[IncidentMark]") -> str:
+    """Spoken instead of 'Baseline set' when the would-be baseline is dirty."""
+    phrase = _ASTERISK_NOUN.get(marks[0].delta, "an incident") if marks else "an incident"
+    return (
+        f"That lap had {phrase} — I won't use it as the baseline. "
+        "Give me a clean one."
+    )
 
 
 def format_discard_speech(reason: DiscardReason) -> str:

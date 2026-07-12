@@ -38,14 +38,26 @@ def test_process_records_promotes_and_reports(sample_ibt_path, dbs):
     assert report.best_lap_time is not None and report.best_lap_time > 0
     # Session recorded -> path is now deduped
     assert str(sample_ibt_path) in track_db.processed_ibt_paths()
-    # First session at this combo -> PB promoted
-    assert report.promoted
-    metas = ref_store.list_all()
-    assert len(metas) == 1
-    assert metas[0].source == "personal_best"
-    assert metas[0].lap_time == pytest.approx(report.best_lap_time)
-    # First-ever reference is the lap itself -> baseline wording, no debrief
-    assert report.debrief_text is None
+    # sample.ibt has incidents on every lap -> all dirty -> no PB promoted
+    # (the cleanliness gate correctly blocks dirty laps from ReferenceStore).
+    # Pin that assumption: if the fixture is ever swapped for a clean one,
+    # this must fail loudly rather than silently flip to the else branch.
+    assert report.best_lap_dirty, (
+        "expected sample.ibt to have dirty laps — fixture changed?"
+    )
+    if report.best_lap_dirty:
+        assert not report.promoted
+        assert ref_store.list_all() == []
+        assert report.dirty_note is not None
+    else:
+        # Clean session: PB promoted as before
+        assert report.promoted
+        metas = ref_store.list_all()
+        assert len(metas) == 1
+        assert metas[0].source == "personal_best"
+        assert metas[0].lap_time == pytest.approx(report.best_lap_time)
+        # First-ever reference is the lap itself -> baseline wording, no debrief
+        assert report.debrief_text is None
 
 
 def test_rerun_does_not_repromote(sample_ibt_path, dbs):
@@ -116,6 +128,97 @@ def test_short_coverage_lap_not_promoted(tmp_path, dbs, monkeypatch):
     assert ref_store.list_all() == [], "ReferenceStore must remain empty"
 
 
+def _mk_lap(lap_number, lap_time, track_length):
+    """Plausible, full-coverage NormalizedLap for promotion tests."""
+    n = int(track_length)
+    z = np.zeros(n)
+    return NormalizedLap(
+        lap_number=lap_number, lap_time=lap_time, track_length=track_length,
+        distance=np.arange(n, dtype=float),
+        speed=np.full(n, track_length / lap_time), throttle=z, brake=z,
+        steering=z, gear=np.ones(n), rpm=np.full(n, 5000.0), lat=z, lon=z,
+        elapsed_time=np.linspace(0, lap_time, n), is_valid=True,
+    )
+
+
+def _mk_lap_df(lap_number, incident_counts):
+    """Raw per-lap frame the cleanliness check reads (Lap col for keying)."""
+    import pandas as pd
+    n = len(incident_counts)
+    return pd.DataFrame({
+        "Lap": [lap_number] * n,
+        "LapDist": [float(i * 100) for i in range(n)],
+        "PlayerCarMyIncidentCount": incident_counts,
+    })
+
+
+def _run_with(monkeypatch, tmp_path, dbs, lap_dfs, nlaps, track_length=4000.0):
+    import core.watcher.processor as proc_mod
+    from unittest.mock import MagicMock
+
+    mock_session = MagicMock()
+    mock_session.track_id = "525"
+    mock_session.track_name = "Spa"
+    mock_session.track_directory = "spa 2024 combined"
+    mock_session.track_length_km = track_length / 1000.0
+    mock_session.car_name = "M2"
+    mock_session.driver_name = "Test Driver"
+    mock_session.session_type = "practice"
+    mock_ibt = MagicMock()
+    mock_ibt.session = mock_session
+
+    monkeypatch.setattr(proc_mod.IBTParser, "parse", lambda self, p: mock_ibt)
+    monkeypatch.setattr(proc_mod.IBTParser, "get_laps", lambda self, ibt: lap_dfs)
+    monkeypatch.setattr(
+        proc_mod.Normalizer, "normalize_session", lambda *a, **kw: nlaps,
+    )
+    track_db, ref_store = dbs
+    fake = tmp_path / "fake.ibt"
+    fake.write_bytes(b"")
+    return process_ibt(fake, track_db, ref_store), ref_store
+
+
+def test_fastest_dirty_lap_not_promoted_clean_one_is(tmp_path, dbs, monkeypatch):
+    """Coach the dirty lap (it stays report.best) but promote the clean one."""
+    lap_dfs = [
+        _mk_lap_df(1, [0, 0, 1, 1]),   # dirty (fast)
+        _mk_lap_df(2, [1, 1, 1, 1]),   # clean (slower)
+    ]
+    nlaps = [_mk_lap(1, 100.0, 4000.0), _mk_lap(2, 102.0, 4000.0)]
+    report, ref_store = _run_with(monkeypatch, tmp_path, dbs, lap_dfs, nlaps)
+
+    assert report.error is None
+    assert report.best_lap_time == 100.0          # coached/reported best unchanged
+    assert report.best_lap_dirty
+    assert report.dirty_note is not None
+    assert report.promoted
+    metas = ref_store.list_all()
+    assert len(metas) == 1
+    assert metas[0].lap_time == pytest.approx(102.0)   # the CLEAN lap
+
+
+def test_all_dirty_nothing_promoted(tmp_path, dbs, monkeypatch):
+    lap_dfs = [_mk_lap_df(1, [0, 0, 2, 2])]
+    nlaps = [_mk_lap(1, 100.0, 4000.0)]
+    report, ref_store = _run_with(monkeypatch, tmp_path, dbs, lap_dfs, nlaps)
+
+    assert report.error is None
+    assert not report.promoted
+    assert report.best_lap_dirty
+    assert "no clean lap" in (report.dirty_note or "")
+    assert ref_store.list_all() == []
+
+
+def test_all_clean_behavior_unchanged(tmp_path, dbs, monkeypatch):
+    lap_dfs = [_mk_lap_df(1, [3, 3, 3, 3])]
+    nlaps = [_mk_lap(1, 100.0, 4000.0)]
+    report, ref_store = _run_with(monkeypatch, tmp_path, dbs, lap_dfs, nlaps)
+
+    assert report.error is None
+    assert report.promoted and not report.best_lap_dirty
+    assert report.dirty_note is None
+
+
 def test_debrief_against_preseeded_faster_reference(sample_ibt_path, dbs):
     track_db, ref_store = dbs
     # Pre-seed a faster synthetic g61 reference for the same combo.
@@ -138,6 +241,7 @@ def test_debrief_against_preseeded_faster_reference(sample_ibt_path, dbs):
     assert report.error is None
     assert report.debrief_text is not None
     assert "Lap" in report.debrief_text
-    # PB still promoted alongside (separate source row, g61 untouched)
+    # PB promoted alongside only when a clean lap exists; sample.ibt laps are
+    # all dirty so only g61 remains (dirty best is still debriefed, not promoted)
     sources = {m.source for m in ref_store.list_all()}
-    assert sources == {"g61", "personal_best"}
+    assert "g61" in sources  # pre-seeded reference untouched

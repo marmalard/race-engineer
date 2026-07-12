@@ -378,16 +378,23 @@ streamlit run app/streamlit_app.py
 - [x] Approach cue enriched — `approach_cue_from_diagnosis` combines the top-2 faults, DROPS the corner name ("Coming up — brake a couple car lengths later, get to throttle earlier on exit"), coarse car-length magnitude (a bit / a couple car lengths / a lot); solves the "named corners are spatially confusing" field problem; wired into `build_schedule`; old dead `Nudge.prompt` field removed
 - [x] Approach cues **on by default** — flag flipped to `--no-corner-prompts` (store_false); discard/invalid also `emit()` to the terminal + iPad web feed, not voice-only
 - [ ] Driving validation of round 2: radio-check audibility, discard-line timing, approach-cue phrasing/lead-time; tune magnitude buckets (COARSE_*_MAX_LENGTHS in nudges.py) from data/live_sessions logs
-- [ ] Deferred spec: track-limits asterisk (keep clean-telemetry laps with a minor infraction, flag the TIME as not counting via PlayerCarMyIncidentCount delta + PlayerTrackSurface + LapDist→corner; also closes the watcher's "no cleanliness gate on promoted PBs" item)
+- [x] Track-limits asterisk SHIPPED 2026-07-12 — see "Track-Limits Asterisk" section below
+
+**Track-Limits Asterisk — lap cleanliness** (complete, merged 2026-07-12 — spec/plan in docs/superpowers/specs/2026-07-11-track-limits-asterisk-design.md + plans/2026-07-12-track-limits-asterisk.md)
+- [x] Pure detector `core/telemetry/cleanliness.py` — dirty = ANY mid-lap rise in PlayerCarMyIncidentCount (1x/2x/4x kept per mark); `check_lap_cleanliness(df)` offline + `IncidentTracker` live (first-feed baseline, None-ignore, close_lap/reset keep the session-cumulative count baseline); fail-open on missing columns; NO phrasing/corner-naming in the module
+- [x] Watcher PB gate — promotion pool = plausible ∧ CLEAN (fastest clean lap promoted; the dirty fastest stays the coached/reported best); `SessionReport.best_lap_dirty` + `dirty_note` (incident noun + corner via corner_name_at, "~X.X km" fallback); CLI prints the NOTE. Verified on the real Spa fixture — both its laps are genuinely dirty, tests pin that assumption
+- [x] Live voice asterisk — dirty valid laps still fully coached, speech + terminal/feed get " — but track limits at {corner}, that time won't count." (1x; "you lost it"/2x, "contact"/4x, multi-mark "(and N more)", "out there" fallback); dirty laps NEVER become the session baseline ("That lap had track limits — I won't use it as the baseline. Give me a clean one.") or session-best; marks logged in session JSONL
+- [x] Invariant (holistically verified): no dirty lap can reach the ReferenceStore by ANY path (watcher gated; race path never promotes; live coach never writes it)
+- Known limits: iRacing's attribution lag can name the NEXT corner occasionally; already-promoted back-fill PBs are NOT re-audited (strictly-faster clean laps displace them over time — a re-audit script is a possible follow-up); shared phrasing via `incident_noun` in nudges.py
 
 **Stage 3: Telemetry Watcher** (complete, merged 2026-07-09)
 - [x] TrackDB session-history methods — sessions/laps tables activated; record_session pre-creates a stub track row for the FK, healed by the processor's early upsert_track (`core/track/track_db.py`)
 - [x] Scanner — 90s write-stability window, sessions-table dedupe, strictly-faster promotion, `is_plausible_lap` 85 m/s gate (ROAD-ONLY assumption — oval needs a track_type-dependent ceiling), `covers_full_lap` 98% gate (`core/watcher/scanner.py`)
-- [x] Processor — upsert real track row → record history → promote plausible+complete personal_best (never touches g61) → debrief vs best reference (`core/watcher/processor.py`)
+- [x] Processor — upsert real track row → record history → promote plausible+complete+CLEAN personal_best (never touches g61; cleanliness gate added 2026-07-12) → debrief vs best reference (`core/watcher/processor.py`)
 - [x] CLI — scan once or --watch poll every 30s; failures retry next scan (`scripts/watch_telemetry.py`)
 - [x] Normalizer hardening — rejects >100m single-sample forward LapDist jumps (stationary tow/reset teleports that inflated coverage past the 90% check); found via real back-fill corruption (11s "PBs")
 - [x] Back-fill executed over the real telemetry folder: 66 files, 30 plausible PBs across 14+ combos, g61 rows verified untouched, Spa 525 PB = the user's real 2:41.384
-- Watch item: no cleanliness gate on promoted PBs — an off-track-but-complete fast lap can become the reference (conscious tradeoff for a personal tool; revisit before automated reference trust matters; the deferred track-limits-asterisk spec closes this)
+- ~~Watch item: no cleanliness gate on promoted PBs~~ CLOSED 2026-07-12 by the track-limits asterisk (dirty laps can no longer be promoted; pre-existing back-fill PBs not re-audited)
 
 **Auto Race-Capture — watcher SP1** (complete, merged 2026-07-10 — spec/plan in docs/superpowers/specs+plans/2026-07-10-auto-race-capture*)
 - [x] `classify_ibt` — race iff `WeekendInfo.EventType == "Race"` + truthy SubSessionID; CLI routes via a cheap `parse_session_only` header read, races → race processor, everything else → the unchanged lap path (`core/watcher/race_processor.py`, `scripts/watch_telemetry.py`)
@@ -588,7 +595,7 @@ streamlit run app/streamlit_app.py
 - Deployment: `tailscale serve/funnel 8501` + `streamlit run` from the host PC; `.streamlit/config.toml` sets maxUploadSize 400
 
 ### Test Suite
-- 546 tests passing, 9 skipped (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`); the 4 race-capture integration tests need the gitignored Oulton fixtures (skip elsewhere)
+- 564 tests passing, 9 skipped (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`); the 4 race-capture integration tests need the gitignored Oulton fixtures (skip elsewhere)
 - Test fixtures: `tests/fixtures/sample.ibt` (Spa, BMW M2 CS Racing, 2 laps — gitignored)
 - Multi-lap fixture from `C:\Users\antho\Documents\iRacing\telemetry\` (Road America F4, 7 laps)
 - Bathurst fixture also available for corner detection tuning tests

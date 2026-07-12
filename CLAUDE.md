@@ -415,6 +415,14 @@ streamlit run app/streamlit_app.py
 - [x] Store reads added: TrackDB.list_session_history/get_session_laps (SessionRow/LapRow), RaceStore.get_narratives(cust_id) (newest first, subsession tiebreaker — same-timestamp saves are real)
 - With today's data (1 race): racecraft shows "collecting 1 of 3"; readiness lit across ~29 combos; prompt block builds from readiness alone (correct per spec)
 
+**Desktop Launcher** (complete, branch desktop-launcher — spec/plan in docs/superpowers/specs+plans/2026-07-12-desktop-launcher*)
+- [x] Double-click `Race Engineer` Desktop shortcut → `scripts/start-race-engineer.bat` → `scripts/launch.py`: starts the telemetry watcher (ManagedProcess, run_dir pinned to repo data/run) + Streamlit as a console child (closing the console stops the app; watcher survives), polls port 8501 then opens the browser; idempotent — if 8501 already serves, it just opens the browser
+- [x] `scripts/stop-race-engineer.bat` → `scripts/stop_all.py`: stops watcher + live-coach via ManagedProcess, then finds Streamlit by command-line fragments (`_CMDLINE_FRAGMENTS` = repo root + streamlit + streamlit_app.py — matches both `-m streamlit` and `streamlit.exe run` styles, repo-scoped) and tree-kills it
+- [x] Coupling tests pin `_CMDLINE_FRAGMENTS` to `launch.STREAMLIT_CMD` (marker can't silently drift from the launch command); port helpers real-socket tested; process/browser I/O untested by convention
+- [x] Shortcut created once via `scripts/install_shortcut.py` (WScript.Shell COM through PowerShell, OneDrive-safe Desktop resolution)
+- Live coach deliberately NOT auto-started — stays a Toolbox button (driving-only, may want --mute / cue flags)
+- [ ] On-rig smoke test (launcher double-click, idempotent re-click, stop .bat, no-orphan check — deferred; user was mid-session during implementation)
+
 **Phase 3 (revised per v2 strategy): Race Debrief + Intelligence foundation** (Surface 1 shipped 2026-07-06, branch race-debrief — see `docs/superpowers/specs/2026-07-06-race-debrief-design.md`)
 - [x] Race session ingestion: race IBT + Data API results + session YAML → race narrative (position timeline, gap evolution, incident timing, stint pace) (`core/race/ingest.py`, `core/race/narrative.py`)
 - [x] Debrief generation (existing synthesis voice) + conversational follow-up loop — engineer, not judge; honest, never scolding (`core/coaching/prompts/race_debrief.py`, chat grounded in narrative JSON)
@@ -595,7 +603,7 @@ streamlit run app/streamlit_app.py
 - Deployment: `tailscale serve/funnel 8501` + `streamlit run` from the host PC; `.streamlit/config.toml` sets maxUploadSize 400
 
 ### Test Suite
-- 564 tests passing, 9 skipped (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`); the 4 race-capture integration tests need the gitignored Oulton fixtures (skip elsewhere)
+- 574 tests passing, 9 skipped (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`); the 4 race-capture integration tests need the gitignored Oulton fixtures (skip elsewhere)
 - Test fixtures: `tests/fixtures/sample.ibt` (Spa, BMW M2 CS Racing, 2 laps — gitignored)
 - Multi-lap fixture from `C:\Users\antho\Documents\iRacing\telemetry\` (Road America F4, 7 laps)
 - Bathurst fixture also available for corner detection tuning tests

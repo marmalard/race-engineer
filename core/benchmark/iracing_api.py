@@ -60,6 +60,26 @@ class DriverStats:
     license_level: float
 
 
+# --- Phase 4 data models (pre-race briefing plumbing) ---
+
+@dataclass
+class RaceGuideSession:
+    """An upcoming official session from /data/season/race_guide.
+
+    entry_count and session_id only populate ~30 minutes before the
+    session starts (registration window); before that they are 0/None.
+    """
+
+    series_id: int
+    season_id: int
+    race_week_num: int
+    start_time: str  # ISO timestamp
+    end_time: str  # ISO timestamp
+    entry_count: int  # live registration count; 0 until reg opens
+    session_id: int | None  # None until the session is created
+    super_session: bool
+
+
 class IRacingAPIClient(ABC):
     """Abstract interface for iRacing Data API."""
 
@@ -436,6 +456,47 @@ class LiveIRacingAPI(IRacingAPIClient):
         )
         return self._fetch_chunked(data)
 
+    # --- Phase 4: pre-race briefing plumbing ---
+
+    def get_race_guide(
+        self, from_time: str | None = None
+    ) -> list[RaceGuideSession]:
+        """Get upcoming official sessions from /data/season/race_guide.
+
+        The guide returns a 3-hour block starting at from_time (ISO
+        timestamp, defaults to now server-side); page forward by passing
+        later from_time values. entry_count / session_id populate only
+        ~30 minutes before each session's start.
+        """
+        params = {"from": from_time} if from_time is not None else None
+        data = self._api_get("/data/season/race_guide", params)
+        return parse_race_guide(data)
+
+
+# --- Phase 4 parse functions (pure; unit-testable with inline dicts) ---
+
+def parse_race_guide(payload: dict) -> list[RaceGuideSession]:
+    """Parse a /data/season/race_guide payload into RaceGuideSession rows.
+
+    Tolerates missing session_id / zero entry_count (both only populate
+    ~30 minutes before a session starts). Returns [] for malformed input.
+    """
+    if not isinstance(payload, dict):
+        return []
+    sessions = []
+    for row in payload.get("sessions", []):
+        sessions.append(RaceGuideSession(
+            series_id=row.get("series_id", 0),
+            season_id=row.get("season_id", 0),
+            race_week_num=row.get("race_week_num", 0),
+            start_time=row.get("start_time", ""),
+            end_time=row.get("end_time", ""),
+            entry_count=row.get("entry_count", 0) or 0,
+            session_id=row.get("session_id"),
+            super_session=bool(row.get("super_session", False)),
+        ))
+    return sessions
+
 
 def _parse_lap_time(value: int | float) -> float:
     """Parse a lap time value from the iRacing API.
@@ -487,4 +548,11 @@ class StubIRacingAPI(IRacingAPIClient):
     def get_lap_data(
         self, subsession_id: int, simsession_number: int, cust_id: int
     ) -> list[dict]:
+        return []
+
+    # --- Phase 4 parallels: graceful empty fallbacks ---
+
+    def get_race_guide(
+        self, from_time: str | None = None
+    ) -> list[RaceGuideSession]:
         return []

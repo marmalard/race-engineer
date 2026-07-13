@@ -180,6 +180,66 @@ class SeasonSchedule:
     weeks: list[RaceWeek] = field(default_factory=list)
 
 
+@dataclass
+class MemberLicense:
+    """One category license from a member profile."""
+
+    category_id: int
+    category: str  # e.g. "sports_car"
+    irating: int | None  # None when unrated (-1 in the raw payload)
+    safety_rating: float | None
+    cpi: float | None
+    license_level: int
+    group_name: str  # e.g. "Class A", "Rookie"
+
+
+@dataclass
+class MemberProfile:
+    """Identity + licenses slice of /data/member/profile.
+
+    The building block of an opponent card: current iRating / SR per
+    category. Trend comes from get_member_chart_data, career volume from
+    get_member_career, recent form from get_member_recent_races.
+    """
+
+    cust_id: int
+    display_name: str
+    licenses: list[MemberLicense] = field(default_factory=list)
+
+    def license_for_category(self, category_id: int) -> MemberLicense | None:
+        """Return the license for a category id, or None if absent."""
+        for lic in self.licenses:
+            if lic.category_id == category_id:
+                return lic
+        return None
+
+
+@dataclass
+class IRatingPoint:
+    """One point of a member's iRating time series (chart_data)."""
+
+    when: str  # ISO date
+    value: int
+
+
+@dataclass
+class CareerStats:
+    """One category's career statistics from /data/stats/member_career."""
+
+    category_id: int
+    category: str  # e.g. "Sports Car"
+    starts: int
+    wins: int
+    top5: int
+    poles: int
+    avg_start_position: float
+    avg_finish_position: float
+    laps: int
+    laps_led: int
+    avg_incidents: float
+    win_percentage: float
+
+
 class IRacingAPIClient(ABC):
     """Abstract interface for iRacing Data API."""
 
@@ -659,6 +719,40 @@ class LiveIRacingAPI(IRacingAPIClient):
         )
         return parse_season_schedules(data)
 
+    def get_member_profile(self, cust_id: int) -> MemberProfile | None:
+        """Get a member's identity + licenses via /data/member/profile.
+
+        Opponent-card building block; 2-3 calls per opponent add up for
+        a full field (12 cars = 24-36 calls) — callers should cache.
+        """
+        data = self._api_get("/data/member/profile", {"cust_id": cust_id})
+        return parse_member_profile(data)
+
+    def get_member_chart_data(
+        self, cust_id: int, category_id: int = 5, chart_type: int = 1
+    ) -> list[IRatingPoint]:
+        """Get a member's iRating time series via /data/member/chart_data.
+
+        category_id: 5 = sports_car, 6 = formula (1 oval, 2 road legacy).
+        chart_type 1 = iRating.
+        """
+        data = self._api_get(
+            "/data/member/chart_data",
+            {
+                "cust_id": cust_id,
+                "category_id": category_id,
+                "chart_type": chart_type,
+            },
+        )
+        return parse_chart_data(data)
+
+    def get_member_career(self, cust_id: int) -> list[CareerStats]:
+        """Get per-category career stats via /data/stats/member_career."""
+        data = self._api_get(
+            "/data/stats/member_career", {"cust_id": cust_id}
+        )
+        return parse_member_career(data)
+
 
 # --- Phase 4 parse functions (pure; unit-testable with inline dicts) ---
 
@@ -830,6 +924,68 @@ def parse_season_schedules(payload: list | dict) -> list[SeasonSchedule]:
     return seasons
 
 
+def parse_member_profile(payload: dict) -> MemberProfile | None:
+    """Parse /data/member/profile into a MemberProfile, or None.
+
+    Only member_info (identity + licenses) is kept; awards, activity and
+    license history are dropped. Unrated iRating (-1) maps to None.
+    """
+    if not isinstance(payload, dict):
+        return None
+    member_info = payload.get("member_info")
+    if not isinstance(member_info, dict):
+        return None
+    licenses = []
+    for lic in member_info.get("licenses", []):
+        licenses.append(MemberLicense(
+            category_id=lic.get("category_id", 0),
+            category=lic.get("category", ""),
+            irating=_rating_or_none(lic.get("irating")),
+            safety_rating=lic.get("safety_rating"),
+            cpi=lic.get("cpi"),
+            license_level=lic.get("license_level", 0),
+            group_name=lic.get("group_name", ""),
+        ))
+    return MemberProfile(
+        cust_id=member_info.get("cust_id", 0),
+        display_name=member_info.get("display_name", ""),
+        licenses=licenses,
+    )
+
+
+def parse_chart_data(payload: dict) -> list[IRatingPoint]:
+    """Parse /data/member/chart_data into an iRating time series."""
+    if not isinstance(payload, dict):
+        return []
+    return [
+        IRatingPoint(when=p.get("when", ""), value=p.get("value", 0))
+        for p in payload.get("data", [])
+    ]
+
+
+def parse_member_career(payload: dict) -> list[CareerStats]:
+    """Parse /data/stats/member_career into per-category CareerStats."""
+    if not isinstance(payload, dict):
+        return []
+    stats = []
+    for row in payload.get("stats", []):
+        stats.append(CareerStats(
+            category_id=row.get("category_id", 0),
+            category=row.get("category", ""),
+            starts=row.get("starts", 0),
+            wins=row.get("wins", 0),
+            top5=row.get("top5", 0),
+            poles=row.get("poles", 0),
+            avg_start_position=row.get("avg_start_position", 0),
+            avg_finish_position=row.get("avg_finish_position", 0),
+            laps=row.get("laps", 0),
+            laps_led=row.get("laps_led", 0),
+            avg_incidents=row.get("avg_incidents", 0.0),
+            win_percentage=row.get("win_percentage", 0.0),
+        ))
+    return stats
+
+
 def _parse_lap_time(value: int | float) -> float:
     """Parse a lap time value from the iRacing API.
 
@@ -912,4 +1068,15 @@ class StubIRacingAPI(IRacingAPIClient):
     def get_series_seasons(
         self, include_series: bool = True
     ) -> list[SeasonSchedule]:
+        return []
+
+    def get_member_profile(self, cust_id: int) -> MemberProfile | None:
+        return None
+
+    def get_member_chart_data(
+        self, cust_id: int, category_id: int = 5, chart_type: int = 1
+    ) -> list[IRatingPoint]:
+        return []
+
+    def get_member_career(self, cust_id: int) -> list[CareerStats]:
         return []

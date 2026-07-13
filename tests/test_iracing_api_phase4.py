@@ -10,7 +10,11 @@ import time
 import pytest
 
 from core.benchmark.iracing_api import (
+    CareerStats,
+    IRatingPoint,
     LiveIRacingAPI,
+    MemberLicense,
+    MemberProfile,
     RaceGuideSession,
     RaceWeek,
     RegisteredDriver,
@@ -20,6 +24,9 @@ from core.benchmark.iracing_api import (
     StubIRacingAPI,
     _TokenData,
     _rating_or_none,
+    parse_chart_data,
+    parse_member_career,
+    parse_member_profile,
     parse_race_guide,
     parse_reg_drivers,
     parse_season_schedules,
@@ -641,3 +648,219 @@ class TestGetSeriesSeasons:
 class TestStubSeriesSeasons:
     def test_returns_empty(self):
         assert StubIRacingAPI().get_series_seasons() == []
+
+
+# ---------------------------------------------------------------------------
+# Opponent primitives — member profile / chart_data / career
+# ---------------------------------------------------------------------------
+
+# Modeled on data/api_spike/member_profile_1523425.json (anonymized)
+MEMBER_PROFILE_PAYLOAD = {
+    "success": True,
+    "cust_id": 1523425,
+    "member_info": {
+        "cust_id": 1523425,
+        "display_name": "Driver D",
+        "member_since": "2025-11-02",
+        "last_login": "2026-07-13T01:12:00Z",
+        "licenses": [
+            {
+                "category_id": 1,
+                "category": "oval",
+                "category_name": "Oval",
+                "license_level": 2,
+                "safety_rating": 2.45,
+                "cpi": 9.808207,
+                "irating": 1321,
+                "tt_rating": 1350,
+                "mpr_num_races": 1,
+                "group_name": "Rookie",
+                "group_id": 1,
+            },
+            {
+                "category_id": 5,
+                "category": "sports_car",
+                "category_name": "Sports Car",
+                "license_level": 10,
+                "safety_rating": 3.1,
+                "cpi": 35.2,
+                "irating": -1,  # unrated in this category
+                "group_name": "Class C",
+                "group_id": 3,
+            },
+        ],
+    },
+    "license_history": [],
+    "recent_awards": [],
+    "activity": {},
+    "follow_counts": {},
+}
+
+# Modeled on data/api_spike/chart_data_1523425.json
+CHART_DATA_PAYLOAD = {
+    "blackout": False,
+    "category_id": 5,
+    "chart_type": 1,
+    "success": True,
+    "cust_id": 1523425,
+    "data": [
+        {"when": "2026-07-04", "value": 1380},
+        {"when": "2026-07-07", "value": 1360},
+        {"when": "2026-07-13", "value": 1528},
+    ],
+}
+
+# Modeled on data/api_spike/member_career_1523425.json
+MEMBER_CAREER_PAYLOAD = {
+    "cust_id": 1523425,
+    "stats": [
+        {
+            "category_id": 5,
+            "category": "Sports Car",
+            "starts": 23,
+            "wins": 6,
+            "top5": 11,
+            "poles": 4,
+            "avg_start_position": 7,
+            "avg_finish_position": 6,
+            "laps": 165,
+            "laps_led": 48,
+            "avg_incidents": 6.3043,
+            "avg_points": 44,
+            "win_percentage": 26.09,
+            "top5_percentage": 47.83,
+            "laps_led_percentage": 29.09,
+            "poles_percentage": 17.39,
+        },
+        {
+            "category_id": 3,
+            "category": "Dirt Oval",
+            "starts": 0,
+            "wins": 0,
+            "top5": 0,
+            "poles": 0,
+            "avg_start_position": 0,
+            "avg_finish_position": 0,
+            "laps": 0,
+            "laps_led": 0,
+            "avg_incidents": 0,
+            "win_percentage": 0,
+        },
+    ],
+}
+
+
+class TestParseMemberProfile:
+    def test_parses_profile(self):
+        profile = parse_member_profile(MEMBER_PROFILE_PAYLOAD)
+        assert isinstance(profile, MemberProfile)
+        assert profile.cust_id == 1523425
+        assert profile.display_name == "Driver D"
+        assert len(profile.licenses) == 2
+
+    def test_parses_license_fields(self):
+        profile = parse_member_profile(MEMBER_PROFILE_PAYLOAD)
+        oval = profile.licenses[0]
+        assert isinstance(oval, MemberLicense)
+        assert oval.category_id == 1
+        assert oval.category == "oval"
+        assert oval.irating == 1321
+        assert oval.safety_rating == pytest.approx(2.45)
+        assert oval.cpi == pytest.approx(9.808207)
+        assert oval.license_level == 2
+        assert oval.group_name == "Rookie"
+
+    def test_unrated_category_irating_none(self):
+        profile = parse_member_profile(MEMBER_PROFILE_PAYLOAD)
+        sports = profile.licenses[1]
+        assert sports.irating is None
+        assert sports.group_name == "Class C"
+
+    def test_license_lookup_by_category(self):
+        profile = parse_member_profile(MEMBER_PROFILE_PAYLOAD)
+        assert profile.license_for_category(5).group_name == "Class C"
+        assert profile.license_for_category(99) is None
+
+    def test_malformed_returns_none(self):
+        assert parse_member_profile(None) is None
+        assert parse_member_profile({}) is None
+        assert parse_member_profile({"success": True}) is None
+
+
+class TestParseChartData:
+    def test_parses_points(self):
+        points = parse_chart_data(CHART_DATA_PAYLOAD)
+        assert len(points) == 3
+        assert isinstance(points[0], IRatingPoint)
+        assert points[0].when == "2026-07-04"
+        assert points[0].value == 1380
+        assert points[-1].value == 1528
+
+    def test_empty_and_malformed(self):
+        assert parse_chart_data({"success": True, "data": []}) == []
+        assert parse_chart_data({"success": True}) == []
+        assert parse_chart_data(None) == []
+
+
+class TestParseMemberCareer:
+    def test_parses_category_stats(self):
+        stats = parse_member_career(MEMBER_CAREER_PAYLOAD)
+        assert len(stats) == 2
+        sports = stats[0]
+        assert isinstance(sports, CareerStats)
+        assert sports.category_id == 5
+        assert sports.category == "Sports Car"
+        assert sports.starts == 23
+        assert sports.wins == 6
+        assert sports.top5 == 11
+        assert sports.win_percentage == pytest.approx(26.09)
+        assert sports.avg_incidents == pytest.approx(6.3043)
+        assert sports.avg_start_position == 7
+        assert sports.avg_finish_position == 6
+        assert sports.laps == 165
+        assert sports.laps_led == 48
+
+    def test_empty_and_malformed(self):
+        assert parse_member_career({"cust_id": 1, "stats": []}) == []
+        assert parse_member_career({"cust_id": 1}) == []
+        assert parse_member_career(None) == []
+
+
+class TestOpponentClientMethods:
+    def test_get_member_profile_passes_cust_id(self):
+        api = _api_with_fake_client({
+            "/data/member/profile": {"link": "https://s3.example/prof"},
+            "s3.example/prof": MEMBER_PROFILE_PAYLOAD,
+        })
+        profile = api.get_member_profile(1523425)
+        assert profile.display_name == "Driver D"
+        assert api._client.params[0] == {"cust_id": 1523425}
+
+    def test_get_member_chart_data_defaults(self):
+        api = _api_with_fake_client({
+            "/data/member/chart_data": {"link": "https://s3.example/chart"},
+            "s3.example/chart": CHART_DATA_PAYLOAD,
+        })
+        points = api.get_member_chart_data(1523425)
+        assert len(points) == 3
+        # sports_car iRating by default: category_id 5, chart_type 1
+        assert api._client.params[0] == {
+            "cust_id": 1523425, "category_id": 5, "chart_type": 1,
+        }
+
+    def test_get_member_career_passes_cust_id(self):
+        api = _api_with_fake_client({
+            "/data/stats/member_career": {"link": "https://s3.example/career"},
+            "s3.example/career": MEMBER_CAREER_PAYLOAD,
+        })
+        stats = api.get_member_career(1523425)
+        assert stats[0].starts == 23
+        assert api._client.params[0] == {"cust_id": 1523425}
+
+
+class TestStubOpponentMethods:
+    def test_graceful_empties(self):
+        stub = StubIRacingAPI()
+        assert stub.get_member_profile(1523425) is None
+        assert stub.get_member_chart_data(1523425) == []
+        assert stub.get_member_career(1523425) == []

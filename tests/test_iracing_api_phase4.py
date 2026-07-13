@@ -12,11 +12,16 @@ import pytest
 from core.benchmark.iracing_api import (
     LiveIRacingAPI,
     RaceGuideSession,
+    RegisteredDriver,
     SeriesResultRow,
+    SpectatorSubsession,
     StubIRacingAPI,
     _TokenData,
+    _rating_or_none,
     parse_race_guide,
+    parse_reg_drivers,
     parse_series_results,
+    parse_spectator_subsessions,
 )
 
 
@@ -318,3 +323,179 @@ class TestSearchSeriesResults:
 class TestStubSearchSeries:
     def test_returns_empty(self):
         assert StubIRacingAPI().search_series_results(season_id=6266) == []
+
+
+# ---------------------------------------------------------------------------
+# Registered drivers roster — /data/session/reg_drivers_list
+# ---------------------------------------------------------------------------
+
+# Modeled on data/api_spike/reg_drivers_live_87170269.json (anonymized)
+REG_DRIVERS_PAYLOAD = {
+    "subscribed": True,
+    "subsession_id": 87170269,
+    "success": True,
+    "entries": [
+        {
+            "cust_id": 414541,
+            "display_name": "Driver B",
+            "car_id": 213,
+            "car_name": "EURO NASCAR V8GP",
+            "car_class_id": 4104,
+            "car_class_name": "EURO NASCAR V8GP",
+            "reg_status": "reg_joined",
+            "license": {
+                "category_id": 5,
+                "category": "sports_car",
+                "category_name": "Sports Car",
+                "license_level": 17,
+                "safety_rating": 1.19,
+                "cpi": 26.174011,
+                "irating": 1467,
+                "tt_rating": 1350,
+                "mpr_num_races": 18,
+                "group_name": "Class A",
+                "group_id": 5,
+            },
+            "session_id": 315364678,
+            "subsession_id": 87170269,
+            "event_type": 5,
+        },
+    ],
+}
+
+
+class TestRatingOrNone:
+    def test_unrated_minus_one_is_none(self):
+        assert _rating_or_none(-1) is None
+
+    def test_normal_value_passes(self):
+        assert _rating_or_none(1467) == 1467
+
+    def test_none_passes_through(self):
+        assert _rating_or_none(None) is None
+
+    def test_zero_passes(self):
+        assert _rating_or_none(0) == 0
+
+
+class TestParseRegDrivers:
+    def test_parses_entry(self):
+        drivers = parse_reg_drivers(REG_DRIVERS_PAYLOAD)
+        assert len(drivers) == 1
+        d = drivers[0]
+        assert isinstance(d, RegisteredDriver)
+        assert d.cust_id == 414541
+        assert d.display_name == "Driver B"
+        assert d.car_id == 213
+        assert d.car_name == "EURO NASCAR V8GP"
+        assert d.reg_status == "reg_joined"
+        assert d.irating == 1467
+        assert d.safety_rating == pytest.approx(1.19)
+        assert d.cpi == pytest.approx(26.174011)
+        assert d.license_level == 17
+        assert d.group_name == "Class A"
+        assert d.mpr_num_races == 18
+
+    def test_unrated_driver_irating_none(self):
+        payload = {
+            "entries": [{
+                "cust_id": 1,
+                "display_name": "Driver C",
+                "license": {"irating": -1, "safety_rating": 2.5},
+            }],
+        }
+        d = parse_reg_drivers(payload)[0]
+        assert d.irating is None
+        assert d.safety_rating == pytest.approx(2.5)
+
+    def test_missing_license_block_tolerated(self):
+        payload = {"entries": [{"cust_id": 1, "display_name": "Driver C"}]}
+        d = parse_reg_drivers(payload)[0]
+        assert d.irating is None
+        assert d.safety_rating is None
+        assert d.cpi is None
+        assert d.group_name == ""
+
+    def test_empty_entries(self):
+        """Pre-launch and post-completion: success true, entries empty."""
+        payload = {"subscribed": True, "entries": [], "success": True}
+        assert parse_reg_drivers(payload) == []
+
+    def test_non_dict_payload(self):
+        assert parse_reg_drivers(None) == []
+
+
+# ---------------------------------------------------------------------------
+# Spectator subsession discovery — /data/season/spectator_subsessionids_detail
+# ---------------------------------------------------------------------------
+
+# Modeled on data/api_spike/spectator_subsession_detail.json
+SPECTATOR_PAYLOAD = {
+    "success": True,
+    "season_ids": [6404, 6265],
+    "event_types": [5],
+    "subsessions": [
+        {
+            "subsession_id": 87170269,
+            "session_id": 315364678,
+            "season_id": 6404,
+            "start_time": "2026-07-13T14:15:00Z",
+            "race_week_num": 3,
+            "event_type": 5,
+        },
+        {
+            "subsession_id": 87170000,
+            "session_id": 315363545,
+            "season_id": 6265,
+            "start_time": "2026-07-13T14:00:00Z",
+            "race_week_num": 3,
+            "event_type": 5,
+        },
+    ],
+}
+
+
+class TestParseSpectatorSubsessions:
+    def test_parses_rows(self):
+        subs = parse_spectator_subsessions(SPECTATOR_PAYLOAD)
+        assert len(subs) == 2
+        first = subs[0]
+        assert isinstance(first, SpectatorSubsession)
+        assert first.subsession_id == 87170269
+        assert first.session_id == 315364678
+        assert first.season_id == 6404
+        assert first.start_time == "2026-07-13T14:15:00Z"
+        assert first.race_week_num == 3
+        assert first.event_type == 5
+
+    def test_empty_and_malformed(self):
+        assert parse_spectator_subsessions({"success": True}) == []
+        assert parse_spectator_subsessions(None) == []
+
+
+class TestGetRegDriversAndSpectator:
+    def test_get_reg_drivers_passes_subsession_id(self):
+        api = _api_with_fake_client({
+            "/data/session/reg_drivers_list": {"link": "https://s3.example/reg"},
+            "s3.example/reg": REG_DRIVERS_PAYLOAD,
+        })
+        drivers = api.get_reg_drivers(87170269)
+        assert len(drivers) == 1
+        assert api._client.params[0] == {"subsession_id": 87170269}
+
+    def test_get_spectator_subsessions_passes_event_types(self):
+        api = _api_with_fake_client({
+            "/data/season/spectator_subsessionids_detail":
+                {"link": "https://s3.example/spec"},
+            "s3.example/spec": SPECTATOR_PAYLOAD,
+        })
+        subs = api.get_spectator_subsessions()
+        assert len(subs) == 2
+        assert api._client.params[0] == {"event_types": 5}
+
+
+class TestStubRoster:
+    def test_returns_empty(self):
+        stub = StubIRacingAPI()
+        assert stub.get_reg_drivers(87170269) == []
+        assert stub.get_spectator_subsessions() == []

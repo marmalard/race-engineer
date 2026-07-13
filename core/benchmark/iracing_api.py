@@ -109,6 +109,44 @@ class SeriesResultRow:
     official_session: bool
 
 
+@dataclass
+class RegisteredDriver:
+    """One roster entry from /data/session/reg_drivers_list.
+
+    The roster is only populated while the session is live (from launch
+    until completion); before launch and after completion the endpoint
+    returns success with empty entries.
+    """
+
+    cust_id: int
+    display_name: str
+    car_id: int
+    car_name: str
+    reg_status: str  # e.g. "reg_joined"
+    irating: int | None  # None when unrated (-1 in the raw payload)
+    safety_rating: float | None
+    cpi: float | None
+    license_level: int
+    group_name: str  # e.g. "Class A"
+    mpr_num_races: int
+
+
+@dataclass
+class SpectatorSubsession:
+    """A live subsession from /data/season/spectator_subsessionids_detail.
+
+    Used to discover live subsession_ids (join season_id to a series to
+    find the user's session) for the reg_drivers_list roster call.
+    """
+
+    subsession_id: int
+    session_id: int
+    season_id: int
+    start_time: str  # ISO timestamp
+    race_week_num: int
+    event_type: int
+
+
 class IRacingAPIClient(ABC):
     """Abstract interface for iRacing Data API."""
 
@@ -545,6 +583,34 @@ class LiveIRacingAPI(IRacingAPIClient):
         rows = self._fetch_chunked(holder)
         return parse_series_results(rows)
 
+    def get_reg_drivers(self, subsession_id: int) -> list[RegisteredDriver]:
+        """Get the live roster for a subsession via reg_drivers_list.
+
+        Only populated while the session is live (launch to completion).
+        Returns [] before launch and after completion (success with empty
+        entries — emptiness is ambiguous, not an error; the endpoint also
+        returns empty for ids it does not recognize, never a 4xx).
+        """
+        data = self._api_get(
+            "/data/session/reg_drivers_list",
+            {"subsession_id": subsession_id},
+        )
+        return parse_reg_drivers(data)
+
+    def get_spectator_subsessions(
+        self, event_types: int = 5
+    ) -> list[SpectatorSubsession]:
+        """List live subsessions (spectator discovery).
+
+        Used to find the subsession_id of a just-launched session for
+        get_reg_drivers. event_types 5 = Race.
+        """
+        data = self._api_get(
+            "/data/season/spectator_subsessionids_detail",
+            {"event_types": event_types},
+        )
+        return parse_spectator_subsessions(data)
+
 
 # --- Phase 4 parse functions (pure; unit-testable with inline dicts) ---
 
@@ -607,6 +673,58 @@ def parse_series_results(rows: list[dict] | None) -> list[SeriesResultRow]:
             official_session=bool(row.get("official_session", False)),
         ))
     return parsed
+
+
+def _rating_or_none(value: int | None) -> int | None:
+    """Normalize an iRating value: -1 means unrated and becomes None."""
+    if value is None or value == -1:
+        return None
+    return value
+
+
+def parse_reg_drivers(payload: dict) -> list[RegisteredDriver]:
+    """Parse a /data/session/reg_drivers_list payload into roster entries.
+
+    Empty entries with success=true is the normal pre-launch and
+    post-completion state, not an error. Unrated iRating (-1) maps to
+    None; a missing license block yields None ratings.
+    """
+    if not isinstance(payload, dict):
+        return []
+    drivers = []
+    for entry in payload.get("entries", []):
+        license_block = entry.get("license") or {}
+        drivers.append(RegisteredDriver(
+            cust_id=entry.get("cust_id", 0),
+            display_name=entry.get("display_name", ""),
+            car_id=entry.get("car_id", 0),
+            car_name=entry.get("car_name", ""),
+            reg_status=entry.get("reg_status", ""),
+            irating=_rating_or_none(license_block.get("irating")),
+            safety_rating=license_block.get("safety_rating"),
+            cpi=license_block.get("cpi"),
+            license_level=license_block.get("license_level", 0),
+            group_name=license_block.get("group_name", ""),
+            mpr_num_races=license_block.get("mpr_num_races", 0),
+        ))
+    return drivers
+
+
+def parse_spectator_subsessions(payload: dict) -> list[SpectatorSubsession]:
+    """Parse /data/season/spectator_subsessionids_detail into rows."""
+    if not isinstance(payload, dict):
+        return []
+    subs = []
+    for row in payload.get("subsessions", []):
+        subs.append(SpectatorSubsession(
+            subsession_id=row.get("subsession_id", 0),
+            session_id=row.get("session_id", 0),
+            season_id=row.get("season_id", 0),
+            start_time=row.get("start_time", ""),
+            race_week_num=row.get("race_week_num", 0),
+            event_type=row.get("event_type", 0),
+        ))
+    return subs
 
 
 def _parse_lap_time(value: int | float) -> float:
@@ -678,4 +796,12 @@ class StubIRacingAPI(IRacingAPIClient):
         official_only: bool = True,
         event_types: int = 5,
     ) -> list[SeriesResultRow]:
+        return []
+
+    def get_reg_drivers(self, subsession_id: int) -> list[RegisteredDriver]:
+        return []
+
+    def get_spectator_subsessions(
+        self, event_types: int = 5
+    ) -> list[SpectatorSubsession]:
         return []

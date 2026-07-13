@@ -5,8 +5,6 @@ recorded responses from the 2026-07-13 spike (data/api_spike/, gitignored).
 No live API calls here — client methods use a fake HTTP client.
 """
 
-import time
-
 import pytest
 
 from core.benchmark.iracing_api import (
@@ -245,6 +243,20 @@ class TestParseSeriesResults:
         assert row.winner_name == ""
         assert row.winner_cust_id == 0
         assert row.event_best_lap_time == 0.0
+
+    def test_official_session_flag_parsed(self):
+        row = parse_series_results([SEARCH_SERIES_ROW])[0]
+        assert row.official_session is True
+
+    def test_no_valid_lap_sentinel_becomes_zero(self):
+        # The API reports -1 when no valid lap exists; pace math doing
+        # min() over split best-laps must never see the sentinel.
+        dirty = dict(SEARCH_SERIES_ROW)
+        dirty["event_best_lap_time"] = -1
+        dirty["event_average_lap"] = -1
+        row = parse_series_results([dirty])[0]
+        assert row.event_best_lap_time == 0.0
+        assert row.event_average_lap == 0.0
 
     def test_empty_input(self):
         assert parse_series_results([]) == []
@@ -864,3 +876,21 @@ class TestStubOpponentMethods:
         assert stub.get_member_profile(1523425) is None
         assert stub.get_member_chart_data(1523425) == []
         assert stub.get_member_career(1523425) == []
+
+
+class TestNullListKeys:
+    def test_present_but_null_list_keys_return_empty(self):
+        # A payload with the list key present but null must not raise -
+        # these parsers sit on the briefing's live network path.
+        assert parse_race_guide({"sessions": None}) == []
+        assert parse_reg_drivers({"entries": None}) == []
+        assert parse_spectator_subsessions({"subsessions": None}) == []
+        assert parse_season_schedules({"seasons": None}) == []
+        assert parse_chart_data({"data": None}) == []
+        assert parse_member_career({"stats": None}) == []
+
+    def test_null_schedules_within_season_tolerated(self):
+        seasons = parse_season_schedules(
+            [{"series_id": 571, "season_id": 6266, "schedules": None}]
+        )
+        assert seasons[0].weeks == []

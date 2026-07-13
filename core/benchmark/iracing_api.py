@@ -765,7 +765,7 @@ def parse_race_guide(payload: dict) -> list[RaceGuideSession]:
     if not isinstance(payload, dict):
         return []
     sessions = []
-    for row in payload.get("sessions", []):
+    for row in payload.get("sessions") or []:
         sessions.append(RaceGuideSession(
             series_id=row.get("series_id", 0),
             season_id=row.get("season_id", 0),
@@ -799,15 +799,17 @@ def parse_series_results(rows: list[dict] | None) -> list[SeriesResultRow]:
             num_drivers=row.get("num_drivers", 0),
             track_id=track.get("track_id", 0),
             track_name=track.get("track_name", ""),
-            event_best_lap_time=_parse_lap_time(
+            event_best_lap_time=_lap_time_or_zero(
                 row.get("event_best_lap_time", 0)
             ),
-            event_average_lap=_parse_lap_time(
+            event_average_lap=_lap_time_or_zero(
                 row.get("event_average_lap", 0)
             ),
             num_cautions=row.get("num_cautions", 0),
             num_lead_changes=row.get("num_lead_changes", 0),
             winner_name=row.get("winner_name", ""),
+            # winner_group_id is a cust_id in solo events but a TEAM id in
+            # team events - do not fetch member profiles for it blindly.
             winner_cust_id=row.get("winner_group_id", 0),
             season_id=row.get("season_id", 0),
             series_id=row.get("series_id", 0),
@@ -824,6 +826,17 @@ def _rating_or_none(value: int | None) -> int | None:
     return value
 
 
+def _lap_time_or_zero(value: "int | float") -> float:
+    """Lap time in seconds; the API's -1 'no valid lap' sentinel becomes 0.0.
+
+    Guards briefing pace math: min() over split best-laps must never pick
+    a sentinel. (The shared _parse_lap_time passes -1 through for the
+    legacy RecentRace path, whose behavior is test-pinned.)
+    """
+    parsed = _parse_lap_time(value)
+    return parsed if parsed > 0 else 0.0
+
+
 def parse_reg_drivers(payload: dict) -> list[RegisteredDriver]:
     """Parse a /data/session/reg_drivers_list payload into roster entries.
 
@@ -834,7 +847,7 @@ def parse_reg_drivers(payload: dict) -> list[RegisteredDriver]:
     if not isinstance(payload, dict):
         return []
     drivers = []
-    for entry in payload.get("entries", []):
+    for entry in payload.get("entries") or []:
         license_block = entry.get("license") or {}
         drivers.append(RegisteredDriver(
             cust_id=entry.get("cust_id", 0),
@@ -857,7 +870,7 @@ def parse_spectator_subsessions(payload: dict) -> list[SpectatorSubsession]:
     if not isinstance(payload, dict):
         return []
     subs = []
-    for row in payload.get("subsessions", []):
+    for row in payload.get("subsessions") or []:
         subs.append(SpectatorSubsession(
             subsession_id=row.get("subsession_id", 0),
             session_id=row.get("session_id", 0),
@@ -880,7 +893,7 @@ def parse_season_schedules(payload: list | dict) -> list[SeasonSchedule]:
     series_id only); the first schedule that names it wins.
     """
     if isinstance(payload, dict):
-        seasons_raw = payload.get("seasons", [])
+        seasons_raw = payload.get("seasons") or []
     elif isinstance(payload, list):
         seasons_raw = payload
     else:
@@ -890,10 +903,12 @@ def parse_season_schedules(payload: list | dict) -> list[SeasonSchedule]:
     for season in seasons_raw:
         weeks = []
         series_name = ""
-        for sched in season.get("schedules", []):
+        for sched in season.get("schedules") or []:
             if not series_name and sched.get("series_name"):
                 series_name = sched["series_name"]
             track = sched.get("track") or {}
+            # First restriction only - fine for single-car series; a
+            # multiclass week with per-car fuel caps needs per-car handling.
             restrictions = sched.get("car_restrictions") or []
             fuel_cap = (
                 restrictions[0].get("max_pct_fuel_fill")
@@ -909,7 +924,7 @@ def parse_season_schedules(payload: list | dict) -> list[SeasonSchedule]:
                 race_time_limit=sched.get("race_time_limit"),
                 race_lap_limit=sched.get("race_lap_limit"),
                 start_type=start_type,
-                standing_start=start_type == "Standing",
+                standing_start=start_type.lower() == "standing",
                 max_pct_fuel_fill=fuel_cap,
             ))
         seasons.append(SeasonSchedule(
@@ -936,7 +951,7 @@ def parse_member_profile(payload: dict) -> MemberProfile | None:
     if not isinstance(member_info, dict):
         return None
     licenses = []
-    for lic in member_info.get("licenses", []):
+    for lic in member_info.get("licenses") or []:
         licenses.append(MemberLicense(
             category_id=lic.get("category_id", 0),
             category=lic.get("category", ""),
@@ -959,7 +974,7 @@ def parse_chart_data(payload: dict) -> list[IRatingPoint]:
         return []
     return [
         IRatingPoint(when=p.get("when", ""), value=p.get("value", 0))
-        for p in payload.get("data", [])
+        for p in payload.get("data") or []
     ]
 
 
@@ -968,7 +983,7 @@ def parse_member_career(payload: dict) -> list[CareerStats]:
     if not isinstance(payload, dict):
         return []
     stats = []
-    for row in payload.get("stats", []):
+    for row in payload.get("stats") or []:
         stats.append(CareerStats(
             category_id=row.get("category_id", 0),
             category=row.get("category", ""),

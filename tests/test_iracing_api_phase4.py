@@ -12,9 +12,11 @@ import pytest
 from core.benchmark.iracing_api import (
     LiveIRacingAPI,
     RaceGuideSession,
+    SeriesResultRow,
     StubIRacingAPI,
     _TokenData,
     parse_race_guide,
+    parse_series_results,
 )
 
 
@@ -150,3 +152,169 @@ class TestGetRaceGuide:
 class TestStubRaceGuide:
     def test_returns_empty(self):
         assert StubIRacingAPI().get_race_guide() == []
+
+
+# ---------------------------------------------------------------------------
+# Series results search — /data/results/search_series
+# ---------------------------------------------------------------------------
+
+# Modeled on data/api_spike/search_series_571_wk3.json (names anonymized)
+SEARCH_SERIES_ROW = {
+    "session_id": 314670231,
+    "subsession_id": 87005528,
+    "start_time": "2026-07-07T00:15:00Z",
+    "end_time": "2026-07-07T00:41:33Z",
+    "license_category_id": 5,
+    "license_category": "Sports Car",
+    "num_drivers": 12,
+    "num_cautions": 0,
+    "num_caution_laps": 0,
+    "num_lead_changes": 0,
+    "event_average_lap": 814347,
+    "event_best_lap_time": 803891,
+    "event_laps_complete": 9,
+    "driver_changes": False,
+    "winner_group_id": 125274,
+    "winner_name": "Driver A",
+    "winner_ai": False,
+    "track": {
+        "config_name": "Summit Point Raceway",
+        "track_id": 9,
+        "track_name": "Summit Point Raceway",
+    },
+    "official_session": True,
+    "season_id": 6266,
+    "season_year": 2026,
+    "season_quarter": 3,
+    "event_type": 5,
+    "event_type_name": "Race",
+    "series_id": 571,
+    "series_name": "BMW M2 Cup",
+    "series_short_name": "BMW M2 Cup",
+    "race_week_num": 3,
+    "event_strength_of_field": 2542,
+}
+
+
+class TestParseSeriesResults:
+    def test_parses_row(self):
+        rows = parse_series_results([SEARCH_SERIES_ROW])
+        assert len(rows) == 1
+        row = rows[0]
+        assert isinstance(row, SeriesResultRow)
+        assert row.subsession_id == 87005528
+        assert row.session_id == 314670231  # timeslot / split-group key
+        assert row.start_time == "2026-07-07T00:15:00Z"
+        assert row.strength_of_field == 2542
+        assert row.num_drivers == 12
+        assert row.track_id == 9
+        assert row.track_name == "Summit Point Raceway"
+        assert row.series_id == 571
+        assert row.season_id == 6266
+        assert row.race_week_num == 3
+        assert row.num_cautions == 0
+        assert row.num_lead_changes == 0
+        assert row.winner_name == "Driver A"
+        assert row.winner_cust_id == 125274
+
+    def test_lap_times_converted_to_seconds(self):
+        row = parse_series_results([SEARCH_SERIES_ROW])[0]
+        assert row.event_best_lap_time == pytest.approx(80.3891)
+        assert row.event_average_lap == pytest.approx(81.4347)
+
+    def test_missing_track_and_winner_tolerated(self):
+        bare = {"subsession_id": 1, "session_id": 2}
+        row = parse_series_results([bare])[0]
+        assert row.track_id == 0
+        assert row.track_name == ""
+        assert row.winner_name == ""
+        assert row.winner_cust_id == 0
+        assert row.event_best_lap_time == 0.0
+
+    def test_empty_input(self):
+        assert parse_series_results([]) == []
+        assert parse_series_results(None) == []
+
+
+class TestSearchSeriesResults:
+    def _chunked_api(self, head_payload, chunks=None):
+        routes = {
+            "/data/results/search_series": {"link": "https://s3.example/search"},
+            "s3.example/search": head_payload,
+        }
+        if chunks:
+            routes.update(chunks)
+        return _api_with_fake_client(routes)
+
+    def test_normalizes_nested_chunk_info(self):
+        """search_series nests chunk_info under data (one level deeper
+        than lap_chart_data / lap_data) — the client must normalize."""
+        head = {
+            "data": {
+                "success": True,
+                "chunk_info": {
+                    "base_download_url": "https://s3.example/",
+                    "chunk_file_names": ["chunk-0.json"],
+                },
+            }
+        }
+        api = self._chunked_api(
+            head, {"chunk-0.json": [SEARCH_SERIES_ROW]}
+        )
+        rows = api.search_series_results(
+            season_year=2026, season_quarter=3,
+            series_id=571, race_week_num=3,
+        )
+        assert len(rows) == 1
+        assert rows[0].subsession_id == 87005528
+
+    def test_top_level_chunk_info_also_handled(self):
+        head = {
+            "success": True,
+            "chunk_info": {
+                "base_download_url": "https://s3.example/",
+                "chunk_file_names": ["chunk-0.json"],
+            },
+        }
+        api = self._chunked_api(
+            head, {"chunk-0.json": [SEARCH_SERIES_ROW]}
+        )
+        rows = api.search_series_results(season_id=6266, race_week_num=3)
+        assert len(rows) == 1
+
+    def test_empty_but_success_returns_empty_list(self):
+        """No results yet is not an error — and callers must never
+        disk-cache this emptiness (race-capture _cached_fetch lesson)."""
+        head = {"data": {"success": True, "chunk_info": None}}
+        api = self._chunked_api(head)
+        assert api.search_series_results(season_id=6266) == []
+
+    def test_passes_params(self):
+        head = {"data": {"success": True}}
+        api = self._chunked_api(head)
+        api.search_series_results(
+            season_year=2026, season_quarter=3, series_id=571,
+            race_week_num=3, official_only=True, event_types=5,
+        )
+        params = api._client.params[0]
+        assert params["season_year"] == 2026
+        assert params["season_quarter"] == 3
+        assert params["series_id"] == 571
+        assert params["race_week_num"] == 3
+        assert params["official_only"] is True
+        assert params["event_types"] == 5
+
+    def test_omits_unset_params(self):
+        head = {"data": {"success": True}}
+        api = self._chunked_api(head)
+        api.search_series_results(season_id=6266)
+        params = api._client.params[0]
+        assert params["season_id"] == 6266
+        assert "season_year" not in params
+        assert "series_id" not in params
+        assert "race_week_num" not in params
+
+
+class TestStubSearchSeries:
+    def test_returns_empty(self):
+        assert StubIRacingAPI().search_series_results(season_id=6266) == []

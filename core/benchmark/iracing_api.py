@@ -80,6 +80,35 @@ class RaceGuideSession:
     super_session: bool
 
 
+@dataclass
+class SeriesResultRow:
+    """One race subsession from /data/results/search_series.
+
+    session_id is shared by every split of one timeslot — group on it and
+    sort by strength_of_field descending to reconstruct the split ladder
+    (the API exposes no explicit split number).
+    """
+
+    subsession_id: int
+    session_id: int  # timeslot / split-group key
+    start_time: str  # ISO timestamp
+    end_time: str  # ISO timestamp
+    strength_of_field: int
+    num_drivers: int
+    track_id: int
+    track_name: str
+    event_best_lap_time: float  # seconds (0 if not available)
+    event_average_lap: float  # seconds (0 if not available)
+    num_cautions: int
+    num_lead_changes: int
+    winner_name: str
+    winner_cust_id: int
+    season_id: int
+    series_id: int
+    race_week_num: int
+    official_session: bool
+
+
 class IRacingAPIClient(ABC):
     """Abstract interface for iRacing Data API."""
 
@@ -472,6 +501,50 @@ class LiveIRacingAPI(IRacingAPIClient):
         data = self._api_get("/data/season/race_guide", params)
         return parse_race_guide(data)
 
+    def search_series_results(
+        self,
+        season_id: int | None = None,
+        season_year: int | None = None,
+        season_quarter: int | None = None,
+        series_id: int | None = None,
+        race_week_num: int | None = None,
+        official_only: bool = True,
+        event_types: int = 5,
+    ) -> list[SeriesResultRow]:
+        """Search official results via /data/results/search_series.
+
+        Pass either season_id, or season_year + season_quarter + series_id.
+        Response is chunked with chunk_info nested one level deeper than
+        the lap-data endpoints (under a data key) — normalized here.
+
+        An empty-but-success response returns [] — that emptiness is NOT
+        an error and callers must never disk-cache it (same lesson as the
+        race-capture _cached_fetch fix). One popular series-week is ~4 MB;
+        callers should fetch once per series-week.
+        """
+        params: dict = {
+            "official_only": official_only,
+            "event_types": event_types,
+        }
+        if season_id is not None:
+            params["season_id"] = season_id
+        if season_year is not None:
+            params["season_year"] = season_year
+        if season_quarter is not None:
+            params["season_quarter"] = season_quarter
+        if series_id is not None:
+            params["series_id"] = series_id
+        if race_week_num is not None:
+            params["race_week_num"] = race_week_num
+
+        data = self._api_get("/data/results/search_series", params)
+        # chunk_info may live under data (search_series) or at top level
+        holder = data.get("data", data) if isinstance(data, dict) else data
+        if not isinstance(holder, (dict, list)):
+            return []
+        rows = self._fetch_chunked(holder)
+        return parse_series_results(rows)
+
 
 # --- Phase 4 parse functions (pure; unit-testable with inline dicts) ---
 
@@ -496,6 +569,44 @@ def parse_race_guide(payload: dict) -> list[RaceGuideSession]:
             super_session=bool(row.get("super_session", False)),
         ))
     return sessions
+
+
+def parse_series_results(rows: list[dict] | None) -> list[SeriesResultRow]:
+    """Parse /data/results/search_series rows into SeriesResultRow objects.
+
+    Lap times arrive in 1/10000s and are converted to seconds. Missing
+    track / winner fields are tolerated (zero / empty defaults).
+    """
+    if not rows:
+        return []
+    parsed = []
+    for row in rows:
+        track = row.get("track") or {}
+        parsed.append(SeriesResultRow(
+            subsession_id=row.get("subsession_id", 0),
+            session_id=row.get("session_id", 0),
+            start_time=row.get("start_time", ""),
+            end_time=row.get("end_time", ""),
+            strength_of_field=row.get("event_strength_of_field", 0),
+            num_drivers=row.get("num_drivers", 0),
+            track_id=track.get("track_id", 0),
+            track_name=track.get("track_name", ""),
+            event_best_lap_time=_parse_lap_time(
+                row.get("event_best_lap_time", 0)
+            ),
+            event_average_lap=_parse_lap_time(
+                row.get("event_average_lap", 0)
+            ),
+            num_cautions=row.get("num_cautions", 0),
+            num_lead_changes=row.get("num_lead_changes", 0),
+            winner_name=row.get("winner_name", ""),
+            winner_cust_id=row.get("winner_group_id", 0),
+            season_id=row.get("season_id", 0),
+            series_id=row.get("series_id", 0),
+            race_week_num=row.get("race_week_num", 0),
+            official_session=bool(row.get("official_session", False)),
+        ))
+    return parsed
 
 
 def _parse_lap_time(value: int | float) -> float:
@@ -555,4 +666,16 @@ class StubIRacingAPI(IRacingAPIClient):
     def get_race_guide(
         self, from_time: str | None = None
     ) -> list[RaceGuideSession]:
+        return []
+
+    def search_series_results(
+        self,
+        season_id: int | None = None,
+        season_year: int | None = None,
+        season_quarter: int | None = None,
+        series_id: int | None = None,
+        race_week_num: int | None = None,
+        official_only: bool = True,
+        event_types: int = 5,
+    ) -> list[SeriesResultRow]:
         return []

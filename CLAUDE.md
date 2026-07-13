@@ -422,6 +422,7 @@ streamlit run app/streamlit_app.py
 - [x] Shortcut created once via `scripts/install_shortcut.py` (WScript.Shell COM through PowerShell, OneDrive-safe Desktop resolution)
 - Live coach deliberately NOT auto-started — stays a Toolbox button (driving-only, may want --mute / cue flags)
 - [ ] On-rig smoke test (launcher double-click, idempotent re-click, stop .bat, no-orphan check — deferred; user was mid-session during implementation)
+- [ ] Roadmap (user request 2026-07-13): **system-tray background app** — persistent tray icon (pystray or similar) with Start/Stop/Status menu for app + watcher + live coach, no console window; the natural successor to the launcher once friends depend on the hosted app (host durability without a console tied to a login session); composes ManagedProcess + launch.py/stop_all.py as-is; pairs with (maybe supersedes) the queued Task Scheduler durability item
 
 **Phase 3 (revised per v2 strategy): Race Debrief + Intelligence foundation** (Surface 1 shipped 2026-07-06, branch race-debrief — see `docs/superpowers/specs/2026-07-06-race-debrief-design.md`)
 - [x] Race session ingestion: race IBT + Data API results + session YAML → race narrative (position timeline, gap evolution, incident timing, stint pace) (`core/race/ingest.py`, `core/race/narrative.py`)

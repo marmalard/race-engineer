@@ -5,29 +5,41 @@ running (that's the point — the in-app Guide can't help you until the app is u
 
 ## The mental model
 
-**Start the app once from a terminal. Start everything else from the Toolbox page.**
+**Double-click the desktop shortcut. Start the live coach from the Toolbox page.**
 
-The app itself is a web server you have to launch from a terminal. Once it's up,
-the watcher and live voice coach are buttons on the **🎛 Toolbox** page — no more
-commands to remember.
+The **Race Engineer** shortcut (Desktop / taskbar pin) starts the app AND the
+telemetry watcher and opens the browser. The live voice coach stays a button on
+the **🎛 Toolbox** page — you only want it running when you're in the car.
 
 ---
 
 ## 1. Start the app (do this first, every time)
 
-Open a terminal (PowerShell) **in the project folder** and run:
+Double-click **Race Engineer** (Desktop shortcut or taskbar pin). It:
+
+- starts the telemetry watcher (auto-captures your sessions),
+- starts the app — the console window that appears *is* the app,
+- opens **http://localhost:8501** in your browser.
+
+Double-clicking again while it's already running just re-opens the browser — safe.
+
+- iPad / phone on the same Wi-Fi: **http://192.168.86.93:8501**
+
+To stop **everything** (app + watcher + live coach): double-click
+`scripts\stop-race-engineer.bat`. Closing the console window stops just the
+app — the watcher keeps capturing.
+
+<details>
+<summary>No shortcut? Terminal fallback</summary>
 
 ```powershell
+scripts\start-race-engineer.bat
+# or the raw command (app only, no watcher):
 .venv\Scripts\streamlit.exe run app\streamlit_app.py
 ```
 
-Leave that window open — it *is* the app. Then open it in your browser:
-
-- This machine: **http://localhost:8501**
-- iPad / phone on the same Wi-Fi: the **Network URL** the terminal prints
-  (e.g. `http://192.168.86.93:8501`)
-
-To stop the app: close that terminal window (or Ctrl-C in it).
+Re-create the shortcut anytime: `.venv\Scripts\python.exe scripts\install_shortcut.py`
+</details>
 
 ---
 

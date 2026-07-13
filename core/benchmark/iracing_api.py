@@ -147,6 +147,39 @@ class SpectatorSubsession:
     event_type: int
 
 
+@dataclass
+class RaceWeek:
+    """One race week's track and race format from a season schedule."""
+
+    race_week_num: int
+    track_id: int
+    track_name: str
+    config_name: str
+    start_date: str  # ISO date
+    race_time_limit: int | None  # minutes; None when lap-limited
+    race_lap_limit: int | None  # laps; None when time-limited
+    start_type: str  # e.g. "Standing", "Rolling"
+    standing_start: bool
+    max_pct_fuel_fill: float | None  # fuel-fill cap; None when unrestricted
+
+
+@dataclass
+class SeasonSchedule:
+    """The briefing slice of one season from /data/series/seasons.
+
+    Deliberately tiny: the raw payload is ~7 MB across all seasons and is
+    NOT retained — only calendar + race-format fields survive parsing.
+    """
+
+    series_id: int
+    series_name: str
+    season_id: int
+    season_name: str
+    race_week: int  # current race week number
+    max_weeks: int
+    weeks: list[RaceWeek] = field(default_factory=list)
+
+
 class IRacingAPIClient(ABC):
     """Abstract interface for iRacing Data API."""
 
@@ -611,6 +644,21 @@ class LiveIRacingAPI(IRacingAPIClient):
         )
         return parse_spectator_subsessions(data)
 
+    def get_series_seasons(
+        self, include_series: bool = True
+    ) -> list[SeasonSchedule]:
+        """Get the active-season calendar via /data/series/seasons.
+
+        The raw payload is ~7 MB (153 active seasons); only the briefing
+        slice (calendar + race format per week) is parsed and returned —
+        the raw blob is not retained. Callers should cache the result
+        (roughly daily freshness is fine).
+        """
+        data = self._api_get(
+            "/data/series/seasons", {"include_series": include_series}
+        )
+        return parse_season_schedules(data)
+
 
 # --- Phase 4 parse functions (pure; unit-testable with inline dicts) ---
 
@@ -727,6 +775,61 @@ def parse_spectator_subsessions(payload: dict) -> list[SpectatorSubsession]:
     return subs
 
 
+def parse_season_schedules(payload: list | dict) -> list[SeasonSchedule]:
+    """Parse /data/series/seasons into SeasonSchedule slices.
+
+    Accepts the raw list or a {"seasons": [...]} wrapper. Keeps only the
+    calendar and race-format fields the briefing needs; weather blobs,
+    liveries and the rest of the ~7 MB payload are dropped.
+
+    series_name lives on the per-week schedules (the season top level has
+    series_id only); the first schedule that names it wins.
+    """
+    if isinstance(payload, dict):
+        seasons_raw = payload.get("seasons", [])
+    elif isinstance(payload, list):
+        seasons_raw = payload
+    else:
+        return []
+
+    seasons = []
+    for season in seasons_raw:
+        weeks = []
+        series_name = ""
+        for sched in season.get("schedules", []):
+            if not series_name and sched.get("series_name"):
+                series_name = sched["series_name"]
+            track = sched.get("track") or {}
+            restrictions = sched.get("car_restrictions") or []
+            fuel_cap = (
+                restrictions[0].get("max_pct_fuel_fill")
+                if restrictions else None
+            )
+            start_type = sched.get("start_type", "")
+            weeks.append(RaceWeek(
+                race_week_num=sched.get("race_week_num", 0),
+                track_id=track.get("track_id", 0),
+                track_name=track.get("track_name", ""),
+                config_name=track.get("config_name", ""),
+                start_date=sched.get("start_date", ""),
+                race_time_limit=sched.get("race_time_limit"),
+                race_lap_limit=sched.get("race_lap_limit"),
+                start_type=start_type,
+                standing_start=start_type == "Standing",
+                max_pct_fuel_fill=fuel_cap,
+            ))
+        seasons.append(SeasonSchedule(
+            series_id=season.get("series_id", 0),
+            series_name=series_name,
+            season_id=season.get("season_id", 0),
+            season_name=season.get("season_name", ""),
+            race_week=season.get("race_week", 0),
+            max_weeks=season.get("max_weeks", 0),
+            weeks=weeks,
+        ))
+    return seasons
+
+
 def _parse_lap_time(value: int | float) -> float:
     """Parse a lap time value from the iRacing API.
 
@@ -804,4 +907,9 @@ class StubIRacingAPI(IRacingAPIClient):
     def get_spectator_subsessions(
         self, event_types: int = 5
     ) -> list[SpectatorSubsession]:
+        return []
+
+    def get_series_seasons(
+        self, include_series: bool = True
+    ) -> list[SeasonSchedule]:
         return []

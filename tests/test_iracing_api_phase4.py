@@ -12,7 +12,9 @@ import pytest
 from core.benchmark.iracing_api import (
     LiveIRacingAPI,
     RaceGuideSession,
+    RaceWeek,
     RegisteredDriver,
+    SeasonSchedule,
     SeriesResultRow,
     SpectatorSubsession,
     StubIRacingAPI,
@@ -20,6 +22,7 @@ from core.benchmark.iracing_api import (
     _rating_or_none,
     parse_race_guide,
     parse_reg_drivers,
+    parse_season_schedules,
     parse_series_results,
     parse_spectator_subsessions,
 )
@@ -499,3 +502,142 @@ class TestStubRoster:
         stub = StubIRacingAPI()
         assert stub.get_reg_drivers(87170269) == []
         assert stub.get_spectator_subsessions() == []
+
+
+# ---------------------------------------------------------------------------
+# Series seasons / calendar — /data/series/seasons?include_series=true
+# ---------------------------------------------------------------------------
+
+# Modeled on data/api_spike/series_seasons.json — trimmed hard: the real
+# payload is ~7 MB per season list; the parser must keep only the briefing
+# slice and drop everything else (weather blobs, liveries, etc.).
+SEASON_PAYLOAD = {
+    "season_id": 6265,
+    "season_name": "Global Mazda MX-5 Cup by Fanatec - 2026 Season 3",
+    "active": True,
+    "series_id": 139,
+    # series_name is NOT present at season top level (only in schedules)
+    "series_name": None,
+    "race_week": 3,
+    "max_weeks": 12,
+    "fixed_setup": True,
+    "reg_user_count": 320,
+    "schedules": [
+        {
+            "season_id": 6265,
+            "race_week_num": 0,
+            "series_id": 139,
+            "series_name": "Global Mazda MX-5 Cup by Fanatec",
+            "start_date": "2026-06-16",
+            "start_type": "Standing",
+            "race_lap_limit": None,
+            "race_time_limit": 12,
+            "qual_attached": True,
+            "car_restrictions": [
+                {
+                    "car_id": 67,
+                    "max_dry_tire_sets": 0,
+                    "max_pct_fuel_fill": 100,
+                    "power_adjust_pct": 0,
+                    "weight_penalty_kg": 0,
+                },
+            ],
+            "track": {
+                "category": "road",
+                "category_id": 2,
+                "config_name": "Full Course",
+                "track_id": 166,
+                "track_name": "Okayama International Circuit",
+            },
+            "weather": {"skies": 2},  # large blob in reality; must be dropped
+        },
+        {
+            "season_id": 6265,
+            "race_week_num": 3,
+            "series_id": 139,
+            "series_name": "Global Mazda MX-5 Cup by Fanatec",
+            "start_date": "2026-07-07",
+            "start_type": "Rolling",
+            "race_lap_limit": 14,
+            "race_time_limit": None,
+            "car_restrictions": [],
+            "track": {
+                "config_name": "Summit Point Raceway",
+                "track_id": 9,
+                "track_name": "Summit Point Raceway",
+            },
+        },
+    ],
+}
+
+
+class TestParseSeasonSchedules:
+    def test_parses_season_slice(self):
+        seasons = parse_season_schedules([SEASON_PAYLOAD])
+        assert len(seasons) == 1
+        s = seasons[0]
+        assert isinstance(s, SeasonSchedule)
+        assert s.series_id == 139
+        assert s.season_id == 6265
+        assert s.season_name == (
+            "Global Mazda MX-5 Cup by Fanatec - 2026 Season 3"
+        )
+        # series_name comes from the schedules (not season top level)
+        assert s.series_name == "Global Mazda MX-5 Cup by Fanatec"
+        assert s.race_week == 3
+        assert s.max_weeks == 12
+        assert len(s.weeks) == 2
+
+    def test_parses_week_race_format(self):
+        s = parse_season_schedules([SEASON_PAYLOAD])[0]
+        wk0 = s.weeks[0]
+        assert isinstance(wk0, RaceWeek)
+        assert wk0.race_week_num == 0
+        assert wk0.track_id == 166
+        assert wk0.track_name == "Okayama International Circuit"
+        assert wk0.config_name == "Full Course"
+        assert wk0.start_date == "2026-06-16"
+        assert wk0.race_time_limit == 12
+        assert wk0.race_lap_limit is None
+        assert wk0.start_type == "Standing"
+        assert wk0.standing_start is True
+        assert wk0.max_pct_fuel_fill == 100
+
+    def test_lap_limited_rolling_week(self):
+        s = parse_season_schedules([SEASON_PAYLOAD])[0]
+        wk3 = s.weeks[1]
+        assert wk3.race_lap_limit == 14
+        assert wk3.race_time_limit is None
+        assert wk3.standing_start is False
+        assert wk3.max_pct_fuel_fill is None  # no car_restrictions entry
+
+    def test_accepts_seasons_wrapper_dict(self):
+        seasons = parse_season_schedules({"seasons": [SEASON_PAYLOAD]})
+        assert len(seasons) == 1
+
+    def test_empty_and_malformed(self):
+        assert parse_season_schedules([]) == []
+        assert parse_season_schedules(None) == []
+        assert parse_season_schedules({"success": True}) == []
+
+    def test_season_without_schedules(self):
+        bare = {"season_id": 1, "series_id": 2, "race_week": 0}
+        s = parse_season_schedules([bare])[0]
+        assert s.weeks == []
+        assert s.series_name == ""
+
+
+class TestGetSeriesSeasons:
+    def test_calls_endpoint_with_include_series(self):
+        api = _api_with_fake_client({
+            "/data/series/seasons": {"link": "https://s3.example/seasons"},
+            "s3.example/seasons": [SEASON_PAYLOAD],
+        })
+        seasons = api.get_series_seasons()
+        assert len(seasons) == 1
+        assert api._client.params[0] == {"include_series": True}
+
+
+class TestStubSeriesSeasons:
+    def test_returns_empty(self):
+        assert StubIRacingAPI().get_series_seasons() == []

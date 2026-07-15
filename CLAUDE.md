@@ -441,10 +441,14 @@ streamlit run app/streamlit_app.py
 - [ ] Founder validation of the Oulton narrative + first real AI debrief (key rotated + verified; now also exercises the profile injection)
 - [x] Driver profile v1 SHIPPED 2026-07-11 (racecraft + practice-readiness layers — see "Driver Profile v1 — SP2" section; technique tendencies deferred, needs loss-region persistence)
 
-**Phase 4 (revised): Pre-Race Briefing / Field Scouting**
-- [ ] Field analysis from Data API: SoF/split prediction, opponent profiles (pace, aggression, incident history)
-- [ ] Strategy plan: fuel/tire/pit windows for actual race length
-- [ ] Series calendar awareness → proactive briefings
+**Phase 4 (revised): Pre-Race Briefing / Field Scouting** (v1 shipped 2026-07, branch phase4-briefing-v1 — spec docs/superpowers/specs/2026-07-15-phase4-briefing-v1-design.md, strategy docs/race-engineer-v3-confidence-arc.md)
+- [x] core/briefing/ package: models (BriefingData contract), curve (pure pace-vs-iR binning + monotone implied-iR placement, BIN_WIDTH 250 / MIN_BIN_N 5), slots (repeating + explicit descriptors, usual-window inference from watcher session_date), ingest (search_series harvest, HARVEST_CAP 30, per-subsession results cached to data/briefing_cache — search NEVER cached, the week is still growing), render (week-plan-ordered markdown; verdict exact-string pinned; NEVER gates — "you're not ready" is a sentence the product does not say)
+- [x] RaceWeek.race_time_descriptors retained by parse_season_schedules (was dropped)
+- [x] Race Briefing page: series picker ranked by practice depth at the week's track, car picker from user history, curve chart (field scatter + median line + you), optional AI narrative + ephemeral chat (BRIEFING_SYSTEM_PROMPT tone contract)
+- [x] Reuses parse_results/_cached_fetch (race ingest) + build_readiness (profile) — no duplicated parsing
+- [ ] Grid briefing v1.5: reg_drivers roster + opponent cards (plumbing merged, unwired)
+- [ ] Field analysis extensions: SoF/split prediction per timeslot, opponent profiles
+- [ ] Series calendar awareness → proactive briefings (week-plan push layer)
 
 **Phase 5: Live Engineer (push-to-talk)**
 - [ ] Rolling race-state summarizer (CarIdx arrays → compact briefing state)

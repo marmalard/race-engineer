@@ -108,3 +108,16 @@ class TestRenderBriefing:
         md = render_briefing(data)
         assert "Couldn't fetch" in md
         assert "Run a practice session" in md  # invitation verdict
+
+
+class TestVerdictLineBoundary:
+    def test_under_curve_exact_boundary(self):
+        # delta exactly +ON_CURVE_BAND_S routes under-curve (inclusive >=),
+        # symmetric with the over-curve boundary at -0.15
+        p = CurvePlacement(
+            lap_s=82.5, implied_ir_lo=1300, implied_ir_hi=1550,
+            delta_to_own_band_s=0.15,
+        )
+        assert verdict_line(p, user_ir=1400).startswith(
+            "The median at your rating runs"
+        )

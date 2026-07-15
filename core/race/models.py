@@ -195,7 +195,16 @@ class CautionSegment:
 
 @dataclass
 class PaceSummary:
-    """Aggregated pace statistics for the driver's race."""
+    """Aggregated pace statistics for the driver's race.
+
+    Two pace views, deliberately side by side (founder finding
+    2026-07-15): the clean-lap median EXCLUDES the driver's incident
+    laps, so with a small clean sample it flatters via survivorship —
+    a P1 clean rank from 3 surviving laps beat a winner who ran 8 clean
+    laps managing a race. The all-lap view counts every lap driven;
+    sustaining pace IS the skill the incidents took. Consumers must
+    present both (speed vs execution), never the clean rank alone.
+    """
 
     median_clean_lap: float | None
     best_lap: float | None
@@ -204,6 +213,11 @@ class PaceSummary:
     pace_rank: int | None  # None when player has < 3 clean laps
     ranked_drivers: int
     unranked_drivers: int
+    # Defaults keep from_dict round-trips of pre-2026-07-15 stored
+    # narratives working (old JSON lacks these keys).
+    median_all_lap: float | None = None  # laps > 1, valid time, nothing excluded
+    all_lap_rank: int | None = None
+    all_lap_ranked_drivers: int = 0
 
 
 @dataclass

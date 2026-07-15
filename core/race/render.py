@@ -92,6 +92,11 @@ def render_narrative_markdown(
             )
         )
         if p.pace_rank is not None:
+            low_sample = (
+                f" — low sample, only {p.clean_lap_count} clean laps"
+                if p.clean_lap_count < 5
+                else ""
+            )
             lines.append(
                 f"Clean-lap pace ranked **P{p.pace_rank}** of "
                 f"{p.ranked_drivers} ranked drivers"
@@ -100,7 +105,14 @@ def render_narrative_markdown(
                     if p.unranked_drivers
                     else ""
                 )
+                + low_sample
                 + "."
+            )
+        if p.all_lap_rank is not None:
+            lines.append(
+                f"All-lap pace (incident laps included): "
+                f"median {_fmt_lap_time(p.median_all_lap)}, ranked "
+                f"**P{p.all_lap_rank}** of {p.all_lap_ranked_drivers}."
             )
     else:
         lines.append("Pace analysis not available (no lap data from the API).")

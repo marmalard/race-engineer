@@ -30,6 +30,27 @@ def test_render_never_contains_placeholder_text():
     assert "TODO" not in md and "None" not in md
 
 
+def test_render_pace_low_sample_and_all_lap_line():
+    narrative = _minimal_narrative()
+    narrative.pace.clean_lap_count = 3
+    narrative.pace.median_all_lap = 83.112
+    narrative.pace.all_lap_rank = 4
+    narrative.pace.all_lap_ranked_drivers = 11
+    md = render_narrative_markdown(narrative)
+    assert "low sample, only 3 clean laps" in md
+    assert "All-lap pace (incident laps included)" in md
+    assert "P4** of 11" in md
+
+
+def test_render_pace_no_all_lap_line_for_old_narratives():
+    # pre-2026-07-15 stored narratives deserialize with the defaults
+    # (all_lap_rank None) — the all-lap line must simply be absent,
+    # never a None render; 9 clean laps also means no low-sample marker
+    md = render_narrative_markdown(_minimal_narrative())
+    assert "All-lap pace" not in md
+    assert "low sample" not in md
+
+
 def test_render_without_header_block():
     """include_header=False drops the H1 + summary lines (the app page
     shows that data in its own header strip) but keeps every section."""

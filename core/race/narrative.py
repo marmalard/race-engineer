@@ -93,6 +93,29 @@ def pace_ranking(
     return ranked, unranked
 
 
+def all_lap_ranking(
+    driver_laps: dict[int, list[DriverLap]],
+    min_laps: int = MIN_CLEAN_LAPS,
+) -> list[tuple[int, float]]:
+    """Rank drivers by median over ALL laps driven (laps > 1, valid time
+    — incident, traffic and caution laps included).
+
+    The survivorship counterweight to pace_ranking: a driver's clean-lap
+    median excludes exactly the laps their incidents ruined, which
+    flatters small clean samples. This ranking counts every lap, so it
+    prices execution, not just speed.
+    """
+    ranked: list[tuple[int, float]] = []
+    for cust_id, laps in driver_laps.items():
+        times = [
+            l.lap_time for l in laps if l.lap_number > 1 and l.lap_time > 0
+        ]
+        if len(times) >= min_laps:
+            ranked.append((cust_id, statistics.median(times)))
+    ranked.sort(key=lambda pair: pair[1])
+    return ranked
+
+
 def compute_gaps(
     player_laps: list[DriverLap], rival_laps: list[DriverLap]
 ) -> list[GapPoint]:
@@ -124,20 +147,33 @@ def build_attribution(
     actual_position: int,
     incident_time_lost_s: float,
     lap1_net_positions: int,
+    clean_lap_count: int = 0,
+    all_lap_rank: int | None = None,
 ) -> IRatingAttribution:
     """Transparent accounting of rating change vs pace and events.
 
     No counterfactual elo model — states facts and labeled estimates
     only ("never dishonest" applies to the deterministic layer too).
+    Pace claims carry their sample size, and the clean-lap rank is
+    paired with the all-lap rank when available — a clean rank built on
+    few surviving laps must not stand alone (survivorship honesty).
     """
     delta = irating_new - irating_old
     lines: list[str] = []
 
     if pace_deserved_position is not None:
+        sample = (
+            f" (from {clean_lap_count} clean laps)" if clean_lap_count else ""
+        )
         lines.append(
-            f"Clean-lap pace ranked P{pace_deserved_position}; "
+            f"Clean-lap pace ranked P{pace_deserved_position}{sample}; "
             f"finished P{actual_position}."
         )
+        if all_lap_rank is not None and all_lap_rank != pace_deserved_position:
+            lines.append(
+                f"Across ALL laps driven (incident laps included), pace "
+                f"ranked P{all_lap_rank}."
+            )
     else:
         lines.append(
             f"Finished P{actual_position}; not enough clean laps to rank "
@@ -474,6 +510,19 @@ def build_narrative(data: RaceData, corners: list) -> RaceNarrative:
         )
         clean = clean_laps(player_laps, caution_laps)
         valid_times = [l.lap_time for l in player_laps if l.lap_time > 0]
+        all_ranked = all_lap_ranking(data.driver_laps)
+        all_rank_index = next(
+            (
+                i + 1
+                for i, (cust, _) in enumerate(all_ranked)
+                if cust == data.player_cust_id
+            ),
+            None,
+        )
+        player_all_median = next(
+            (m for cust, m in all_ranked if cust == data.player_cust_id),
+            None,
+        )
         pace = PaceSummary(
             median_clean_lap=player_median,
             best_lap=min(valid_times) if valid_times else None,
@@ -486,6 +535,13 @@ def build_narrative(data: RaceData, corners: list) -> RaceNarrative:
             pace_rank=rank_index,
             ranked_drivers=len(ranked),
             unranked_drivers=len(unranked),
+            median_all_lap=(
+                round(player_all_median, 4)
+                if player_all_median is not None
+                else None
+            ),
+            all_lap_rank=all_rank_index,
+            all_lap_ranked_drivers=len(all_ranked),
         )
         if player_result is not None:
             # Dedupe by lap: multiple incident steps on the same lap each
@@ -506,6 +562,8 @@ def build_narrative(data: RaceData, corners: list) -> RaceNarrative:
                 lap1_net_positions=(grid - lap1.position_after_lap1)
                 if lap1
                 else 0,
+                clean_lap_count=len(clean),
+                all_lap_rank=all_rank_index,
             )
 
     # Gaps to key rivals

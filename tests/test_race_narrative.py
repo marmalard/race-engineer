@@ -4,6 +4,7 @@ import pytest
 
 from core.race.models import DriverLap
 from core.race.narrative import (
+    all_lap_ranking,
     build_attribution,
     clean_laps,
     compute_gaps,
@@ -68,6 +69,38 @@ def test_pace_ranking_orders_by_median_and_excludes_thin_data():
     assert unranked == [3]
 
 
+# --- all_lap_ranking (survivorship counterweight) --------------------------
+
+def test_all_lap_ranking_prices_incident_laps():
+    # Driver 1 has blistering clean laps but MOST laps were ruined by
+    # incidents (the real 2026-07-12 Summit shape: 6 incidents in 9
+    # laps); driver 2 runs steady 101s with zero incidents. The clean
+    # ranking crowns driver 1 via survivorship (median 99 vs 101); the
+    # all-lap ranking counts the ruined laps and puts driver 2 ahead.
+    d1 = _laps(1, [100.0, 99.0, 99.0, 99.0, 115.0, 115.0, 115.0, 115.0])
+    for i in (4, 5, 6, 7):
+        d1[i].incident = True
+    d2 = _laps(2, [100.0, 101.0, 101.0, 101.0, 101.0, 101.0, 101.0, 101.0])
+    driver_laps = {1: d1, 2: d2}
+
+    clean_ranked, _ = pace_ranking(driver_laps, caution_laps=set())
+    assert clean_ranked[0][0] == 1  # survivorship flatters driver 1
+
+    all_ranked = all_lap_ranking(driver_laps)
+    assert all_ranked[0][0] == 2  # execution wins over all laps
+    # d1 all-lap median over [99,99,99,115,115,115,115] = 115
+    assert all_ranked[1] == (1, 115.0)
+
+
+def test_all_lap_ranking_requires_min_laps_and_skips_invalid():
+    driver_laps = {
+        1: _laps(1, [100.0, 101.0, -1.0]),  # only 1 valid post-lap-1 lap
+        2: _laps(2, [100.0, 99.0, 99.0, 99.0]),
+    }
+    ranked = all_lap_ranking(driver_laps)
+    assert [cust for cust, _ in ranked] == [2]
+
+
 # --- compute_gaps --------------------------------------------------------
 
 def test_compute_gaps_positive_when_rival_ahead():
@@ -103,6 +136,38 @@ def test_build_attribution_accounts_for_pace_vs_finish():
     joined = " ".join(attribution.summary_lines)
     assert "P5" in joined and "P9" in joined
     assert "12.5" in joined
+
+
+def test_build_attribution_pace_claims_carry_sample_and_all_lap_rank():
+    attribution = build_attribution(
+        irating_old=1400,
+        irating_new=1409,
+        pace_deserved_position=1,
+        actual_position=6,
+        incident_time_lost_s=7.1,
+        lap1_net_positions=-1,
+        clean_lap_count=3,
+        all_lap_rank=4,
+    )
+    joined = " ".join(attribution.summary_lines)
+    assert "(from 3 clean laps)" in joined
+    assert "ALL laps driven" in joined and "P4" in joined
+
+
+def test_build_attribution_all_lap_line_skipped_when_ranks_agree():
+    attribution = build_attribution(
+        irating_old=1400,
+        irating_new=1410,
+        pace_deserved_position=2,
+        actual_position=2,
+        incident_time_lost_s=0.0,
+        lap1_net_positions=0,
+        clean_lap_count=8,
+        all_lap_rank=2,
+    )
+    assert not any(
+        "ALL laps" in line for line in attribution.summary_lines
+    )
 
 
 def test_build_attribution_handles_unranked_pace():

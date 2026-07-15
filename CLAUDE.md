@@ -446,6 +446,8 @@ streamlit run app/streamlit_app.py
 - [x] RaceWeek.race_time_descriptors retained by parse_season_schedules (was dropped)
 - [x] Race Briefing page: series picker ranked by practice depth at the week's track, car picker from user history, curve chart (field scatter + median line + you), optional AI narrative + ephemeral chat (BRIEFING_SYSTEM_PROMPT tone contract)
 - [x] Reuses parse_results/_cached_fetch (race ingest) + build_readiness (profile) — no duplicated parsing
+- [x] Founder smoke test 2026-07-15 (5 findings fixed same day): search_series REQUIRES season_year+quarter (season_id alone = 400, and the server IGNORES season_id as a filter — harvest filters rows client-side); car picker offers all practiced cars (at-track first); slots render machine-local; display-only curve smoothing (smoothed_medians — verdict math stays raw), m:ss axis/hover (fmt_lap public), license filter (member_info group_id, SeasonSchedule.license_group) + series search box
+- [x] Pace honesty (race debrief, 2026-07-15): all_lap_ranking beside clean rank in PaceSummary (defaults keep old stored narratives deserializing), sample size on every pace claim, low-sample marker < 5 clean laps, tone-contract rule 5 (speed vs execution framing — never headline a survivorship-flattered clean rank)
 - [ ] Grid briefing v1.5: reg_drivers roster + opponent cards (plumbing merged, unwired)
 - [ ] Field analysis extensions: SoF/split prediction per timeslot, opponent profiles
 - [ ] Series calendar awareness → proactive briefings (week-plan push layer)
@@ -616,7 +618,7 @@ streamlit run app/streamlit_app.py
 - Deployment: `tailscale serve/funnel 8501` + `streamlit run` from the host PC; `.streamlit/config.toml` sets maxUploadSize 400
 
 ### Test Suite
-- 684 tests passing on branch phase4-briefing-v1 (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`); skip count varies with local gitignored fixtures (race-capture integration tests need Oulton; some lap tests need specific telemetry files)
+- 703 tests passing on master (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`); skip count varies with local gitignored fixtures (race-capture integration tests need Oulton; some lap tests need specific telemetry files)
 - Test fixtures: `tests/fixtures/sample.ibt` (Spa, BMW M2 CS Racing, 2 laps — gitignored)
 - Multi-lap fixture from `C:\Users\antho\Documents\iRacing\telemetry\` (Road America F4, 7 laps)
 - Bathurst fixture also available for corner detection tuning tests

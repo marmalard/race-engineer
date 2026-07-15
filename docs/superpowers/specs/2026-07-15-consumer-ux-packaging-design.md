@@ -9,6 +9,35 @@ Two workstreams, one spec. A ships before B; B reuses A's copy.
 
 ---
 
+## Design language (applies to every A-item; founder question 2026-07-15: "high-end and supportive without overwhelming density")
+
+1. **One sentence first, evidence second.** Every screen leads with a single
+   plain-language takeaway; charts and numbers exist to prove that sentence
+   and live one level down (expander, below the fold, hover). Density is
+   opt-in, never the greeting.
+2. **Plain words first, jargon second — hard copy rule.** First use per
+   screen is "strength of field (SoF)", never "SoF" cold. No acronym or
+   shorthand before its plain-language introduction; glossary tooltips are
+   the safety net, not the license. Applies to briefing/debrief AI prompts
+   too (one tone-contract line each).
+3. **Spatial anchoring for corners.** Corner references are always
+   "T4 — Wagon Bend" (number + name). Where corners are listed (debrief
+   incidents, coaching loss regions, briefing key corners), a small
+   persistent track map with numbered pins sits beside the list — the
+   official iRacing turn-layer SVGs (TrackAssetCache) + the existing GPS
+   map component make this buildable, same map component across pages.
+   Chosen over mouseover popovers: hover hides orientation behind an
+   interaction learners don't discover, and fights the Streamlit ceiling.
+   (Map-pin work is A7, phase 2 — after the top-5.)
+4. **One chart per question.** Every visual answers exactly one question,
+   stated in text above it (the pace-vs-iR chart is the model). A page
+   needing a second chart needs a second heading first. No dashboards.
+5. **Consistency reads as high-end.** Same lap-time format (m:ss.mmm)
+   everywhere; same verdict-sentence pattern on every page; same map
+   component; same tone. Polish is repetition discipline, not decoration.
+
+---
+
 ## Workstream A — the consumer surface (hosted app)
 
 ### A1. Landing / Start page (pull-up #1 — biggest friction)
@@ -53,7 +82,19 @@ New first page in nav: **"Start"** (replaces Race Debrief as the default landing
 - Driver Profile page gets the watcher-freshness line ("history updated: last scan X ago / how to run a scan").
 - Nav labels keep emoji but the page headers state the page's job in one plain sentence (already true on Briefing; audit the rest).
 
-**A-testing:** all copy pinned by exact-string tests; `errors.explain` unit-tested per exception class; sample-narrative round-trip test; no business logic added to pages (components carry the logic).
+### A7. Corner orientation mini-map (phase 2 — after the top-5)
+
+- `app/components/corner_map.py`: renders the track outline (GPS trace or
+  official SVG active layer) with numbered pins for a supplied list of
+  (turn_number, name, distance) — the design-language §3 component.
+- Wired beside: debrief incident list, coaching loss-region cards,
+  briefing format section (when corner content exists). One component,
+  three call sites, no per-page variants.
+- Corner text everywhere adopts "T{n} — {name}" via a shared formatter
+  (exact-string tested; falls back to name-only when the DB has no
+  official number — never invents one, the corner-detector rule).
+
+**A-testing:** all copy pinned by exact-string tests; `errors.explain` unit-tested per exception class; sample-narrative round-trip test; corner formatter exact-string tests; no business logic added to pages (components carry the logic).
 
 ---
 

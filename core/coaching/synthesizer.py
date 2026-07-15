@@ -23,6 +23,11 @@ from core.coaching.prompts.race_debrief import (
     build_race_chat_system,
     build_race_debrief_prompt,
 )
+from core.coaching.prompts.briefing import (
+    BRIEFING_SYSTEM_PROMPT,
+    build_briefing_chat_system,
+    build_briefing_prompt,
+)
 
 
 @dataclass
@@ -231,6 +236,63 @@ class Synthesizer:
             model=self.model,
             max_tokens=800,
             system=build_race_chat_system(narrative, debrief_text, profile_block),
+            messages=msgs,
+        )
+        return self._extract_text(response)
+
+    def generate_briefing_narrative(
+        self, briefing_json: str, profile_block: str = ""
+    ) -> str:
+        """AI pre-race briefing from the deterministic BriefingData JSON.
+
+        No web search — every fact comes from the briefing JSON and the
+        optional driver-profile block.
+
+        Args:
+            briefing_json: The JSON-serialised BriefingData dict.
+            profile_block: Optional pre-formatted driver-profile block
+                (from ``profile_prompt_block``). When provided, cross-race
+                tendencies may be cited in the briefing.
+        """
+        response = self.client.messages.create(
+            model=self.model,
+            max_tokens=800,
+            system=BRIEFING_SYSTEM_PROMPT,
+            messages=[{
+                "role": "user",
+                "content": build_briefing_prompt(briefing_json, profile_block),
+            }],
+        )
+        return self._extract_text(response)
+
+    def briefing_chat(
+        self,
+        briefing_json: str,
+        narrative: str,
+        history: list[dict],
+    ) -> str:
+        """One follow-up chat turn grounded in the briefing (ephemeral -
+        v1 does not persist briefing chat).
+
+        history: [{"role": "user"|"assistant", "content": str}, ...],
+        newest last. Only the last MAX_CHAT_HISTORY turns are sent.
+
+        Guard: if the capped slice starts with an assistant turn (which the
+        Anthropic Messages API rejects), the leading assistant message is
+        dropped so the first sent message always has role 'user'.
+
+        Args:
+            briefing_json: The JSON-serialised BriefingData dict.
+            narrative: The already-delivered AI briefing narrative text.
+            history: Conversation history, newest last.
+        """
+        msgs = history[-self.MAX_CHAT_HISTORY:]
+        if msgs and msgs[0]["role"] != "user":
+            msgs = msgs[1:]
+        response = self.client.messages.create(
+            model=self.model,
+            max_tokens=600,
+            system=build_briefing_chat_system(briefing_json, narrative),
             messages=msgs,
         )
         return self._extract_text(response)

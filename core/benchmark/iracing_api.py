@@ -60,6 +60,186 @@ class DriverStats:
     license_level: float
 
 
+# --- Phase 4 data models (pre-race briefing plumbing) ---
+
+@dataclass
+class RaceGuideSession:
+    """An upcoming official session from /data/season/race_guide.
+
+    entry_count and session_id only populate ~30 minutes before the
+    session starts (registration window); before that they are 0/None.
+    """
+
+    series_id: int
+    season_id: int
+    race_week_num: int
+    start_time: str  # ISO timestamp
+    end_time: str  # ISO timestamp
+    entry_count: int  # live registration count; 0 until reg opens
+    session_id: int | None  # None until the session is created
+    super_session: bool
+
+
+@dataclass
+class SeriesResultRow:
+    """One race subsession from /data/results/search_series.
+
+    session_id is shared by every split of one timeslot — group on it and
+    sort by strength_of_field descending to reconstruct the split ladder
+    (the API exposes no explicit split number).
+    """
+
+    subsession_id: int
+    session_id: int  # timeslot / split-group key
+    start_time: str  # ISO timestamp
+    end_time: str  # ISO timestamp
+    strength_of_field: int
+    num_drivers: int
+    track_id: int
+    track_name: str
+    event_best_lap_time: float  # seconds (0 if not available)
+    event_average_lap: float  # seconds (0 if not available)
+    num_cautions: int
+    num_lead_changes: int
+    winner_name: str
+    winner_cust_id: int
+    season_id: int
+    series_id: int
+    race_week_num: int
+    official_session: bool
+
+
+@dataclass
+class RegisteredDriver:
+    """One roster entry from /data/session/reg_drivers_list.
+
+    The roster is only populated while the session is live (from launch
+    until completion); before launch and after completion the endpoint
+    returns success with empty entries.
+    """
+
+    cust_id: int
+    display_name: str
+    car_id: int
+    car_name: str
+    reg_status: str  # e.g. "reg_joined"
+    irating: int | None  # None when unrated (-1 in the raw payload)
+    safety_rating: float | None
+    cpi: float | None
+    license_level: int
+    group_name: str  # e.g. "Class A"
+    mpr_num_races: int
+
+
+@dataclass
+class SpectatorSubsession:
+    """A live subsession from /data/season/spectator_subsessionids_detail.
+
+    Used to discover live subsession_ids (join season_id to a series to
+    find the user's session) for the reg_drivers_list roster call.
+    """
+
+    subsession_id: int
+    session_id: int
+    season_id: int
+    start_time: str  # ISO timestamp
+    race_week_num: int
+    event_type: int
+
+
+@dataclass
+class RaceWeek:
+    """One race week's track and race format from a season schedule."""
+
+    race_week_num: int
+    track_id: int
+    track_name: str
+    config_name: str
+    start_date: str  # ISO date
+    race_time_limit: int | None  # minutes; None when lap-limited
+    race_lap_limit: int | None  # laps; None when time-limited
+    start_type: str  # e.g. "Standing", "Rolling"
+    standing_start: bool
+    max_pct_fuel_fill: float | None  # fuel-fill cap; None when unrestricted
+
+
+@dataclass
+class SeasonSchedule:
+    """The briefing slice of one season from /data/series/seasons.
+
+    Deliberately tiny: the raw payload is ~7 MB across all seasons and is
+    NOT retained — only calendar + race-format fields survive parsing.
+    """
+
+    series_id: int
+    series_name: str
+    season_id: int
+    season_name: str
+    race_week: int  # current race week number
+    max_weeks: int
+    weeks: list[RaceWeek] = field(default_factory=list)
+
+
+@dataclass
+class MemberLicense:
+    """One category license from a member profile."""
+
+    category_id: int
+    category: str  # e.g. "sports_car"
+    irating: int | None  # None when unrated (-1 in the raw payload)
+    safety_rating: float | None
+    cpi: float | None
+    license_level: int
+    group_name: str  # e.g. "Class A", "Rookie"
+
+
+@dataclass
+class MemberProfile:
+    """Identity + licenses slice of /data/member/profile.
+
+    The building block of an opponent card: current iRating / SR per
+    category. Trend comes from get_member_chart_data, career volume from
+    get_member_career, recent form from get_member_recent_races.
+    """
+
+    cust_id: int
+    display_name: str
+    licenses: list[MemberLicense] = field(default_factory=list)
+
+    def license_for_category(self, category_id: int) -> MemberLicense | None:
+        """Return the license for a category id, or None if absent."""
+        for lic in self.licenses:
+            if lic.category_id == category_id:
+                return lic
+        return None
+
+
+@dataclass
+class IRatingPoint:
+    """One point of a member's iRating time series (chart_data)."""
+
+    when: str  # ISO date
+    value: int
+
+
+@dataclass
+class CareerStats:
+    """One category's career statistics from /data/stats/member_career."""
+
+    category_id: int
+    category: str  # e.g. "Sports Car"
+    starts: int
+    wins: int
+    top5: int
+    poles: int
+    avg_start_position: float
+    avg_finish_position: float
+    laps: int
+    laps_led: int
+    avg_incidents: float
+    win_percentage: float
+
+
 class IRacingAPIClient(ABC):
     """Abstract interface for iRacing Data API."""
 
@@ -436,6 +616,390 @@ class LiveIRacingAPI(IRacingAPIClient):
         )
         return self._fetch_chunked(data)
 
+    # --- Phase 4: pre-race briefing plumbing ---
+
+    def get_race_guide(
+        self, from_time: str | None = None
+    ) -> list[RaceGuideSession]:
+        """Get upcoming official sessions from /data/season/race_guide.
+
+        The guide returns a 3-hour block starting at from_time (ISO
+        timestamp, defaults to now server-side); page forward by passing
+        later from_time values. entry_count / session_id populate only
+        ~30 minutes before each session's start.
+        """
+        params = {"from": from_time} if from_time is not None else None
+        data = self._api_get("/data/season/race_guide", params)
+        return parse_race_guide(data)
+
+    def search_series_results(
+        self,
+        season_id: int | None = None,
+        season_year: int | None = None,
+        season_quarter: int | None = None,
+        series_id: int | None = None,
+        race_week_num: int | None = None,
+        official_only: bool = True,
+        event_types: int = 5,
+    ) -> list[SeriesResultRow]:
+        """Search official results via /data/results/search_series.
+
+        Pass either season_id, or season_year + season_quarter + series_id.
+        Response is chunked with chunk_info nested one level deeper than
+        the lap-data endpoints (under a data key) — normalized here.
+
+        An empty-but-success response returns [] — that emptiness is NOT
+        an error and callers must never disk-cache it (same lesson as the
+        race-capture _cached_fetch fix). One popular series-week is ~4 MB;
+        callers should fetch once per series-week.
+        """
+        params: dict = {
+            "official_only": official_only,
+            "event_types": event_types,
+        }
+        if season_id is not None:
+            params["season_id"] = season_id
+        if season_year is not None:
+            params["season_year"] = season_year
+        if season_quarter is not None:
+            params["season_quarter"] = season_quarter
+        if series_id is not None:
+            params["series_id"] = series_id
+        if race_week_num is not None:
+            params["race_week_num"] = race_week_num
+
+        data = self._api_get("/data/results/search_series", params)
+        # chunk_info may live under data (search_series) or at top level
+        holder = data.get("data", data) if isinstance(data, dict) else data
+        if not isinstance(holder, (dict, list)):
+            return []
+        rows = self._fetch_chunked(holder)
+        return parse_series_results(rows)
+
+    def get_reg_drivers(self, subsession_id: int) -> list[RegisteredDriver]:
+        """Get the live roster for a subsession via reg_drivers_list.
+
+        Only populated while the session is live (launch to completion).
+        Returns [] before launch and after completion (success with empty
+        entries — emptiness is ambiguous, not an error; the endpoint also
+        returns empty for ids it does not recognize, never a 4xx).
+        """
+        data = self._api_get(
+            "/data/session/reg_drivers_list",
+            {"subsession_id": subsession_id},
+        )
+        return parse_reg_drivers(data)
+
+    def get_spectator_subsessions(
+        self, event_types: int = 5
+    ) -> list[SpectatorSubsession]:
+        """List live subsessions (spectator discovery).
+
+        Used to find the subsession_id of a just-launched session for
+        get_reg_drivers. event_types 5 = Race.
+        """
+        data = self._api_get(
+            "/data/season/spectator_subsessionids_detail",
+            {"event_types": event_types},
+        )
+        return parse_spectator_subsessions(data)
+
+    def get_series_seasons(
+        self, include_series: bool = True
+    ) -> list[SeasonSchedule]:
+        """Get the active-season calendar via /data/series/seasons.
+
+        The raw payload is ~7 MB (153 active seasons); only the briefing
+        slice (calendar + race format per week) is parsed and returned —
+        the raw blob is not retained. Callers should cache the result
+        (roughly daily freshness is fine).
+        """
+        data = self._api_get(
+            "/data/series/seasons", {"include_series": include_series}
+        )
+        return parse_season_schedules(data)
+
+    def get_member_profile(self, cust_id: int) -> MemberProfile | None:
+        """Get a member's identity + licenses via /data/member/profile.
+
+        Opponent-card building block; 2-3 calls per opponent add up for
+        a full field (12 cars = 24-36 calls) — callers should cache.
+        """
+        data = self._api_get("/data/member/profile", {"cust_id": cust_id})
+        return parse_member_profile(data)
+
+    def get_member_chart_data(
+        self, cust_id: int, category_id: int = 5, chart_type: int = 1
+    ) -> list[IRatingPoint]:
+        """Get a member's iRating time series via /data/member/chart_data.
+
+        category_id: 5 = sports_car, 6 = formula (1 oval, 2 road legacy).
+        chart_type 1 = iRating.
+        """
+        data = self._api_get(
+            "/data/member/chart_data",
+            {
+                "cust_id": cust_id,
+                "category_id": category_id,
+                "chart_type": chart_type,
+            },
+        )
+        return parse_chart_data(data)
+
+    def get_member_career(self, cust_id: int) -> list[CareerStats]:
+        """Get per-category career stats via /data/stats/member_career."""
+        data = self._api_get(
+            "/data/stats/member_career", {"cust_id": cust_id}
+        )
+        return parse_member_career(data)
+
+
+# --- Phase 4 parse functions (pure; unit-testable with inline dicts) ---
+
+def parse_race_guide(payload: dict) -> list[RaceGuideSession]:
+    """Parse a /data/season/race_guide payload into RaceGuideSession rows.
+
+    Tolerates missing session_id / zero entry_count (both only populate
+    ~30 minutes before a session starts). Returns [] for malformed input.
+    """
+    if not isinstance(payload, dict):
+        return []
+    sessions = []
+    for row in payload.get("sessions") or []:
+        sessions.append(RaceGuideSession(
+            series_id=row.get("series_id", 0),
+            season_id=row.get("season_id", 0),
+            race_week_num=row.get("race_week_num", 0),
+            start_time=row.get("start_time", ""),
+            end_time=row.get("end_time", ""),
+            entry_count=row.get("entry_count", 0) or 0,
+            session_id=row.get("session_id"),
+            super_session=bool(row.get("super_session", False)),
+        ))
+    return sessions
+
+
+def parse_series_results(rows: list[dict] | None) -> list[SeriesResultRow]:
+    """Parse /data/results/search_series rows into SeriesResultRow objects.
+
+    Lap times arrive in 1/10000s and are converted to seconds. Missing
+    track / winner fields are tolerated (zero / empty defaults).
+    """
+    if not rows:
+        return []
+    parsed = []
+    for row in rows:
+        track = row.get("track") or {}
+        parsed.append(SeriesResultRow(
+            subsession_id=row.get("subsession_id", 0),
+            session_id=row.get("session_id", 0),
+            start_time=row.get("start_time", ""),
+            end_time=row.get("end_time", ""),
+            strength_of_field=row.get("event_strength_of_field", 0),
+            num_drivers=row.get("num_drivers", 0),
+            track_id=track.get("track_id", 0),
+            track_name=track.get("track_name", ""),
+            event_best_lap_time=_lap_time_or_zero(
+                row.get("event_best_lap_time", 0)
+            ),
+            event_average_lap=_lap_time_or_zero(
+                row.get("event_average_lap", 0)
+            ),
+            num_cautions=row.get("num_cautions", 0),
+            num_lead_changes=row.get("num_lead_changes", 0),
+            winner_name=row.get("winner_name", ""),
+            # winner_group_id is a cust_id in solo events but a TEAM id in
+            # team events - do not fetch member profiles for it blindly.
+            winner_cust_id=row.get("winner_group_id", 0),
+            season_id=row.get("season_id", 0),
+            series_id=row.get("series_id", 0),
+            race_week_num=row.get("race_week_num", 0),
+            official_session=bool(row.get("official_session", False)),
+        ))
+    return parsed
+
+
+def _rating_or_none(value: int | None) -> int | None:
+    """Normalize an iRating value: -1 means unrated and becomes None."""
+    if value is None or value == -1:
+        return None
+    return value
+
+
+def _lap_time_or_zero(value: "int | float") -> float:
+    """Lap time in seconds; the API's -1 'no valid lap' sentinel becomes 0.0.
+
+    Guards briefing pace math: min() over split best-laps must never pick
+    a sentinel. (The shared _parse_lap_time passes -1 through for the
+    legacy RecentRace path, whose behavior is test-pinned.)
+    """
+    parsed = _parse_lap_time(value)
+    return parsed if parsed > 0 else 0.0
+
+
+def parse_reg_drivers(payload: dict) -> list[RegisteredDriver]:
+    """Parse a /data/session/reg_drivers_list payload into roster entries.
+
+    Empty entries with success=true is the normal pre-launch and
+    post-completion state, not an error. Unrated iRating (-1) maps to
+    None; a missing license block yields None ratings.
+    """
+    if not isinstance(payload, dict):
+        return []
+    drivers = []
+    for entry in payload.get("entries") or []:
+        license_block = entry.get("license") or {}
+        drivers.append(RegisteredDriver(
+            cust_id=entry.get("cust_id", 0),
+            display_name=entry.get("display_name", ""),
+            car_id=entry.get("car_id", 0),
+            car_name=entry.get("car_name", ""),
+            reg_status=entry.get("reg_status", ""),
+            irating=_rating_or_none(license_block.get("irating")),
+            safety_rating=license_block.get("safety_rating"),
+            cpi=license_block.get("cpi"),
+            license_level=license_block.get("license_level", 0),
+            group_name=license_block.get("group_name", ""),
+            mpr_num_races=license_block.get("mpr_num_races", 0),
+        ))
+    return drivers
+
+
+def parse_spectator_subsessions(payload: dict) -> list[SpectatorSubsession]:
+    """Parse /data/season/spectator_subsessionids_detail into rows."""
+    if not isinstance(payload, dict):
+        return []
+    subs = []
+    for row in payload.get("subsessions") or []:
+        subs.append(SpectatorSubsession(
+            subsession_id=row.get("subsession_id", 0),
+            session_id=row.get("session_id", 0),
+            season_id=row.get("season_id", 0),
+            start_time=row.get("start_time", ""),
+            race_week_num=row.get("race_week_num", 0),
+            event_type=row.get("event_type", 0),
+        ))
+    return subs
+
+
+def parse_season_schedules(payload: list | dict) -> list[SeasonSchedule]:
+    """Parse /data/series/seasons into SeasonSchedule slices.
+
+    Accepts the raw list or a {"seasons": [...]} wrapper. Keeps only the
+    calendar and race-format fields the briefing needs; weather blobs,
+    liveries and the rest of the ~7 MB payload are dropped.
+
+    series_name lives on the per-week schedules (the season top level has
+    series_id only); the first schedule that names it wins.
+    """
+    if isinstance(payload, dict):
+        seasons_raw = payload.get("seasons") or []
+    elif isinstance(payload, list):
+        seasons_raw = payload
+    else:
+        return []
+
+    seasons = []
+    for season in seasons_raw:
+        weeks = []
+        series_name = ""
+        for sched in season.get("schedules") or []:
+            if not series_name and sched.get("series_name"):
+                series_name = sched["series_name"]
+            track = sched.get("track") or {}
+            # First restriction only - fine for single-car series; a
+            # multiclass week with per-car fuel caps needs per-car handling.
+            restrictions = sched.get("car_restrictions") or []
+            fuel_cap = (
+                restrictions[0].get("max_pct_fuel_fill")
+                if restrictions else None
+            )
+            start_type = sched.get("start_type", "")
+            weeks.append(RaceWeek(
+                race_week_num=sched.get("race_week_num", 0),
+                track_id=track.get("track_id", 0),
+                track_name=track.get("track_name", ""),
+                config_name=track.get("config_name", ""),
+                start_date=sched.get("start_date", ""),
+                race_time_limit=sched.get("race_time_limit"),
+                race_lap_limit=sched.get("race_lap_limit"),
+                start_type=start_type,
+                standing_start=start_type.lower() == "standing",
+                max_pct_fuel_fill=fuel_cap,
+            ))
+        seasons.append(SeasonSchedule(
+            series_id=season.get("series_id", 0),
+            series_name=series_name,
+            season_id=season.get("season_id", 0),
+            season_name=season.get("season_name", ""),
+            race_week=season.get("race_week", 0),
+            max_weeks=season.get("max_weeks", 0),
+            weeks=weeks,
+        ))
+    return seasons
+
+
+def parse_member_profile(payload: dict) -> MemberProfile | None:
+    """Parse /data/member/profile into a MemberProfile, or None.
+
+    Only member_info (identity + licenses) is kept; awards, activity and
+    license history are dropped. Unrated iRating (-1) maps to None.
+    """
+    if not isinstance(payload, dict):
+        return None
+    member_info = payload.get("member_info")
+    if not isinstance(member_info, dict):
+        return None
+    licenses = []
+    for lic in member_info.get("licenses") or []:
+        licenses.append(MemberLicense(
+            category_id=lic.get("category_id", 0),
+            category=lic.get("category", ""),
+            irating=_rating_or_none(lic.get("irating")),
+            safety_rating=lic.get("safety_rating"),
+            cpi=lic.get("cpi"),
+            license_level=lic.get("license_level", 0),
+            group_name=lic.get("group_name", ""),
+        ))
+    return MemberProfile(
+        cust_id=member_info.get("cust_id", 0),
+        display_name=member_info.get("display_name", ""),
+        licenses=licenses,
+    )
+
+
+def parse_chart_data(payload: dict) -> list[IRatingPoint]:
+    """Parse /data/member/chart_data into an iRating time series."""
+    if not isinstance(payload, dict):
+        return []
+    return [
+        IRatingPoint(when=p.get("when", ""), value=p.get("value", 0))
+        for p in payload.get("data") or []
+    ]
+
+
+def parse_member_career(payload: dict) -> list[CareerStats]:
+    """Parse /data/stats/member_career into per-category CareerStats."""
+    if not isinstance(payload, dict):
+        return []
+    stats = []
+    for row in payload.get("stats") or []:
+        stats.append(CareerStats(
+            category_id=row.get("category_id", 0),
+            category=row.get("category", ""),
+            starts=row.get("starts", 0),
+            wins=row.get("wins", 0),
+            top5=row.get("top5", 0),
+            poles=row.get("poles", 0),
+            avg_start_position=row.get("avg_start_position", 0),
+            avg_finish_position=row.get("avg_finish_position", 0),
+            laps=row.get("laps", 0),
+            laps_led=row.get("laps_led", 0),
+            avg_incidents=row.get("avg_incidents", 0.0),
+            win_percentage=row.get("win_percentage", 0.0),
+        ))
+    return stats
+
 
 def _parse_lap_time(value: int | float) -> float:
     """Parse a lap time value from the iRacing API.
@@ -487,4 +1051,47 @@ class StubIRacingAPI(IRacingAPIClient):
     def get_lap_data(
         self, subsession_id: int, simsession_number: int, cust_id: int
     ) -> list[dict]:
+        return []
+
+    # --- Phase 4 parallels: graceful empty fallbacks ---
+
+    def get_race_guide(
+        self, from_time: str | None = None
+    ) -> list[RaceGuideSession]:
+        return []
+
+    def search_series_results(
+        self,
+        season_id: int | None = None,
+        season_year: int | None = None,
+        season_quarter: int | None = None,
+        series_id: int | None = None,
+        race_week_num: int | None = None,
+        official_only: bool = True,
+        event_types: int = 5,
+    ) -> list[SeriesResultRow]:
+        return []
+
+    def get_reg_drivers(self, subsession_id: int) -> list[RegisteredDriver]:
+        return []
+
+    def get_spectator_subsessions(
+        self, event_types: int = 5
+    ) -> list[SpectatorSubsession]:
+        return []
+
+    def get_series_seasons(
+        self, include_series: bool = True
+    ) -> list[SeasonSchedule]:
+        return []
+
+    def get_member_profile(self, cust_id: int) -> MemberProfile | None:
+        return None
+
+    def get_member_chart_data(
+        self, cust_id: int, category_id: int = 5, chart_type: int = 1
+    ) -> list[IRatingPoint]:
+        return []
+
+    def get_member_career(self, cust_id: int) -> list[CareerStats]:
         return []

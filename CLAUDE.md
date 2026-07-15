@@ -424,6 +424,14 @@ streamlit run app/streamlit_app.py
 - [ ] On-rig smoke test (launcher double-click, idempotent re-click, stop .bat, no-orphan check — deferred; user was mid-session during implementation)
 - [ ] Roadmap (user request 2026-07-13): **system-tray background app** — persistent tray icon (pystray or similar) with Start/Stop/Status menu for app + watcher + live coach, no console window; the natural successor to the launcher once friends depend on the hosted app (host durability without a console tied to a login session); composes ManagedProcess + launch.py/stop_all.py as-is; pairs with (maybe supersedes) the queued Task Scheduler durability item
 
+**Daemon hardening — real-incident fixes** (2026-07-14, master 834ae41/e6b529f/d7bc1ed)
+- [x] Coach survives pyirsdk churn ticks (list values for scalar vars at session transitions — skip the tick in live_coach; `LapBoundaryTracker.feed` ignores malformed Lap) — a single churn tick had killed the coach mid-session
+- [x] Both daemons reconfigure stdout to utf-8/errors=replace/line_buffering — a `→` (U+2192, not in cp1252) in the race-report print had killed the detached watcher; line buffering keeps Toolbox log tails fresh
+- [x] Watch loop survives bad scans (per-scan try/except, SCAN FAILED + retry next poll); launcher starts the watcher BEFORE the port-8501 idempotency return (dead-watcher-alive-app case)
+- [x] Toolbox↔CLI coupling tests (`tests/test_toolbox_commands.py`) — the Toolbox was still passing round-1's `--corner-prompts` (renamed 2026-07-10), so its Start-coach button argparse-crashed the coach instantly; Toolbox now uses round-2 flags (prompts default ON), Start buttons surface instant deaths (1s check + log tail in st.error), run_dir pinned
+- [x] `watch_telemetry.py` loads .env itself — previously only Toolbox-inherited spawns had API creds; every other spawn captured races PARTIAL silently. RULE: any UI/launcher that builds a CLI command needs a coupling test against that CLI's parser
+- DECIDED (user, 2026-07-14): live coach stays a deliberate Toolbox toggle — never auto-started by the launcher
+
 **Phase 3 (revised per v2 strategy): Race Debrief + Intelligence foundation** (Surface 1 shipped 2026-07-06, branch race-debrief — see `docs/superpowers/specs/2026-07-06-race-debrief-design.md`)
 - [x] Race session ingestion: race IBT + Data API results + session YAML → race narrative (position timeline, gap evolution, incident timing, stint pace) (`core/race/ingest.py`, `core/race/narrative.py`)
 - [x] Debrief generation (existing synthesis voice) + conversational follow-up loop — engineer, not judge; honest, never scolding (`core/coaching/prompts/race_debrief.py`, chat grounded in narrative JSON)
@@ -604,7 +612,7 @@ streamlit run app/streamlit_app.py
 - Deployment: `tailscale serve/funnel 8501` + `streamlit run` from the host PC; `.streamlit/config.toml` sets maxUploadSize 400
 
 ### Test Suite
-- 574 tests passing, 9 skipped (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`); the 4 race-capture integration tests need the gitignored Oulton fixtures (skip elsewhere)
+- 585 tests passing on master (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`); skip count varies with local gitignored fixtures (race-capture integration tests need Oulton; some lap tests need specific telemetry files)
 - Test fixtures: `tests/fixtures/sample.ibt` (Spa, BMW M2 CS Racing, 2 laps — gitignored)
 - Multi-lap fixture from `C:\Users\antho\Documents\iRacing\telemetry\` (Road America F4, 7 laps)
 - Bathurst fixture also available for corner detection tuning tests

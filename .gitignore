@@ -58,3 +58,4 @@ data/briefing_cache/
 *Garage 61*.csv
 data/run/
 .playwright-mcp/
+tests/fixtures/briefing/**/*.json

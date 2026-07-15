@@ -460,8 +460,16 @@ streamlit run app/streamlit_app.py
 - [x] A3 frozen sample debrief (app/assets/sample_narrative.json sentinel ids 0/0 + canned sample_debrief.md; round-trip pinned; sample_mode never touches RaceStore)
 - [x] A4 Guide restructure (guest-first, glossary section, host reference collapsed) + A6 ride-alongs (TELEMETRY_DIR env var via app/components/host.py replaces the hardcoded founder path in debrief+toolbox, host-only AI metadata, watcher freshness lines, page job lines) + A6b Toolbox radio-transcript feed (core/live/feed.py format_transcript_line, exact-string tested, raw JSONL in collapsed expander)
 - [x] Pre-race chunk gate (founder finding 2026-07-15, validated on real Summit + Oulton chunks): iRacing writes one .ibt per recording restart on the race server, all EventType=Race + same SubSessionID — only the chunk whose telemetry enters the YAML Race SessionNum is the race. `ensure_contains_race_segment` in ingest raises `NotRaceChunkError` (fail-open when SessionNum channel or YAML absent); the watcher REROUTES skipped chunks to the lap path with `session_type_override` (quali laps are real pace data and count toward readiness — 'Race' rows are excluded); the debrief picker shows one entry per subsession (largest chunk, `dedupe_race_chunks`); uploads of a pre-race chunk get the NOT_RACE_CHUNK consumer sentence
-- [ ] Founder copy review before merge: Start INTRO, sample_debrief.md, error sentences, page job lines (all DRAFT product voice)
-- [ ] A7 corner mini-map (phase 2, after top-5) + workstream B (tray + installer) — separate plan
+- [x] Founder copy review passed 2026-07-15 ("this looks fine"); merged to master same evening
+- [ ] A7 corner mini-map (phase 2, after top-5) — separate plan
+
+**System-Tray App (B1)** (complete, branch tray-app-b1 — spec §B1 of docs/superpowers/specs/2026-07-15-consumer-ux-packaging-design.md, plan docs/superpowers/plans/2026-07-15-tray-app-b1.md)
+- [x] scripts/tray_app.py (pystray + Pillow): tray start = launcher semantics (revive watcher first — the 2026-07-14 lesson — then app detached if 8501 dark; coach NEVER auto-started); menu = Open / live Status / coach Start-Stop / watcher Start-Stop / Stop everything (stop_all reuse) / Quit-leaves-services-running
+- [x] Streamlit runnable as ManagedProcess 'streamlit-app' (detached, PID-filed, launch.STREAMLIT_CMD imported not copied) — stop_all's cmdline-fragment kill catches it unchanged; launcher .bats remain
+- [x] Coupling tests (tests/test_tray_app.py): coach cmd parses via live_coach.build_parser(); watcher/app commands byte-identical to launch.py's by import; ManagedProcess names pinned to the rig's PID files; menu labels + status text exact-string
+- [x] scripts/start-tray.bat (pythonw, no console); icon drawn in code (PIL checkerboard, no asset); --smoke mode builds real icon+menu without touching processes
+- [ ] On-rig acceptance (founder): icon appears, Status reads right, coach Start/Stop from menu, Stop everything, Quit leaves services; if the icon dies silently under pythonw, run `python scripts/tray_app.py` in a console to see the traceback
+- [ ] After acceptance: re-point the desktop shortcut at the tray (install_shortcut.py) — founder call; then B2 installer
 
 **Phase 5: Live Engineer (push-to-talk)**
 - [ ] Rolling race-state summarizer (CarIdx arrays → compact briefing state)

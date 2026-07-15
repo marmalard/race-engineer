@@ -4,6 +4,7 @@ Exact-string tests (nudges precedent): the copy IS the product.
 """
 
 import struct
+from pathlib import Path
 
 from app.components.errors import (
     API_DOWN,
@@ -75,3 +76,10 @@ class TestExplain:
 
     def test_unknown_exceptions_map_to_generic(self):
         assert explain(RuntimeError("boom")) == GENERIC
+
+    def test_coupling_substring_still_in_ingest_source(self):
+        # explain() keys NOT_A_RACE off prose raised in load_race_ibt.
+        # If ingest rewords that message, this pin fails loudly instead
+        # of the dispatch silently falling through to str(exc).
+        src = Path("core/race/ingest.py").read_text(encoding="utf-8")
+        assert "not an official race" in src

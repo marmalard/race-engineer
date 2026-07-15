@@ -25,6 +25,8 @@ NOT_A_RACE = (
     "This is a practice or qualifying session — the Debrief page wants "
     "an official race. The Lap Coaching page handles practice telemetry."
 )
+# NO_AI_KEY and API_DOWN are not reachable via explain() — pages show
+# them directly in the states where they apply (no exception involved).
 NO_AI_KEY = (
     "The AI debrief isn't configured on this host — the race story "
     "above is complete without it."

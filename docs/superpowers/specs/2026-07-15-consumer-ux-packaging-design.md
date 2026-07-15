@@ -51,6 +51,18 @@ Two workstreams, one spec. A ships before B; B reuses A's copy.
 
 ## Workstream A — the consumer surface (hosted app)
 
+### A0. App shell modernization (founder finding 2026-07-15: radio nav feels old school)
+
+- Replace the sidebar radio nav with **`st.navigation` + `st.Page`** (the
+  first-party multipage API): grouped sections, real icons, highlighted
+  active page — and per-page URLs, which makes pages linkable/bookmarkable
+  (groundwork for sharing debrief/briefing links in the friend funnel).
+- Units radio → `st.segmented_control` (compact toggle).
+- One focused change to `streamlit_app.py`; page render functions
+  unchanged. The PAGES-dict routing test coupling (if any) updates with it.
+- Nav grouping: **Race** (Start, Debrief, Briefing, Profile) / **Practice**
+  (Lap Coaching, Scouting) / **Help** (Guide) / **Host** (Toolbox).
+
 ### A1. Landing / Start page (pull-up #1 — biggest friction)
 
 New first page in nav: **"Start"** (replaces Race Debrief as the default landing).
@@ -92,6 +104,20 @@ New first page in nav: **"Start"** (replaces Race Debrief as the default landing
 - "AI Metadata" expander (model/tokens) becomes host-only (hidden unless host mode).
 - Driver Profile page gets the watcher-freshness line ("history updated: last scan X ago / how to run a scan").
 - Nav labels keep emoji but the page headers state the page's job in one plain sentence (already true on Briefing; audit the rest).
+
+### A6b. Toolbox activity feed humanized (founder finding 2026-07-15)
+
+- The coach "latest session activity" currently prints raw JSONL — a
+  debugging artifact on screen. Render it as a **radio-transcript
+  timeline** instead: one line per event with time + icon + plain text
+  (prompt 🎙 "Coming up — carry it flat", lap 🏁 "Lap 5 — 2:23.5, +2.5s",
+  discard ↩ "Reset — scratch that lap"). Same JSONL source, pure
+  formatter (`core/live/feed.py` is the natural home; exact-string
+  tested per event type).
+- Raw JSONL moves into a collapsed "raw events" expander (host debugging
+  preserved).
+- The formatter is written to be reused by the tray app's status view
+  (B1) and the iPad feed later — one transcript renderer everywhere.
 
 ### A7. Corner orientation mini-map (phase 2 — after the top-5)
 
@@ -144,8 +170,8 @@ Auth/multi-user server data; telemetry phone-home/history sync (arc for friends 
 ## Sequencing (post-Fable execution order)
 
 1. A5 errors/phases + A2 glossary (pure components, immediate payoff on every page)
-2. A1 Start page + A3 sample debrief
-3. A4 Guide restructure + A6 ride-alongs
+2. A0 app shell + A1 Start page + A3 sample debrief (the shell items land together)
+3. A4 Guide restructure + A6 ride-alongs + A6b Toolbox transcript
 4. Friend funnel opens here: `tailscale funnel` + URL to friend #1 (hosted-only experience)
 5. B1 tray → B2 installer → friend #1 upgrades to the rig package
 6. Measure: does friend #1 reach a debrief unaided; does the founder's official-race volume move (the metric)

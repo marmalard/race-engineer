@@ -14,7 +14,7 @@ The pull-up review (2026-07-13) measured the founder's practice:race ratio at 64
 2. **(c) Planning friction — primary.** Races run on schedules; practice starts instantly. For a driver whose window is "after the kids are asleep," finding a slot that fits AND being ready at that moment is the hard part. The default (practice) wins because it requires no planning.
 3. **(b) Loss aversion — situational.** Mostly relevant near promotion thresholds: close to an SR boundary, a bad race means digging out. Not the everyday blocker, but real when it fires.
 
-Design consequence: the product's centerpiece is **a readiness verdict plus a race plan** — not a reframe, not a pep talk. Accuracy first, warmth second; the confidence comes from being *shown* you're ready, at a *specific time that fits your life*, with the SR math *pre-checked*.
+Design consequence: the product's centerpiece is **a pace benchmark plus a race plan** — not a reframe, not a pep talk. Accuracy first, warmth second; the confidence comes from being *shown* where your pace sits, at a *specific time that fits your life*, with the SR math *pre-checked*. And one hard rule (founder, 2026-07-15): **the verdict is never a gate.** The product indexes on pushing people to race; "you're not ready" is a sentence it does not say (§3).
 
 ## 2. The confidence arc (the spine everything hangs on)
 
@@ -31,7 +31,7 @@ One recurring deliverable that operationalizes the arc for a time-limited driver
 > "You're ready to race the M2 at Summit — your practice best beats this split's median. Tuesday 9:15pm fits your window; the race costs 12 minutes and your SR survives a bad night. Thursday, spend 20 minutes in the Porsche at Spa — it'll force the trail-brake modulation I keep seeing you lose time on."
 
 Components, each traceable to a diagnosed cause:
-- **Readiness verdict** (fixes 1a) — reuses the profile readiness layer + population pace ladder. Bands, not false precision.
+- **Curve verdict** (fixes 1a) — the readiness question reframed so it can never gate. Not "are you ready?" but "where are you on the pace-vs-iRating curve?" (the Series Insights pace-analysis shape: fastest lap vs driver iR for the week's field, your practice PB placed on it). Over the curve → the headline: "your pace is worth more iR than you have — racing is how you collect it." Under the curve → expectation-setting ("mid-pack is a strong result this week") plus prescription input (§4) — never "don't race"; racecraft can out-earn raw pace, and the profile's pace-vs-result tendency already measures that. Bands, not false precision.
 - **Slot planning** (fixes 1c) — series calendar + the user's actual racing window (per-timeslot split prediction is feasible per the Phase 4 spike). Reduce the decision to yes/no on a concrete slot.
 - **SR/iR threshold awareness** (fixes 1b) — "even a bad night keeps you above the line" or, near a boundary, "this is the low-stakes week to bank SR."
 - **Prescriptive practice** (§4) — the practice half of the week, made purposeful.
@@ -58,6 +58,7 @@ Content, cheapest first:
 - **PB timeline** — reference-store history across combos.
 - **iRating / SR over time** — Data API chart endpoint (already in the plumbing branch).
 - **Race-volume streak** — the strategy's leading metric, shown to the user as their own stat. The product's success metric and the user's pride metric are the same number; instrument it once, serve both.
+- **Pace-implied iRating** (founder, 2026-07-15) — the generalizable benchmark self-referencing can't provide. Each combo's pace-vs-iR curve (§3) yields "you're lapping like a ~1,650 driver"; aggregated across combos it's a single driver-level number that trends over time — the Strava *fitness score* analog, and the direct answer to "how far off competitive am I?" Population benchmarking was a named gap; this closes it with tier-1 data alone (§6).
 - **Technique trends** — "trail-brake losses shrinking across combos" (needs loss-region persistence, §4). Segment-times-going-down, Strava-style.
 
 ## 6. Data-leverage map (are we getting everything we can?)
@@ -66,7 +67,7 @@ Three tiers, from official to inferred:
 
 | Tier | Source | What it gives | Status |
 |---|---|---|---|
-| 1 | iRacing Data API | **WHO is fast** — results, per-lap times, rosters, iR/SR charts, schedules, population pace ladders. No corner-level data exists in this API, period. | Strong. Six endpoint families built + reviewed on `phase4-api-plumbing`. |
+| 1 | iRacing Data API | **WHO is fast** — results, per-lap times, rosters, iR/SR charts, schedules, population pace ladders. **Includes everything needed for the pace-vs-iR curve (§3, §5):** harvest a week's subsessions via `search_series` + results (each driver's best lap + iR), fit the curve, place the user's practice PB on it — the spike did this in miniature (82.18 vs split median). No corner-level data exists in this API, period. | Strong. Six endpoint families built + reviewed on `phase4-api-plumbing`. |
 | 2 | Garage 61 dev API | **WHY they're fast** — community-shared telemetry laps. A fetched top lap is a `NormalizedLap` via the existing G61 importer; `build_debrief` against it yields per-turn loss regions unchanged. "Where the fast guys gain on you, turn by turn" is the existing engine with a different reference. | Verified to exist (2026-07-10), parked. Slotted as **v1.5 enrichment** for debrief/briefing; also a prescription signal (the combo where your losses diverge most from the fast cohort). |
 | 3 | Live CarIdx inference | **What the fast guy in YOUR practice session is doing** — `CarIdxLapDistPct` at 60Hz for every car; position-over-time differentiates into a speed trace. Per-corner minimum speeds and approximate braking points of the session leader, reconstructed live, from data already flowing into the rig. No incumbent does this. | Unexploited. Inference-grade (no pedals), ranked behind tier 2. Capability recorded; no v1 commitment. |
 

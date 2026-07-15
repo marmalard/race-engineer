@@ -19,3 +19,70 @@ def test_briefing_data_defaults():
     )
     assert b.curve is None and b.placement is None and b.prep is None
     assert b.slots == [] and b.warnings == []
+
+
+from core.briefing.curve import build_curve, place_on_curve
+
+# Synthetic field: pace improves 0.5s per 250 iR from 90.0s @ 1000 iR.
+# 6 points per bin so every bin clears MIN_BIN_N=5.
+def _points():
+    pts = []
+    for i, ir_base in enumerate([1000, 1250, 1500, 1750]):
+        lap = 90.0 - 0.5 * i
+        for j in range(6):
+            pts.append((ir_base + j * 10, lap + (j % 3) * 0.01))
+    return pts
+
+
+class TestBuildCurve:
+    def test_bins_have_medians_and_counts(self):
+        curve = build_curve(_points(), subsessions_used=10, capped=False)
+        assert len(curve.bins) == 4
+        assert curve.bins[0].n == 6
+        assert abs(curve.bins[0].median_lap_s - 90.0) < 0.02
+        assert curve.bins[-1].median_lap_s < curve.bins[0].median_lap_s
+
+    def test_invalid_points_filtered(self):
+        pts = _points() + [(0, 89.0), (1500, -1.0), (1500, 0.0)]
+        curve = build_curve(pts, subsessions_used=10, capped=False)
+        assert curve.points == _points()  # invalid rows dropped
+
+    def test_sparse_bins_merge_into_neighbor(self):
+        # 3 points at 2000+ (below MIN_BIN_N) merge into the last full bin
+        pts = _points() + [(2100, 88.0), (2110, 88.0), (2120, 88.0)]
+        curve = build_curve(pts, subsessions_used=10, capped=False)
+        assert curve.bins[-1].n == 9  # 6 + 3 merged
+        assert curve.bins[-1].ir_hi >= 2120
+
+    def test_empty_and_tiny_input(self):
+        assert build_curve([], subsessions_used=0, capped=False).bins == []
+        tiny = build_curve([(1500, 90.0)] * 3, subsessions_used=1, capped=False)
+        assert tiny.bins == [] or tiny.bins[0].n == 3  # merged single bin OK
+
+
+class TestPlaceOnCurve:
+    def test_faster_lap_implies_higher_irating(self):
+        curve = build_curve(_points(), subsessions_used=10, capped=False)
+        # 89.0s sits between the 1250 bin (89.5) and the 1500 bin (89.0)
+        p = place_on_curve(curve, lap_s=89.0, user_ir=1200)
+        assert p.implied_ir_lo is not None
+        assert p.implied_ir_lo > 1200
+        assert p.delta_to_own_band_s is not None
+        assert p.delta_to_own_band_s < 0  # faster than own-band median
+
+    def test_lap_faster_than_whole_field_clamps_to_top(self):
+        curve = build_curve(_points(), subsessions_used=10, capped=False)
+        p = place_on_curve(curve, lap_s=80.0, user_ir=1500)
+        assert p.implied_ir_hi is not None
+        assert p.implied_ir_hi >= curve.bins[-1].ir_center
+
+    def test_unusable_curve_returns_none_fields(self):
+        empty = build_curve([], subsessions_used=0, capped=False)
+        p = place_on_curve(empty, lap_s=90.0, user_ir=1500)
+        assert p.implied_ir_lo is None and p.delta_to_own_band_s is None
+
+    def test_no_user_ir_still_gives_implied_band(self):
+        curve = build_curve(_points(), subsessions_used=10, capped=False)
+        p = place_on_curve(curve, lap_s=89.0, user_ir=None)
+        assert p.implied_ir_lo is not None
+        assert p.delta_to_own_band_s is None

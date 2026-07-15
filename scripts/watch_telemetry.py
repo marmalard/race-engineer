@@ -24,8 +24,12 @@ if _ROOT not in sys.path:
 
 # Detached (ManagedProcess) stdout is a cp1252 file on Windows; make report
 # printing encoding-proof so one exotic char can't kill the daemon again.
+# line_buffering keeps the Toolbox log tail fresh (file stdout is otherwise
+# block-buffered and lags by kilobytes).
 if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stdout.reconfigure(
+        encoding="utf-8", errors="replace", line_buffering=True
+    )
 
 from core.benchmark.reference_store import ReferenceStore  # noqa: E402
 from core.race.race_store import RaceStore  # noqa: E402

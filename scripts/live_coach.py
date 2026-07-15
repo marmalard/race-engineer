@@ -27,9 +27,11 @@ if _ROOT not in sys.path:
 
 # Detached (ManagedProcess) stdout is a cp1252 file on Windows; utf-8 keeps
 # em-dash nudges readable in the Toolbox log tail (which reads utf-8) and
-# makes printing encoding-proof.
+# makes printing encoding-proof. line_buffering keeps the tail fresh.
 if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stdout.reconfigure(
+        encoding="utf-8", errors="replace", line_buffering=True
+    )
 
 import irsdk  # noqa: E402
 

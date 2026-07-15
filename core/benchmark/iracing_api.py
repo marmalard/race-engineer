@@ -195,6 +195,7 @@ class SeasonSchedule:
     # the endpoint keys on year+quarter, callers filter rows client-side.
     season_year: int = 0
     season_quarter: int = 0
+    license_group: int = 0  # 1=Rookie..5=A/Pro; 0 = unknown (never filter)
     weeks: list[RaceWeek] = field(default_factory=list)
 
 
@@ -964,6 +965,7 @@ def parse_season_schedules(payload: list | dict) -> list[SeasonSchedule]:
             max_weeks=season.get("max_weeks", 0),
             season_year=season.get("season_year", 0),
             season_quarter=season.get("season_quarter", 0),
+            license_group=season.get("license_group") or 0,
             weeks=weeks,
         ))
     return seasons

@@ -45,6 +45,32 @@ class SeriesCandidate:
     track_id: int
     track_name: str
     practice_sessions: int
+    license_group: int = 0  # 0 = unknown, never filtered out
+
+
+def max_license_group(member_info: dict) -> int | None:
+    """Highest license group (1=Rookie..5=A/Pro) from a /data/member/info
+    payload, tolerant of dict- or list-shaped licenses. None when the
+    shape is unrecognized - callers must then show ALL series rather
+    than guess (a wrong filter hides races; no filter just adds scroll).
+    """
+    licenses = member_info.get("licenses")
+    if isinstance(licenses, dict):
+        entries = list(licenses.values())
+    elif isinstance(licenses, list):
+        entries = licenses
+    else:
+        return None
+    groups: list[int] = []
+    for e in entries:
+        if not isinstance(e, dict):
+            continue
+        g = e.get("group_id") or e.get("license_group")
+        if g is None and isinstance(e.get("license_level"), int):
+            g = (e["license_level"] + 3) // 4  # levels 1-4 = group 1, etc.
+        if isinstance(g, int) and g > 0:
+            groups.append(g)
+    return max(groups) if groups else None
 
 
 def rank_series_candidates(
@@ -77,6 +103,7 @@ def rank_series_candidates(
             track_id=week.track_id,
             track_name=week.track_name,
             practice_sessions=by_track.get(str(week.track_id), 0),
+            license_group=season.license_group,
         ))
     out.sort(key=lambda c: (-c.practice_sessions, c.series_name))
     return out

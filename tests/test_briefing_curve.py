@@ -21,7 +21,7 @@ def test_briefing_data_defaults():
     assert b.slots == [] and b.warnings == []
 
 
-from core.briefing.curve import build_curve, place_on_curve
+from core.briefing.curve import build_curve, place_on_curve, smoothed_medians
 
 # Synthetic field: pace improves 0.5s per 250 iR from 90.0s @ 1000 iR.
 # 6 points per bin so every bin clears MIN_BIN_N=5.
@@ -70,6 +70,33 @@ class TestBuildCurve:
         tiny = build_curve([(1500, 90.0)] * 3, subsessions_used=1, capped=False)
         assert len(tiny.bins) == 1
         assert tiny.bins[0].n == 3
+
+
+class TestSmoothedMedians:
+    def test_window_zero_is_identity(self):
+        curve = build_curve(_points(), subsessions_used=10, capped=False)
+        raw = {b.ir_center: b.median_lap_s for b in curve.bins}
+        for ir, val in smoothed_medians(curve, window=0):
+            assert abs(val - raw[ir]) < 1e-9
+
+    def test_thin_bin_leans_on_heavy_neighbor(self):
+        # 30 laps at 90.0 (1000-1249 iR) next to 5 outlier laps at 95.0
+        # (1250-1499 iR): the thin bin's smoothed display value is pulled
+        # hard toward the heavy neighbor; the raw median (verdict math)
+        # is untouched
+        pts = [(1000 + i, 90.0) for i in range(30)] + [
+            (1300 + i, 95.0) for i in range(5)
+        ]
+        curve = build_curve(pts, subsessions_used=5, capped=False)
+        assert len(curve.bins) == 2
+        sm = dict(smoothed_medians(curve, window=1))
+        heavy, thin = curve.bins[0], curve.bins[1]
+        assert sm[thin.ir_center] < 91.0  # pulled from 95 toward 90
+        assert sm[heavy.ir_center] < 91.0
+        assert thin.median_lap_s == 95.0  # verdict math untouched
+
+    def test_empty_curve(self):
+        assert smoothed_medians(build_curve([], 0, False)) == []
 
 
 class TestPlaceOnCurve:

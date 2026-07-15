@@ -12,12 +12,14 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from core.benchmark.iracing_api import LiveIRacingAPI
+from core.briefing.curve import smoothed_medians
 from core.briefing.ingest import (
     SeriesCandidate,
     build_briefing,
+    max_license_group,
     rank_series_candidates,
 )
-from core.briefing.render import render_briefing
+from core.briefing.render import fmt_lap, render_briefing
 from core.track.track_db import TrackDB
 
 DB_PATH = Path("data/tracks.db")
@@ -80,6 +82,20 @@ def _load_seasons_cached():
         api.close()
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def _load_license_group():
+    """The user's highest license group, or None (then never filter)."""
+    api = _get_api()
+    if api is None:
+        return None
+    try:
+        return max_license_group(api.get_member_info())
+    except Exception:
+        return None
+    finally:
+        api.close()
+
+
 def render_briefing_page() -> None:
     st.title("Race Briefing")
     st.caption(
@@ -110,8 +126,36 @@ def render_briefing_page() -> None:
         st.error("No series with a current-week schedule found.")
         return
 
+    group = _load_license_group()
+    filter_col, license_col = st.columns([2, 1])
+    query = filter_col.text_input(
+        "Find a series", "", placeholder="e.g. Porsche, GT4, Formula..."
+    )
+    licensed_only = license_col.checkbox(
+        "My license only",
+        value=group is not None,
+        disabled=group is None,
+        help="Hides series above your license class. Content ownership "
+        "isn't exposed by the iRacing API, so owned-content filtering "
+        "isn't possible - the practice-depth ordering is the proxy.",
+    )
+    filtered = candidates
+    if licensed_only and group is not None:
+        filtered = [
+            c for c in filtered
+            if c.license_group == 0 or c.license_group <= group
+        ]
+    if query:
+        q = query.lower()
+        filtered = [
+            c for c in filtered if q in candidate_label(c).lower()
+        ]
+    if not filtered:
+        st.info("No series match - clear the filter to see all of them.")
+        return
+
     pick = st.selectbox(
-        "Series", candidates, format_func=candidate_label, index=0
+        "Series", filtered, format_func=candidate_label, index=0
     )
     season = next(s for s in seasons if s.season_id == pick.season_id)
 
@@ -185,25 +229,50 @@ def render_briefing_page() -> None:
         fig.add_trace(go.Scatter(
             x=irs, y=lapss, mode="markers", name="Field",
             marker=dict(size=5, opacity=0.45),
+            customdata=[fmt_lap(v) for v in lapss],
+            hovertemplate="%{customdata} - %{x:,} iR<extra></extra>",
         ))
+        smoothed = smoothed_medians(data.curve)
         fig.add_trace(go.Scatter(
-            x=[b.ir_center for b in data.curve.bins],
-            y=[b.median_lap_s for b in data.curve.bins],
-            mode="lines+markers", name="Median",
+            x=[p[0] for p in smoothed],
+            y=[p[1] for p in smoothed],
+            mode="lines+markers", name="Field median",
+            customdata=[fmt_lap(p[1]) for p in smoothed],
+            hovertemplate="median %{customdata} @ %{x:,} iR<extra></extra>",
         ))
         if data.placement is not None:
             fig.add_hline(
                 y=data.placement.lap_s, line_dash="dash",
-                annotation_text="You (practice best)",
+                annotation_text=f"You ({fmt_lap(data.placement.lap_s)})",
             )
         if data.user_irating:
             fig.add_vline(
                 x=data.user_irating, line_dash="dot",
                 annotation_text=f"Your iR {data.user_irating:,}",
             )
+        # Clamp the display band so one wreck-limped 'best' lap can't
+        # squash the whole chart; ticks in sim-standard m:ss.
+        ys = sorted(lapss)
+        y_lo = ys[0]
+        y_hi = ys[min(len(ys) - 1, int(0.95 * len(ys)))]
+        if data.placement is not None:
+            y_lo = min(y_lo, data.placement.lap_s)
+            y_hi = max(y_hi, data.placement.lap_s)
+        pad = max(0.3, (y_hi - y_lo) * 0.05)
+        step = max(0.5, round((y_hi - y_lo) / 6, 1))
+        tick = y_lo - (y_lo % step)
+        tickvals = []
+        while tick <= y_hi + pad:
+            tickvals.append(round(tick, 3))
+            tick += step
+        fig.update_yaxes(
+            range=[y_lo - pad, y_hi + pad],
+            tickvals=tickvals,
+            ticktext=[fmt_lap(v) for v in tickvals],
+            title="Best race lap",
+        )
         fig.update_layout(
             xaxis_title="Driver iRating",
-            yaxis_title="Best race lap (s)",
             height=420, showlegend=True,
         )
         st.plotly_chart(fig, use_container_width=True)

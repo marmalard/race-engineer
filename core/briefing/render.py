@@ -29,9 +29,14 @@ def _fmt_slot(iso_utc: str) -> str:
     return t.strftime("%a %b %d, %H:%M")
 
 
-def _fmt_lap(seconds: float) -> str:
+def fmt_lap(seconds: float) -> str:
+    """Seconds -> sim-standard 'm:ss.mmm' (public: the page uses it for
+    chart axis ticks and hover labels)."""
     m = int(seconds // 60)
     return f"{m}:{seconds - 60 * m:06.3f}"
+
+
+_fmt_lap = fmt_lap  # internal alias, keeps call sites unchanged
 
 
 def verdict_line(placement: CurvePlacement | None, user_ir: int | None) -> str:

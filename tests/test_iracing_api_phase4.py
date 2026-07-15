@@ -986,3 +986,9 @@ class TestRaceTimeDescriptors:
         season = parse_season_schedules(self._season([]))[0]
         assert season.season_year == 0
         assert season.season_quarter == 0
+
+    def test_license_group_parsed_and_defaults_zero(self):
+        payload = self._season([])
+        payload["seasons"][0]["license_group"] = 3
+        assert parse_season_schedules(payload)[0].license_group == 3
+        assert parse_season_schedules(self._season([]))[0].license_group == 0

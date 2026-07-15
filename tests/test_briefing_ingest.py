@@ -1,7 +1,11 @@
 """Briefing ingest: series ranking (pure) + harvest/build with fakes."""
 
 from core.benchmark.iracing_api import RaceWeek, SeasonSchedule
-from core.briefing.ingest import SeriesCandidate, rank_series_candidates
+from core.briefing.ingest import (
+    SeriesCandidate,
+    max_license_group,
+    rank_series_candidates,
+)
 from core.track.track_db import SessionRow
 
 
@@ -67,6 +71,32 @@ class TestRankSeriesCandidates:
         s = _season(400, "Odd", 9, 18, "Road America")
         s.weeks[0].race_week_num = 3  # schedule has no week 9 entry
         assert rank_series_candidates([s], []) == []
+
+    def test_license_group_carried_onto_candidate(self):
+        s = _season(500, "Pro Series", 2, 9, "Summit")
+        s.license_group = 4
+        assert rank_series_candidates([s], [])[0].license_group == 4
+
+
+class TestMaxLicenseGroup:
+    def test_dict_shaped_licenses_with_group_id(self):
+        info = {"licenses": {
+            "sports_car": {"group_id": 3, "license_level": 10},
+            "formula_car": {"group_id": 2, "license_level": 7},
+        }}
+        assert max_license_group(info) == 3
+
+    def test_list_shaped_licenses_derive_group_from_level(self):
+        info = {"licenses": [
+            {"category": "sports_car", "license_level": 10},  # -> group 3
+            {"category": "oval", "license_level": 2},  # -> group 1
+        ]}
+        assert max_license_group(info) == 3
+
+    def test_unrecognized_shape_returns_none(self):
+        assert max_license_group({}) is None
+        assert max_license_group({"licenses": "weird"}) is None
+        assert max_license_group({"licenses": [{"category": "x"}]}) is None
 
 
 import json

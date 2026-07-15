@@ -64,6 +64,26 @@ def _monotone_medians(bins: list[CurveBin]) -> list[tuple[int, float]]:
     return out
 
 
+def smoothed_medians(
+    curve: PaceCurve, window: int = 1
+) -> list[tuple[int, float]]:
+    """n-weighted moving average of bin medians (+/- window bins), for
+    DISPLAY only. Sparse high-iR bins make the raw median line jumpy
+    (founder smoke-test feedback 2026-07-15); weighting by bin population
+    lets thin bins lean on their heavy neighbors. Placement math (the
+    verdict) stays on the raw monotone medians - cosmetic smoothing must
+    never move the verdict."""
+    bins = curve.bins
+    out: list[tuple[int, float]] = []
+    for i, b in enumerate(bins):
+        lo = max(0, i - window)
+        hi = min(len(bins), i + window + 1)
+        weight = sum(x.n for x in bins[lo:hi])
+        value = sum(x.median_lap_s * x.n for x in bins[lo:hi]) / weight
+        out.append((b.ir_center, value))
+    return out
+
+
 def place_on_curve(
     curve: PaceCurve, lap_s: float, user_ir: int | None
 ) -> CurvePlacement:

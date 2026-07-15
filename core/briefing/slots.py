@@ -7,7 +7,7 @@ day_offset is intentionally ignored for the daily-repeating common case
 a wrong-day slot for an exotic schedule is an acceptable v1 degradation.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from statistics import median
 
 from core.benchmark.iracing_api import RaceTimeDescriptor

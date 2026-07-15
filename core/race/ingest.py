@@ -224,13 +224,26 @@ def ingest_race(
     api,
     cache_dir: Path = DEFAULT_CACHE_DIR,
     ibt_path_for_record: str = "",
+    on_phase: Callable[[str], None] | None = None,
 ) -> RaceData:
     """Full ingestion: IBT + YAML + API (cached) -> RaceData.
 
     api is a LiveIRacingAPI/StubIRacingAPI or None. API failures degrade
     to a partial RaceData (results/lap_chart/driver_laps empty) with a
     warning — the page renders what the telemetry alone supports.
+    on_phase (optional) receives coarse progress labels for st.status;
+    a failing callback is swallowed — progress display never breaks
+    ingestion.
     """
+
+    def _phase(label: str) -> None:
+        if on_phase is not None:
+            try:
+                on_phase(label)
+            except Exception:  # noqa: BLE001 — display-only hook
+                pass
+
+    _phase("Parsing telemetry...")
     ibt, meta = load_race_ibt(source)
     subsession_id = meta["subsession_id"]
     sub_cache = cache_dir / str(subsession_id)
@@ -240,6 +253,7 @@ def ingest_race(
     driver_laps: dict[int, list[DriverLap]] = {}
 
     if api is not None:
+        _phase("Fetching official results...")
         try:
             raw_results = _cached_fetch(
                 sub_cache / "results.json",

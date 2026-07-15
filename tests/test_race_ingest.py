@@ -421,3 +421,30 @@ def test_real_narrative_is_coherent():
     from core.race.models import RaceNarrative
 
     assert RaceNarrative.from_dict(narrative.to_dict()) == narrative
+
+
+# --- on_phase callback --------------------------------------------------------
+
+class TestOnPhaseCallback:
+    def test_parsing_phase_fires_before_parse(self):
+        import pytest
+
+        from core.race.ingest import ingest_race
+
+        labels = []
+        with pytest.raises(Exception):
+            ingest_race(b"not an ibt file", None, on_phase=labels.append)
+        assert labels == ["Parsing telemetry..."]
+
+    def test_callback_failure_never_breaks_ingest(self):
+        import pytest
+
+        from core.race.ingest import ingest_race
+
+        def boom(_label):
+            raise RuntimeError("progress display died")
+
+        # The parse error should surface, NOT the callback's RuntimeError.
+        with pytest.raises(Exception) as excinfo:
+            ingest_race(b"not an ibt file", None, on_phase=boom)
+        assert not isinstance(excinfo.value, RuntimeError)

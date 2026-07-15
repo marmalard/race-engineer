@@ -15,11 +15,22 @@ Two workstreams, one spec. A ships before B; B reuses A's copy.
    plain-language takeaway; charts and numbers exist to prove that sentence
    and live one level down (expander, below the fold, hover). Density is
    opt-in, never the greeting.
-2. **Plain words first, jargon second — hard copy rule.** First use per
-   screen is "strength of field (SoF)", never "SoF" cold. No acronym or
-   shorthand before its plain-language introduction; glossary tooltips are
-   the safety net, not the license. Applies to briefing/debrief AI prompts
-   too (one tone-contract line each).
+2. **Two-tier vocabulary rule (refined with founder 2026-07-15 — the
+   distinction is WHO coined the word).**
+   - *Tier 1 — platform vocabulary* (iRating/iR, SR, SoF, split, license
+     classes): iRacing's own UI prints these; members read them daily.
+     Use freely; tooltip on first occurrence per page; NO inline
+     spell-outs (spelling out the sim's own vocabulary is what reads as
+     patronizing to experienced users). Tooltips never patronize —
+     they're invisible until sought.
+   - *Tier 2 — product/analysis vocabulary* (our coinages + telemetry
+     domain: IBT, reference lap, representative lap, clean lap,
+     pace-deserved position, implied iRating, prep ledger, loss region):
+     plain-language first use per screen PLUS tooltip. Can't patronize
+     anyone — nobody knows what WE mean by these until told.
+   - The glossary dict (A2) carries the tier per term; AI prompts get one
+     tone-contract line: tier-2 terms are explained on first use, tier-1
+     used plainly.
 3. **Spatial anchoring for corners.** Corner references are always
    "T4 — Wagon Bend" (number + name). Where corners are listed (debrief
    incidents, coaching loss regions, briefing key corners), a small

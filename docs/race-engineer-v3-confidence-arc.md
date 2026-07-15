@@ -24,6 +24,8 @@ The v2 surfaces are moments. The arc is the progression that connects them:
 
 Every surface, page, and notification should know where the user is on this arc and pull them one step forward. The leading metric is unchanged (does official-race volume go up?) — the arc is the mechanism that moves it.
 
+The founder's one-line synthesis (2026-07-15, on approving this doc): **"the coach develops a curriculum that adapts as the driver improves, and provides positive reinforcement and confidence to win."** The week plan (§3) is the curriculum's weekly unit; prescriptions (§4) are its lessons; progression (§5) is its report card; the pro playbook (§5b) is its pedagogy.
+
 ## 3. The week plan (the unifying artifact)
 
 One recurring deliverable that operationalizes the arc for a time-limited driver:

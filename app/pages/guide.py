@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from app.components.glossary import glossary_markdown
 from app.components.theme import section_header
 
 _ONBOARDING = """
@@ -113,24 +114,27 @@ _FOUNDER_TOOLS = """
 def render_guide_page() -> None:
     st.header("Guide")
     st.markdown(
-        "Everything you need to get your first debrief — and the reference "
-        "for the rest of the toolbox."
+        "Everything you need to get your first debrief — hosting and "
+        "command-line reference lives at the bottom, collapsed."
     )
 
+    # --- Getting started (guest-facing) ----------------------------------
     section_header("Get your first debrief")
     st.markdown(_ONBOARDING)
 
     section_header("How to read your debrief")
     st.markdown(_HONEST_NOTES)
 
-    section_header("Starting the services")
-    st.markdown(_RUNNING)
+    section_header("Glossary")
+    st.markdown(glossary_markdown())
 
-    section_header("The rest of the app")
-    st.markdown(_FOUNDER_PAGES)
-
-    section_header("Where your data lives")
-    st.markdown(_FOUNDER_DATA)
-
-    section_header("Command line & hosting")
-    st.markdown(_FOUNDER_TOOLS)
+    # --- Host reference (founder-facing, collapsed) -----------------------
+    section_header("Host reference")
+    with st.expander("For the host — running services, data, command line"):
+        st.markdown(_RUNNING)
+        st.markdown("**The rest of the app**")
+        st.markdown(_FOUNDER_PAGES)
+        st.markdown("**Where your data lives**")
+        st.markdown(_FOUNDER_DATA)
+        st.markdown("**Command line & hosting**")
+        st.markdown(_FOUNDER_TOOLS)

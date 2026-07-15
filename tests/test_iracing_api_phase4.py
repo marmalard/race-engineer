@@ -971,3 +971,18 @@ class TestRaceTimeDescriptors:
         payload["seasons"][0]["schedules"][0].pop("race_time_descriptors")
         week = parse_season_schedules(payload)[0].weeks[0]
         assert week.race_time_descriptors == []
+
+    def test_season_year_quarter_parsed(self):
+        # search_series requires year+quarter (season_id alone is a 400,
+        # verified live 2026-07-15) - the schedule slice must retain them
+        payload = self._season([])
+        payload["seasons"][0]["season_year"] = 2026
+        payload["seasons"][0]["season_quarter"] = 3
+        season = parse_season_schedules(payload)[0]
+        assert season.season_year == 2026
+        assert season.season_quarter == 3
+
+    def test_season_year_quarter_default_zero(self):
+        season = parse_season_schedules(self._season([]))[0]
+        assert season.season_year == 0
+        assert season.season_quarter == 0

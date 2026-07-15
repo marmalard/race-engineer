@@ -3,6 +3,8 @@
 exact-string tests). HARD RULE (v3 addendum section 1): the verdict never
 gates - no wording may tell the driver not to race."""
 
+from datetime import datetime
+
 from core.briefing.models import BriefingData, CurvePlacement
 
 ON_CURVE_BAND_S = 0.15  # |delta| under this = "on the pace"
@@ -11,6 +13,20 @@ INVITE_LINE = (
     "Run a practice session at this combo and I'll place you on this "
     "week's curve."
 )
+
+
+def _fmt_slot(iso_utc: str) -> str:
+    """ISO UTC slot -> machine-local display ('Wed Jul 15, 19:45').
+
+    The one deliberate impurity in this module: astimezone() reads the
+    machine timezone, because slot times exist for a human deciding when
+    to race tonight. Unparseable input falls back to the raw string.
+    """
+    try:
+        t = datetime.fromisoformat(iso_utc).astimezone()
+    except ValueError:
+        return iso_utc
+    return t.strftime("%a %b %d, %H:%M")
 
 
 def _fmt_lap(seconds: float) -> str:
@@ -104,9 +120,11 @@ def render_briefing(data: BriefingData) -> str:
             else ""
         )
         best = f" - best {_fmt_lap(p.best_lap_s)}" if p.best_lap_s else ""
+        session_word = "session" if p.sessions == 1 else "sessions"
+        lap_word = "lap" if p.representative_laps == 1 else "laps"
         lines += [
-            f"{p.sessions} practice sessions, {p.representative_laps} "
-            f"representative laps in the {p.car}{best}{trend}.",
+            f"{p.sessions} practice {session_word}, {p.representative_laps} "
+            f"representative {lap_word} in the {p.car}{best}{trend}.",
             "",
         ]
 
@@ -114,6 +132,6 @@ def render_briefing(data: BriefingData) -> str:
         lines += ["## When to run it", ""]
         for slot in data.slots:
             tag = " - fits your usual window" if slot.fits_window else ""
-            lines += [f"- {slot.start_utc}{tag}"]
+            lines += [f"- {_fmt_slot(slot.start_utc)}{tag}"]
         lines += [""]
     return "\n".join(lines)

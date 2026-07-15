@@ -87,15 +87,26 @@ def harvest_field(
     season_id: int,
     race_week: int,
     cache_dir: Path = DEFAULT_CACHE_DIR,
+    season_year: int | None = None,
+    season_quarter: int | None = None,
 ) -> tuple[PaceCurve, FieldStats | None]:
     """Fetch the week's subsessions -> (iR, best_lap) points + field norms.
 
     The search call is never disk-cached (the week is still growing);
     per-subsession results are cached forever (results are immutable).
+
+    search_series REQUIRES season_year+season_quarter — season_id alone is
+    a 400, and the server ignores season_id as a filter (both verified
+    live 2026-07-15: the year+quarter response is the whole week across
+    all series), so rows are filtered to this season client-side.
     """
     rows = api.search_series_results(
-        season_id=season_id, race_week_num=race_week
+        season_id=season_id,
+        race_week_num=race_week,
+        season_year=season_year,
+        season_quarter=season_quarter,
     )
+    rows = [r for r in rows if r.season_id == season_id]
     rows = sorted(rows, key=lambda r: r.start_time)
     capped = len(rows) > HARVEST_CAP
     if capped:
@@ -173,7 +184,12 @@ def build_briefing(
 
     try:
         data.curve, data.field_stats = harvest_field(
-            api, season.season_id, season.race_week, cache_dir
+            api,
+            season.season_id,
+            season.race_week,
+            cache_dir,
+            season_year=season.season_year or None,
+            season_quarter=season.season_quarter or None,
         )
     except Exception:
         logger.warning("Field harvest failed", exc_info=True)

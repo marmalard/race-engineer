@@ -117,6 +117,24 @@ class TestRenderBriefing:
         )
         assert "fuel capped" not in render_briefing(data)
 
+    def test_slot_rendered_in_local_time(self):
+        # slots display machine-local, not raw ISO UTC (founder smoke-test
+        # feedback 2026-07-15); expected string computed the same way so
+        # the test is timezone-independent
+        from datetime import datetime
+
+        iso = "2026-07-16T00:15:00+00:00"
+        expected = datetime.fromisoformat(iso).astimezone().strftime(
+            "%a %b %d, %H:%M"
+        )
+        data = BriefingData(
+            series_name="X", season_id=1, race_week=0, fmt=_fmt(),
+            slots=[RaceSlot(start_utc=iso, fits_window=False)],
+        )
+        md = render_briefing(data)
+        assert expected in md
+        assert iso not in md
+
 
 class TestVerdictLineBoundary:
     def test_under_curve_exact_boundary(self):

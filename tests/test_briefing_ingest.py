@@ -111,8 +111,10 @@ class FakeAPI:
         self.rows = rows
         self.payloads = payloads  # subsession_id -> payload
         self.results_calls = []
+        self.search_kwargs = None
 
     def search_series_results(self, **kwargs):
+        self.search_kwargs = kwargs
         return self.rows
 
     def get_subsession_results(self, subsession_id):
@@ -154,6 +156,31 @@ class TestHarvestField:
         api = FakeAPI([], {})
         curve, stats = harvest_field(api, 100, 2, cache_dir=tmp_path)
         assert curve.points == [] and stats is None
+
+    def test_other_season_rows_filtered_out(self, tmp_path):
+        # search_series ignores season_id server-side (verified live
+        # 2026-07-15: year+quarter returns the whole week across ALL
+        # series) - harvest must filter to this season client-side
+        from dataclasses import replace
+
+        alien = replace(
+            _series_row(9, 900, sof=2800, drivers=20), season_id=999
+        )
+        rows = [_series_row(1, 500, sof=1400, drivers=14), alien]
+        api = FakeAPI(rows, {1: _results_payload([(1400, 82.0)] * 6)})
+        curve, stats = harvest_field(api, 100, 2, cache_dir=tmp_path)
+        assert curve.subsessions_used == 1
+        assert stats.sof_median == 1400  # alien SoF 2800 excluded
+
+    def test_year_quarter_forwarded_to_search(self, tmp_path):
+        api = FakeAPI([], {})
+        harvest_field(
+            api, 100, 2, cache_dir=tmp_path,
+            season_year=2026, season_quarter=3,
+        )
+        assert api.search_kwargs["season_year"] == 2026
+        assert api.search_kwargs["season_quarter"] == 3
+        assert api.search_kwargs["race_week_num"] == 2
 
 
 class TestBuildBriefing:

@@ -190,6 +190,11 @@ class SeasonSchedule:
     season_name: str
     race_week: int  # current race week number
     max_weeks: int
+    # Required by /data/results/search_series — season_id alone is a 400
+    # and the server ignores it as a filter (verified live 2026-07-15);
+    # the endpoint keys on year+quarter, callers filter rows client-side.
+    season_year: int = 0
+    season_quarter: int = 0
     weeks: list[RaceWeek] = field(default_factory=list)
 
 
@@ -957,6 +962,8 @@ def parse_season_schedules(payload: list | dict) -> list[SeasonSchedule]:
             season_name=season.get("season_name", ""),
             race_week=season.get("race_week", 0),
             max_weeks=season.get("max_weeks", 0),
+            season_year=season.get("season_year", 0),
+            season_quarter=season.get("season_quarter", 0),
             weeks=weeks,
         ))
     return seasons

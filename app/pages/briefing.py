@@ -122,11 +122,22 @@ def render_briefing_page() -> None:
             if s.track_id == str(pick.track_id) and s.session_type != "Race"
         }
     )
+    other_cars = sorted(
+        {s.car for s in sessions if s.session_type != "Race"}
+        - set(cars_at_track)
+    )
+    car_options = cars_at_track + other_cars
     car = (
-        st.selectbox("Your car", cars_at_track)
-        if cars_at_track
+        st.selectbox(
+            "Your car",
+            car_options,
+            help="Cars you've practiced at this week's track are listed "
+            "first. Any other car still gets the field briefing - pace "
+            "placement needs practice laps at this combo.",
+        )
+        if car_options
         else st.text_input(
-            "Your car (no practice history at this track yet)", ""
+            "Your car (no practice history recorded yet)", ""
         )
     )
 

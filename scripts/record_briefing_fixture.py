@@ -36,8 +36,22 @@ def main() -> None:
         password=os.environ["IRACING_PASSWORD"],
     )
     try:
+        # search_series needs season_year+quarter (season_id alone is a
+        # 400) — resolve them from the season calendar first.
+        season = next(
+            (s for s in api.get_series_seasons() if s.season_id == season_id),
+            None,
+        )
+        if season is None:
+            print(f"season_id {season_id} not found in the active calendar")
+            raise SystemExit(1)
         curve, stats = harvest_field(
-            api, season_id, race_week, cache_dir=FIXTURE_DIR
+            api,
+            season_id,
+            race_week,
+            cache_dir=FIXTURE_DIR,
+            season_year=season.season_year or None,
+            season_quarter=season.season_quarter or None,
         )
     finally:
         api.close()

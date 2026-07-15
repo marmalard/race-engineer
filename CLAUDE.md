@@ -452,6 +452,16 @@ streamlit run app/streamlit_app.py
 - [ ] Field analysis extensions: SoF/split prediction per timeslot, opponent profiles
 - [ ] Series calendar awareness → proactive briefings (week-plan push layer)
 
+**Consumer UX Workstream A** (complete, branch consumer-ux-a — spec docs/superpowers/specs/2026-07-15-consumer-ux-packaging-design.md, plan docs/superpowers/plans/2026-07-15-consumer-ux-workstream-a.md)
+- [x] A2 glossary component (two-tier TERMS dict, help_text tooltips, Guide section generated from the same dict; coupling test pins the explain() substring to the ingest source)
+- [x] A5 error taxonomy (app/components/errors.py explain() + exact-string constants) + st.status phases through ingest_race(on_phase=...) — the only core change, inert when None
+- [x] A0 st.navigation shell — app/navigation.py NAV_SPEC (coupling-tested: every render function importable), grouped nav Race/Practice/Help/Host, per-page URLs (/debrief, /briefing, ...), segmented units control; theme un-hides stSidebarNav (it IS the router now); brand block renders BELOW the nav (st.navigation owns the sidebar top — moving the wordmark above needs st.logo, flagged for founder)
+- [x] A1 state-aware Start page (default landing): undebriefed-race lead card (pick_undebriefed pure + tested), two entry paths, IBT explainer, sample button, status strip (git SHA / host-guest / watcher freshness)
+- [x] A3 frozen sample debrief (app/assets/sample_narrative.json sentinel ids 0/0 + canned sample_debrief.md; round-trip pinned; sample_mode never touches RaceStore)
+- [x] A4 Guide restructure (guest-first, glossary section, host reference collapsed) + A6 ride-alongs (TELEMETRY_DIR env var via app/components/host.py replaces the hardcoded founder path in debrief+toolbox, host-only AI metadata, watcher freshness lines, page job lines) + A6b Toolbox radio-transcript feed (core/live/feed.py format_transcript_line, exact-string tested, raw JSONL in collapsed expander)
+- [ ] Founder copy review before merge: Start INTRO, sample_debrief.md, error sentences, page job lines (all DRAFT product voice)
+- [ ] A7 corner mini-map (phase 2, after top-5) + workstream B (tray + installer) — separate plan
+
 **Phase 5: Live Engineer (push-to-talk)**
 - [ ] Rolling race-state summarizer (CarIdx arrays → compact briefing state)
 - [ ] PTT + realtime voice, ≤2s latency; sparse event-driven calls, strict rate limiting

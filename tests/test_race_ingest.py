@@ -14,8 +14,11 @@ import pandas as pd
 import pytest
 
 from core.race.ingest import (
+    NotRaceChunkError,
     RaceIngestError,
     _cached_fetch,
+    ensure_contains_race_segment,
+    find_race_session_nums,
     ingest_race,
     parse_lap_chart_rows,
     parse_lap_data_rows,
@@ -448,3 +451,52 @@ class TestOnPhaseCallback:
         with pytest.raises(Exception) as excinfo:
             ingest_race(b"not an ibt file", None, on_phase=boom)
         assert not isinstance(excinfo.value, RuntimeError)
+
+
+# --- pre-race chunk gate --------------------------------------------------------
+# iRacing writes a new IBT each time recording restarts inside the race
+# server; every chunk carries EventType 'Race' + the same SubSessionID.
+# Only the chunk whose telemetry enters the YAML Race session is the race.
+
+_SESSIONS_YAML = {
+    "SessionInfo": {
+        "Sessions": [
+            {"SessionNum": 0, "SessionType": "Practice"},
+            {"SessionNum": 1, "SessionType": "Lone Qualify"},
+            {"SessionNum": 2, "SessionType": "Race"},
+        ]
+    }
+}
+
+
+class TestRaceChunkGate:
+    def test_find_race_session_nums(self):
+        assert find_race_session_nums(_SESSIONS_YAML) == [2]
+
+    def test_find_race_session_nums_empty_when_absent(self):
+        assert find_race_session_nums({}) == []
+
+    def test_raises_for_pre_race_chunk_with_segment_types(self):
+        telemetry = pd.DataFrame({"SessionNum": [0, 0, 1, 1]})
+        with pytest.raises(NotRaceChunkError) as excinfo:
+            ensure_contains_race_segment(_SESSIONS_YAML, telemetry, 555)
+        assert excinfo.value.subsession_id == 555
+        assert excinfo.value.segment_types == ["Practice", "Lone Qualify"]
+
+    def test_passes_when_race_segment_present(self):
+        telemetry = pd.DataFrame({"SessionNum": [1, 2, 2]})
+        ensure_contains_race_segment(_SESSIONS_YAML, telemetry, 555)
+
+    def test_fails_open_without_sessionnum_channel(self):
+        # No verdict without the channel — losing a real race capture is
+        # worse than capturing a junk one.
+        telemetry = pd.DataFrame({"Speed": [1.0]})
+        ensure_contains_race_segment(_SESSIONS_YAML, telemetry, 555)
+
+    def test_fails_open_without_race_in_yaml(self):
+        telemetry = pd.DataFrame({"SessionNum": [0]})
+        ensure_contains_race_segment({}, telemetry, 555)
+
+    def test_is_a_race_ingest_error(self):
+        # Existing except-RaceIngestError handlers keep working.
+        assert issubclass(NotRaceChunkError, RaceIngestError)

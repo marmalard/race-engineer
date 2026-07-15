@@ -137,3 +137,30 @@ def test_process_race_defers_when_young_and_not_ready(tmp_path):
     assert report.deferred and not report.captured
     assert race_store.list_races() == []
     assert track_db.processed_ibt_paths() == set()  # not marked -> retries
+
+
+def test_process_race_skips_pre_race_chunk(tmp_path, monkeypatch):
+    """A practice/quali chunk from the race server is reported for lap-path
+    rerouting: nothing captured, nothing marked processed HERE — the CLI
+    hands the file to process_ibt, whose history row marks it."""
+    from core.race.ingest import NotRaceChunkError
+
+    def fake_ingest(*args, **kwargs):
+        raise NotRaceChunkError(
+            "not the race", subsession_id=777,
+            segment_types=["Practice", "Lone Qualify"],
+        )
+
+    monkeypatch.setattr("core.watcher.race_processor.ingest_race", fake_ingest)
+    track_db = TrackDB(tmp_path / "tracks.db")
+    race_store = RaceStore(tmp_path / "races.db")
+    report = process_race_ibt(
+        Path("chunk.ibt"), None, race_store, track_db,
+        now=1000.0, file_mtime=0.0,
+    )
+    assert report.non_race_segment == "Practice / Lone Qualify"
+    assert report.error is None
+    assert not report.captured and not report.deferred
+    assert report.subsession_id == 777
+    assert race_store.list_races() == []
+    assert track_db.processed_ibt_paths() == set()

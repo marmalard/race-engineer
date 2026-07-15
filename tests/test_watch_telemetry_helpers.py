@@ -100,3 +100,54 @@ def test_race_report_block_survives_cp1252_stdout():
     block = watch_telemetry._format_race_report(report)
     block.encode("cp1252")  # must not raise
     assert "P4" in block and "P2" in block
+
+
+def test_format_race_report_pre_race_chunk_cp1252_safe():
+    from pathlib import Path as _P
+    from core.watcher.race_processor import RaceReport
+    report = RaceReport(
+        path=_P("chunk.ibt"), subsession_id=777,
+        non_race_segment="Lone Qualify",
+    )
+    block = watch_telemetry._format_race_report(report)
+    block.encode("cp1252")  # must not raise
+    assert "Lone Qualify" in block
+
+
+def test_process_candidate_reroutes_pre_race_chunk(monkeypatch):
+    """A race-classified chunk that turns out to lack the race segment must
+    be handed to the lap path with its real segment type — quali laps are
+    pace data (founder, 2026-07-15), and the lap path's history row is what
+    marks the file processed."""
+    from types import SimpleNamespace
+
+    from core.watcher.processor import SessionReport
+    from core.watcher.race_processor import RaceReport
+
+    class _Session:
+        raw = {"WeekendInfo": {"EventType": "Race", "SubSessionID": 777}}
+
+    monkeypatch.setattr(
+        watch_telemetry.IBTParser, "parse_session_only",
+        lambda self, path: _Session(),
+    )
+
+    def fake_race(path, api, race_store, track_db, *, now, file_mtime):
+        return RaceReport(path=path, subsession_id=777,
+                          non_race_segment="Lone Qualify")
+
+    calls = {}
+
+    def fake_lap(path, track_db, ref_store, session_type_override=None):
+        calls["lap"] = (path, session_type_override)
+        return SessionReport(path=path)
+
+    monkeypatch.setattr(watch_telemetry, "process_race_ibt", fake_race)
+    monkeypatch.setattr(watch_telemetry, "process_ibt", fake_lap)
+
+    cand = SimpleNamespace(path=Path("chunk.ibt"), mtime=0.0)
+    block = watch_telemetry._process_candidate(
+        cand, None, object(), object(), object(), 1000.0
+    )
+    assert calls["lap"] == (Path("chunk.ibt"), "Lone Qualify")
+    assert "Lone Qualify" in block

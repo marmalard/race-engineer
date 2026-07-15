@@ -111,6 +111,10 @@ def _format_race_report(r: RaceReport) -> str:
     name = r.path.name
     if r.error is not None:
         return f"FAILED {name}: {r.error} (will retry next scan)"
+    if r.non_race_segment:
+        return (f"{name}\n  Race-server chunk ({r.non_race_segment}) — "
+                f"not the race; sending to the lap path "
+                f"(subsession {r.subsession_id})")
     if r.deferred:
         return (f"{name}\n  Race {r.track} — results not ready, "
                 f"will retry (subsession {r.subsession_id})")
@@ -132,10 +136,21 @@ def _process_candidate(cand, api, track_db, ref_store, race_store, now) -> str:
         return (f"FAILED {cand.path.name}: {type(exc).__name__}: {exc} "
                 "(will retry next scan)")
     if classify_ibt(weekend) == "race":
-        return _format_race_report(process_race_ibt(
+        race_report = process_race_ibt(
             cand.path, api, race_store, track_db,
             now=now, file_mtime=cand.mtime,
-        ))
+        )
+        if not race_report.non_race_segment:
+            return _format_race_report(race_report)
+        # Pre-race chunk (practice/quali on the race server): its laps are
+        # real pace data — run the normal lap pipeline under the segment's
+        # true type so readiness counts them ('Race' rows are excluded).
+        lap_report = process_ibt(
+            cand.path, track_db, ref_store,
+            session_type_override=race_report.non_race_segment,
+        )
+        return (_format_race_report(race_report) + "\n"
+                + _format_report(lap_report))
     return _format_report(process_ibt(cand.path, track_db, ref_store))
 
 

@@ -75,9 +75,17 @@ def _load_corners(
 
 
 def process_ibt(
-    path: Path, track_db: TrackDB, ref_store: ReferenceStore
+    path: Path,
+    track_db: TrackDB,
+    ref_store: ReferenceStore,
+    session_type_override: str | None = None,
 ) -> SessionReport:
-    """Process one IBT file end-to-end. Never raises."""
+    """Process one IBT file end-to-end. Never raises.
+
+    session_type_override replaces the YAML EventType in the history row —
+    used for rerouted pre-race chunks (their EventType says 'Race', which
+    would wrongly exclude the quali laps from practice readiness).
+    """
     report = SessionReport(path=path)
     try:
         parser = IBTParser()
@@ -154,7 +162,9 @@ def process_ibt(
             session_id=session_id,
             track_id=track_id,
             car=session.car_name,
-            session_type=session.session_type or "unknown",
+            session_type=(
+                session_type_override or session.session_type or "unknown"
+            ),
             # iRacing stamps filenames "... YYYY-MM-DD HH-MM-SS"; a renamed
             # file stores a garbage substring here — metadata only, never
             # parsed back, so it degrades harmlessly.

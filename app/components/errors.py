@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import struct
 
-from core.race.ingest import RaceIngestError
+from core.race.ingest import NotRaceChunkError, RaceIngestError
 
 NOT_TELEMETRY = (
     "This file doesn't look like an iRacing telemetry (.ibt) file. "
@@ -24,6 +24,12 @@ NOT_TELEMETRY = (
 NOT_A_RACE = (
     "This is a practice or qualifying session — the Debrief page wants "
     "an official race. The Lap Coaching page handles practice telemetry."
+)
+NOT_RACE_CHUNK = (
+    "This file is from your race weekend, but it holds the "
+    "practice or qualifying segment — not the race itself. The "
+    "race is usually the biggest .ibt with the same track and "
+    "time; this one works on the Lap Coaching page."
 )
 # NO_AI_KEY and API_DOWN are not reachable via explain() — pages show
 # them directly in the states where they apply (no exception involved).
@@ -49,6 +55,8 @@ _PARSE_ERRORS = (ValueError, TypeError, struct.error, EOFError)
 
 def explain(exc: Exception) -> str:
     """Map a failure to its consumer sentence; GENERIC when unknown."""
+    if isinstance(exc, NotRaceChunkError):  # subclass — check before the base
+        return NOT_RACE_CHUNK
     if isinstance(exc, RaceIngestError):
         if "not an official race" in str(exc):
             return NOT_A_RACE

@@ -108,6 +108,23 @@ def _profile_block(store: RaceStore, cust_id: int) -> str:
         return ""
 
 
+def dedupe_race_chunks(races: list[dict]) -> list[dict]:
+    """One entry per subsession — the largest chunk.
+
+    iRacing writes a new IBT each time recording restarts inside the race
+    server (practice segment, quali, the race); every chunk shares the
+    SubSessionID, and the race is the largest chunk of its group. Pure;
+    preserves the incoming (newest-first) order.
+    """
+    best: dict[int, dict] = {}
+    for r in races:
+        cur = best.get(r["subsession_id"])
+        if cur is None or r["size"] > cur["size"]:
+            best[r["subsession_id"]] = r
+    keep = {id(r) for r in best.values()}
+    return [r for r in races if id(r) in keep]
+
+
 @st.cache_data(show_spinner=False, ttl=300)
 def _scan_race_ibts(folder: str) -> list[dict]:
     """Cheap scan of the host telemetry folder for race IBTs."""
@@ -123,11 +140,13 @@ def _scan_race_ibts(folder: str) -> list[dict]:
                         "path": str(path),
                         "label": f"{session.track_name} — {session.car_name} "
                         f"— {path.stem[-19:]}",
+                        "subsession_id": int(weekend["SubSessionID"]),
+                        "size": path.stat().st_size,
                     }
                 )
         except Exception:  # noqa: BLE001 — skip unreadable files
             continue
-    return races
+    return dedupe_race_chunks(races)
 
 
 def _analyze(

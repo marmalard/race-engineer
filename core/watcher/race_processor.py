@@ -12,7 +12,7 @@ captured into the returned report so one bad file never aborts a scan.
 from dataclasses import dataclass
 from pathlib import Path
 
-from core.race.ingest import DEFAULT_CACHE_DIR, ingest_race
+from core.race.ingest import DEFAULT_CACHE_DIR, NotRaceChunkError, ingest_race
 from core.race.models import DriverLap, RaceData
 from core.race.narrative import build_narrative
 from core.race.race_store import RaceStore
@@ -38,6 +38,11 @@ class RaceReport:
     captured: bool = False   # narrative saved to races.db this scan
     partial: bool = False    # saved without Data API results
     deferred: bool = False   # results not ready + file young -> retry next scan
+    # Pre-race chunk (practice/quali recorded on the race server): the
+    # segment label, e.g. 'Lone Qualify'. Truthy means NOT captured and NOT
+    # marked processed — the caller must reroute the file to the lap path,
+    # whose history row marks it (quali laps are real pace data).
+    non_race_segment: str | None = None
     error: str | None = None
 
 
@@ -165,6 +170,10 @@ def process_race_ibt(
         report.incidents = h.incidents
         report.captured = True
         report.partial = not results_ready
+        return report
+    except NotRaceChunkError as exc:
+        report.subsession_id = exc.subsession_id
+        report.non_race_segment = " / ".join(exc.segment_types) or "pre-race"
         return report
     except Exception as exc:  # noqa: BLE001 — a bad file must never abort a scan
         report.error = f"{type(exc).__name__}: {exc}"

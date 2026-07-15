@@ -11,10 +11,11 @@ from app.components.errors import (
     GENERIC,
     NO_AI_KEY,
     NOT_A_RACE,
+    NOT_RACE_CHUNK,
     NOT_TELEMETRY,
     explain,
 )
-from core.race.ingest import RaceIngestError
+from core.race.ingest import NotRaceChunkError, RaceIngestError
 
 
 class TestConstants:
@@ -83,3 +84,19 @@ class TestExplain:
         # of the dispatch silently falling through to str(exc).
         src = Path("core/race/ingest.py").read_text(encoding="utf-8")
         assert "not an official race" in src
+
+    def test_pre_race_chunk_maps_to_not_race_chunk(self):
+        exc = NotRaceChunkError(
+            "chunk", subsession_id=1, segment_types=["Lone Qualify"]
+        )
+        assert explain(exc) == NOT_RACE_CHUNK
+
+
+class TestNotRaceChunkConstant:
+    def test_not_race_chunk_exact(self):
+        assert NOT_RACE_CHUNK == (
+            "This file is from your race weekend, but it holds the "
+            "practice or qualifying segment — not the race itself. The "
+            "race is usually the biggest .ibt with the same track and "
+            "time; this one works on the Lap Coaching page."
+        )

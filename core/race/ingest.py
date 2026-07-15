@@ -36,11 +36,90 @@ RACE_CHANNELS = IBTParser.CORE_CHANNELS + [
     "SessionFlags",
     "FuelLevel",
     "SessionState",
+    "SessionNum",  # pre-race chunk gate: which weekend segment is this?
 ]
 
 
 class RaceIngestError(Exception):
     """Raised when a source cannot be ingested as an official race."""
+
+
+class NotRaceChunkError(RaceIngestError):
+    """This IBT is from a race server but holds a pre-race segment.
+
+    iRacing writes a new .ibt every time recording restarts inside the
+    race server (practice segment, qualifying, the race itself); every
+    chunk carries EventType 'Race' and the same SubSessionID. Only the
+    chunk whose telemetry enters the YAML-declared Race session is the
+    race. Carries the segment types so the watcher can reroute the
+    chunk to the lap path under its true session type.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        subsession_id: int = 0,
+        segment_types: list[str] | None = None,
+    ):
+        super().__init__(message)
+        self.subsession_id = subsession_id
+        self.segment_types = segment_types or []
+
+
+def find_race_session_nums(raw: dict) -> list[int]:
+    """SessionNums of Race-type sessions in the IBT session YAML.
+
+    [] when the session list is absent or holds no Race entry — callers
+    fail open (no verdict, not a non-race verdict).
+    """
+    sessions = (raw.get("SessionInfo", {}) or {}).get("Sessions", []) or []
+    return [
+        int(s["SessionNum"])
+        for s in sessions
+        if str(s.get("SessionType", "")).lower() == "race"
+        and s.get("SessionNum") is not None
+    ]
+
+
+def _chunk_segment_types(raw: dict, session_nums: list[int]) -> list[str]:
+    """YAML SessionTypes for the segment numbers present in a chunk's
+    telemetry (deduped, YAML order preserved)."""
+    sessions = (raw.get("SessionInfo", {}) or {}).get("Sessions", []) or []
+    present = set(session_nums)
+    seen = dict.fromkeys(
+        str(s.get("SessionType", ""))
+        for s in sessions
+        if s.get("SessionNum") in present
+    )
+    return [t for t in seen if t]
+
+
+def ensure_contains_race_segment(
+    raw: dict, telemetry, subsession_id: int
+) -> None:
+    """Raise NotRaceChunkError when this chunk verifiably lacks the race.
+
+    Fail-open by design: no Race session in the YAML or no SessionNum
+    channel in the telemetry means no verdict — the chunk is processed
+    as a race (losing a real race capture is worse than a junk one).
+    """
+    race_nums = find_race_session_nums(raw)
+    if not race_nums or "SessionNum" not in telemetry.columns:
+        return
+    present = [
+        int(n) for n in telemetry["SessionNum"].dropna().unique().tolist()
+    ]
+    if any(n in race_nums for n in present):
+        return
+    segments = _chunk_segment_types(raw, present)
+    label = " / ".join(segments) if segments else "pre-race"
+    raise NotRaceChunkError(
+        f"This race-weekend IBT holds the {label} segment, not the race "
+        f"(subsession {subsession_id}).",
+        subsession_id=subsession_id,
+        segment_types=segments,
+    )
 
 
 def select_race_simsession(session_results: list[dict]) -> dict:
@@ -177,6 +256,11 @@ def load_race_ibt(source: Path | bytes) -> tuple:
             f"(EventType={weekend.get('EventType')!r}, "
             f"SubSessionID={subsession_id!r})."
         )
+
+    # Recording restarts split a race weekend into several .ibt chunks,
+    # all stamped EventType Race — only the one that enters the Race
+    # session is the race (fail-open inside the gate).
+    ensure_contains_race_segment(raw, ibt.telemetry, int(subsession_id))
 
     driver_info = raw.get("DriverInfo", {}) or {}
     player_car_idx = driver_info.get("DriverCarIdx", -1)

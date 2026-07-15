@@ -8,6 +8,7 @@ this is the throwaway validation surface before the real HUD (Plan 2).
 
 import json
 import threading
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
@@ -122,3 +123,68 @@ def start_web_display(
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     return server
+
+
+# --- Radio-transcript formatter (consumer-UX A6b) -------------------------
+# One line per session-log event (core/live/session_log.py JSONL). Pure
+# formatter — reused by the Toolbox activity feed and, later, the tray
+# status view and the iPad feed. Empty string = machinery, don't show.
+
+_ICON_RADIO = "\U0001f399"
+_ICON_LAP = "\U0001f3c1"
+
+
+def _fmt_clock(iso: str | None) -> str:
+    """UTC ISO timestamp -> local HH:MM:SS ('--:--:--' when absent)."""
+    if not iso:
+        return "--:--:--"
+    try:
+        return datetime.fromisoformat(iso).astimezone().strftime("%H:%M:%S")
+    except ValueError:
+        return "--:--:--"
+
+
+def _fmt_lap_time(seconds: float) -> str:
+    """Seconds -> m:ss.mmm (kept local: core/live must not import
+    core/briefing for a 2-line format)."""
+    m = int(seconds // 60)
+    return f"{m}:{seconds - 60 * m:06.3f}"
+
+
+def format_transcript_line(event: dict) -> str:
+    """One radio-transcript line for a live-session JSONL event."""
+    clock = _fmt_clock(event.get("t"))
+    kind = event.get("event", "")
+    if kind == "connect":
+        ref = event.get("reference")
+        tail = (
+            f"reference {_fmt_lap_time(ref['lap_time'])} loaded"
+            if ref
+            else "no reference — lap one sets the baseline"
+        )
+        return (
+            f"{clock}  {_ICON_RADIO} On air — {event.get('track', '?')} · "
+            f"{event.get('car', '?')} · {tail}"
+        )
+    if kind == "lap":
+        delta = event.get("delta")
+        delta_txt = f" ({delta:+.1f}s)" if delta is not None else ""
+        dirty_txt = " — track limits, won't count" if event.get("dirty") else ""
+        return (
+            f"{clock}  {_ICON_LAP} Lap {event.get('lap', '?')} — "
+            f"{_fmt_lap_time(event['lap_time'])}{delta_txt}{dirty_txt}"
+        )
+    if kind == "baseline":
+        return (
+            f"{clock}  {_ICON_LAP} Lap {event.get('lap', '?')} — "
+            f"{_fmt_lap_time(event['lap_time'])}, baseline set"
+        )
+    if kind == "prompt":
+        return f"{clock}  {_ICON_RADIO} {event.get('text', '')}"
+    if kind == "discard":
+        return f"{clock}  ↩ {event.get('speech', 'Lap discarded.')}"
+    if kind in ("invalid", "dirty_baseline_skipped"):
+        return f"{clock}  ⚠ {event.get('speech', '')}"
+    if kind == "schedule":
+        return ""  # prompt-schedule dump — machinery, not radio
+    return f"{clock}  \xb7 {kind}"

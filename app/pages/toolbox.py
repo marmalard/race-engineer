@@ -15,10 +15,11 @@ from pathlib import Path
 
 import streamlit as st
 
+from app.components.host import telemetry_dir
 from app.components.theme import section_header
+from core.live.feed import format_transcript_line
 from core.live.process_control import ManagedProcess
 
-TELEMETRY_DIR = Path(r"C:\Users\antho\Documents\iRacing\telemetry")
 SESSION_LOG_DIR = Path("data/live_sessions")
 _PY = str(Path(".venv/Scripts/python.exe").resolve())
 
@@ -52,7 +53,7 @@ def _watcher() -> ManagedProcess:
     )
 
 
-def _latest_session_events(n: int = 8) -> list[dict]:
+def _latest_session_events(n: int = 12) -> list[dict]:
     """Last N events from the newest live-session log."""
     logs = sorted(
         SESSION_LOG_DIR.glob("*.jsonl"),
@@ -80,7 +81,7 @@ def render_toolbox_page() -> None:
     st.header("Toolbox")
     st.markdown("Start, stop, and watch the pit-wall tools on this machine.")
 
-    if not TELEMETRY_DIR.exists():
+    if not telemetry_dir().exists():
         st.info(
             "The Toolbox controls processes on the host machine — it's not "
             "available from this device."
@@ -119,23 +120,17 @@ def render_toolbox_page() -> None:
             coach.stop()
             st.rerun()
 
-    events = _latest_session_events()
+    events = _latest_session_events(12)
     if events:
         st.caption("Latest session activity (newest last):")
         for e in events:
-            kind = e.get("event", "?")
-            if kind == "connect":
-                ref = e.get("reference") or {}
-                ref_txt = (
-                    f"reference {ref.get('source')} "
-                    f"{ref.get('lap_time', 0):.3f}s"
-                    if ref else "no reference (lap 1 becomes baseline)"
-                )
-                st.text(
-                    f"connected: {e.get('track')} — {e.get('car')} — {ref_txt}"
-                )
-            else:
-                st.text(json.dumps(e)[:160])
+            line = format_transcript_line(e)
+            if line:
+                st.text(line)
+        with st.expander("Raw events (host debugging)"):
+            st.code(
+                "\n".join(json.dumps(e) for e in events), language="json"
+            )
     if coach.log_tail():
         with st.expander("Coach process log (tail)"):
             st.code(coach.log_tail(25), language=None)

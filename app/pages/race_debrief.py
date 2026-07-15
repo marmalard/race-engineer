@@ -8,11 +8,16 @@ from __future__ import annotations
 
 import logging
 import os
+import traceback
 from pathlib import Path
 
 import plotly.graph_objects as go
 import streamlit as st
 
+from app.components.errors import API_DOWN, NO_AI_KEY, explain
+from app.components.glossary import help_text
+from app.components.host import telemetry_dir
+from app.components.sample import load_sample_debrief_text
 from app.components.theme import (
     ACCENT,
     RIVAL_COLORS,
@@ -22,7 +27,6 @@ from app.components.theme import (
     section_header,
 )
 from core.race.ingest import (
-    RaceIngestError,
     ingest_race,
 )
 from core.race.models import RaceNarrative
@@ -36,7 +40,6 @@ from core.track.track_db import TrackDB
 
 logger = logging.getLogger(__name__)
 
-TELEMETRY_DIR = Path(r"C:\Users\antho\Documents\iRacing\telemetry")
 TRACKS_DB = Path("data/tracks.db")
 
 
@@ -127,14 +130,18 @@ def _scan_race_ibts(folder: str) -> list[dict]:
     return races
 
 
-def _analyze(source, ibt_path: str, store: RaceStore) -> RaceNarrative:
+def _analyze(
+    source, ibt_path: str, store: RaceStore, on_phase=None
+) -> RaceNarrative:
     """Ingest -> narrative -> persist. Returns the narrative."""
     api = _make_api()
     try:
-        data = ingest_race(source, api)
+        data = ingest_race(source, api, on_phase=on_phase)
     finally:
         if api is not None:
             api.close()
+    if on_phase is not None:
+        on_phase("Reconstructing the race...")
     corners = _load_corners(
         data.track_id, data.track_directory, data.track_length_m, data.track_name
     )
@@ -188,10 +195,7 @@ def _render_debrief_and_chat(narrative: RaceNarrative, store: RaceStore):
     debrief_text = store.get_debrief(h.subsession_id, h.cust_id)
 
     if not api_key:
-        st.info(
-            "AI debrief unavailable — ANTHROPIC_API_KEY is not configured. "
-            "The narrative above is complete without it."
-        )
+        st.info(NO_AI_KEY)
     else:
         from core.coaching.synthesizer import Synthesizer
 
@@ -281,13 +285,13 @@ def render_race_debrief_page():
     tab_upload, tab_stored = st.tabs(["Analyze a race", "Past debriefs"])
 
     with tab_upload:
-        uploaded = st.file_uploader("Race IBT file", type=["ibt"])
+        uploaded = st.file_uploader("Race IBT file", type=["ibt"], help=help_text("IBT"))
         source = None
         ibt_path = ""
         if uploaded is not None:
             source = uploaded.getvalue()
-        elif TELEMETRY_DIR.exists():
-            races = _scan_race_ibts(str(TELEMETRY_DIR))
+        elif telemetry_dir().exists():
+            races = _scan_race_ibts(str(telemetry_dir()))
             if races:
                 choice = st.selectbox(
                     "...or pick from the host telemetry folder",
@@ -300,22 +304,32 @@ def render_race_debrief_page():
 
         if source is not None and st.button("Analyze race", type="primary"):
             try:
-                with st.spinner("Reconstructing the race..."):
-                    narrative = _analyze(source, ibt_path, store)
+                with st.status("Analyzing the race...", expanded=False) as status:
+                    narrative = _analyze(
+                        source, ibt_path, store,
+                        on_phase=lambda label: status.update(label=label),
+                    )
+                    status.update(
+                        label="Race reconstructed.", state="complete"
+                    )
                 st.session_state["race_narrative"] = narrative
-            except RaceIngestError as exc:
-                st.error(str(exc))
-            except Exception:
+                st.session_state["sample_mode"] = False
+            except Exception as exc:
                 logger.exception("_analyze failed")
-                st.error(
-                    "Couldn't analyze this file — it may be corrupt, "
-                    "incomplete, or not a race IBT."
-                )
+                st.error(explain(exc))
+                with st.expander("Technical details (for the host)"):
+                    st.code(traceback.format_exc(), language=None)
 
     with tab_stored:
         stored = store.list_races()
         if not stored:
             st.caption("No debriefed races yet.")
+            if st.button("No race yet? See what a debrief looks like"):
+                from app.components.sample import load_sample_narrative
+
+                st.session_state["race_narrative"] = load_sample_narrative()
+                st.session_state["sample_mode"] = True
+                st.rerun()
         for meta in stored:
             label = (
                 f"{meta.session_date[:10]} — {meta.track_name} — "
@@ -325,6 +339,7 @@ def render_race_debrief_page():
             if st.button(label, key=f"open-{meta.subsession_id}-{meta.cust_id}"):
                 narrative = store.get_race(meta.subsession_id, meta.cust_id)
                 st.session_state["race_narrative"] = narrative
+                st.session_state["sample_mode"] = False
 
     if narrative is None:
         return
@@ -332,11 +347,7 @@ def render_race_debrief_page():
     st.divider()
     h = narrative.header
     if not narrative.pace and not narrative.gaps:
-        st.warning(
-            "Some race data was unavailable — pace ranking and rival gaps "
-            "are missing. This can happen when official results couldn't be "
-            "fetched or lap data was too thin."
-        )
+        st.warning(API_DOWN)
 
     config = f" ({h.track_config})" if h.track_config else ""
     header_strip([
@@ -349,10 +360,10 @@ def render_race_debrief_page():
     cols = st.columns(4)
     cols[0].metric("Finish", f"P{h.finish_position}", f"from P{h.start_position}")
     if h.irating_new > 0:
-        cols[1].metric("iRating", h.irating_new, f"{h.irating_new - h.irating_old:+d}")
+        cols[1].metric("iRating", h.irating_new, f"{h.irating_new - h.irating_old:+d}", help=help_text("iRating"))
     else:
-        cols[1].metric("iRating", "—")
-    cols[2].metric("SoF", h.sof)
+        cols[1].metric("iRating", "—", help=help_text("iRating"))
+    cols[2].metric("SoF", h.sof, help=help_text("SoF"))
     cols[3].metric("Incidents", f"{h.incidents}x")
 
     section_header("Position")
@@ -364,4 +375,14 @@ def render_race_debrief_page():
     section_header("Race story")
     st.markdown(render_narrative_markdown(narrative, include_header=False))
     st.divider()
-    _render_debrief_and_chat(narrative, store)
+    if st.session_state.get("sample_mode"):
+        section_header("\U0001f399 Engineer's debrief — example")
+        st.info(
+            "This is a sample race with fictional drivers — it shows "
+            "what a debrief looks like before you upload your own. "
+            "The engineer's text below is a canned example, not live AI."
+        )
+        with st.container(border=True):
+            st.markdown(load_sample_debrief_text())
+    else:
+        _render_debrief_and_chat(narrative, store)

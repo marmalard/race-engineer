@@ -54,10 +54,22 @@ class TestBuildCurve:
         assert curve.bins[-1].n == 9  # 6 + 3 merged
         assert curve.bins[-1].ir_hi >= 2120
 
+    def test_leading_sparse_bin_merges_forward(self):
+        # 3 points in the lowest bin (below MIN_BIN_N) merge forward into
+        # the next bin - covers the forward-merge branch the trailing test misses
+        pts = [(500, 91.0), (510, 91.0), (520, 91.0)] + [
+            (1000 + j * 10, 90.0) for j in range(6)
+        ]
+        curve = build_curve(pts, subsessions_used=5, capped=False)
+        assert len(curve.bins) == 1
+        assert curve.bins[0].n == 9
+        assert curve.bins[0].ir_lo == 500
+
     def test_empty_and_tiny_input(self):
         assert build_curve([], subsessions_used=0, capped=False).bins == []
         tiny = build_curve([(1500, 90.0)] * 3, subsessions_used=1, capped=False)
-        assert tiny.bins == [] or tiny.bins[0].n == 3  # merged single bin OK
+        assert len(tiny.bins) == 1
+        assert tiny.bins[0].n == 3
 
 
 class TestPlaceOnCurve:

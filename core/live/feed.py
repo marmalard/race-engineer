@@ -140,7 +140,7 @@ def _fmt_clock(iso: str | None) -> str:
         return "--:--:--"
     try:
         return datetime.fromisoformat(iso).astimezone().strftime("%H:%M:%S")
-    except ValueError:
+    except (ValueError, OverflowError):
         return "--:--:--"
 
 
@@ -172,12 +172,12 @@ def format_transcript_line(event: dict) -> str:
         dirty_txt = " — track limits, won't count" if event.get("dirty") else ""
         return (
             f"{clock}  {_ICON_LAP} Lap {event.get('lap', '?')} — "
-            f"{_fmt_lap_time(event['lap_time'])}{delta_txt}{dirty_txt}"
+            f"{_fmt_lap_time(event.get('lap_time', 0.0))}{delta_txt}{dirty_txt}"
         )
     if kind == "baseline":
         return (
             f"{clock}  {_ICON_LAP} Lap {event.get('lap', '?')} — "
-            f"{_fmt_lap_time(event['lap_time'])}, baseline set"
+            f"{_fmt_lap_time(event.get('lap_time', 0.0))}, baseline set"
         )
     if kind == "prompt":
         return f"{clock}  {_ICON_RADIO} {event.get('text', '')}"

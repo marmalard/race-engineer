@@ -203,6 +203,10 @@ class TestFormatTranscriptLine:
             "--:--:--  · mystery"
         )
 
+    def test_lap_missing_lap_time_degrades_not_crashes(self):
+        line = format_transcript_line({"event": "lap", "lap": 2})
+        assert line == "--:--:--  \U0001f3c1 Lap 2 — 0:00.000"
+
     def test_timestamp_renders_as_local_clock(self):
         import re
 

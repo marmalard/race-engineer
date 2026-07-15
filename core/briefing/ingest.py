@@ -11,9 +11,22 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from statistics import median as _median
 
 from core.benchmark.iracing_api import SeasonSchedule
-from core.track.track_db import SessionRow
+from core.briefing.curve import build_curve, place_on_curve
+from core.briefing.models import (
+    BriefingData,
+    ComboPrep,
+    FieldStats,
+    PaceCurve,
+    RaceFormat,
+    RaceSlot,
+)
+from core.briefing.slots import infer_window, upcoming_slots
+from core.profile.pace import build_readiness
+from core.race.ingest import _cached_fetch, parse_results
+from core.track.track_db import LapRow, SessionRow
 
 logger = logging.getLogger(__name__)
 
@@ -69,23 +82,6 @@ def rank_series_candidates(
     return out
 
 
-from statistics import median as _median
-
-from core.briefing.curve import build_curve, place_on_curve
-from core.briefing.models import (
-    BriefingData,
-    ComboPrep,
-    FieldStats,
-    PaceCurve,
-    RaceFormat,
-    RaceSlot,
-)
-from core.briefing.slots import infer_window, upcoming_slots
-from core.profile.pace import build_readiness
-from core.race.ingest import _cached_fetch, parse_results
-from core.track.track_db import LapRow
-
-
 def harvest_field(
     api,
     season_id: int,
@@ -133,7 +129,7 @@ def harvest_field(
         sof_median=int(_median(sofs)),
         sof_p75=sofs[(3 * len(sofs)) // 4],
         field_size_median=int(_median(sorted(r.num_drivers for r in used))),
-        splits_median=int(_median(sorted(splits.values()))),
+        splits_median=int(_median(sorted(splits.values()))),  # int-truncates: 1.5 splits -> 1 by design
     )
     return curve, stats
 

@@ -616,7 +616,7 @@ streamlit run app/streamlit_app.py
 - Deployment: `tailscale serve/funnel 8501` + `streamlit run` from the host PC; `.streamlit/config.toml` sets maxUploadSize 400
 
 ### Test Suite
-- 585 tests passing on master (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`); skip count varies with local gitignored fixtures (race-capture integration tests need Oulton; some lap tests need specific telemetry files)
+- 684 tests passing on branch phase4-briefing-v1 (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`); skip count varies with local gitignored fixtures (race-capture integration tests need Oulton; some lap tests need specific telemetry files)
 - Test fixtures: `tests/fixtures/sample.ibt` (Spa, BMW M2 CS Racing, 2 laps — gitignored)
 - Multi-lap fixture from `C:\Users\antho\Documents\iRacing\telemetry\` (Road America F4, 7 laps)
 - Bathurst fixture also available for corner detection tuning tests

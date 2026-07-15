@@ -109,6 +109,14 @@ class TestRenderBriefing:
         assert "Couldn't fetch" in md
         assert "Run a practice session" in md  # invitation verdict
 
+    def test_hundred_percent_fuel_cap_suppressed(self):
+        fmt = _fmt()
+        fmt.max_pct_fuel_fill = 100.0
+        data = BriefingData(
+            series_name="MX-5", season_id=1, race_week=0, fmt=fmt,
+        )
+        assert "fuel capped" not in render_briefing(data)
+
 
 class TestVerdictLineBoundary:
     def test_under_curve_exact_boundary(self):

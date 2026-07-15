@@ -3,6 +3,7 @@ core/briefing. Spinner phases per the UX-review finding (no bare spinners)."""
 
 import json
 import os
+from collections import Counter
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,6 +21,7 @@ from core.briefing.render import render_briefing
 from core.track.track_db import TrackDB
 
 DB_PATH = Path("data/tracks.db")
+RACES_DB = Path("data/races.db")
 
 
 def candidate_label(c: SeriesCandidate) -> str:
@@ -29,6 +31,30 @@ def candidate_label(c: SeriesCandidate) -> str:
         else "new track for you"
     )
     return f"{c.series_name} - {c.track_name} ({depth})"
+
+
+def _briefing_profile_block() -> str:
+    """Cross-race profile context for the AI briefing; '' on any failure.
+
+    Resolves cust_id as the most-frequent driver in races.db (same mechanism
+    as driver_profile.py::_resolve_cust_id, minus the selectbox — the AI call
+    is non-interactive so we pick the dominant driver automatically).
+    """
+    try:
+        from core.profile.builder import load_profile
+        from core.profile.render import profile_prompt_block
+        from core.race.race_store import RaceStore
+
+        store = RaceStore(RACES_DB)
+        races = store.list_races()
+        if not races:
+            return ""
+        counts = Counter(r.cust_id for r in races)
+        cust_id = counts.most_common(1)[0][0]
+        profile = load_profile(store, TrackDB(DB_PATH), cust_id)
+        return profile_prompt_block(profile)
+    except Exception:  # noqa: BLE001 — profile must never break the briefing
+        return ""
 
 
 def _get_api() -> LiveIRacingAPI | None:
@@ -183,7 +209,10 @@ def render_briefing_page() -> None:
         synth = Synthesizer(api_key=os.environ["ANTHROPIC_API_KEY"])
         with st.spinner("Your engineer is preparing the briefing..."):
             st.session_state["briefing_narrative"] = (
-                synth.generate_briefing_narrative(briefing_json)
+                synth.generate_briefing_narrative(
+                    briefing_json,
+                    profile_block=_briefing_profile_block(),
+                )
             )
     narrative = st.session_state.get("briefing_narrative")
     if narrative:

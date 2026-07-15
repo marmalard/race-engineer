@@ -66,7 +66,7 @@ def render_briefing(data: BriefingData) -> str:
     start = "standing start" if fmt.standing_start else "rolling start"
     fuel = (
         f", fuel capped at {fmt.max_pct_fuel_fill:.0f}%"
-        if fmt.max_pct_fuel_fill
+        if fmt.max_pct_fuel_fill and fmt.max_pct_fuel_fill < 100
         else ""
     )
     lines += [f"This race costs you **{cost}** - {start}{fuel}.", ""]

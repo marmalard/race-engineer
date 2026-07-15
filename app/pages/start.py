@@ -93,10 +93,15 @@ def render_start_page() -> None:
 
     if lead is not None:
         with st.container(border=True):
+            # Partial captures (results not posted yet) carry a zero
+            # rating delta — showing "+0 iR" would read as a real result.
+            ir_txt = (
+                f", {lead.irating_delta:+d} iR" if lead.irating_delta else ""
+            )
             st.markdown(
                 f"**Your race at {lead.track_name} on "
                 f"{lead.session_date[:10]} is ready to debrief** — "
-                f"P{lead.finish_position}, {lead.irating_delta:+d} iR."
+                f"P{lead.finish_position}{ir_txt}."
             )
             if st.button("Open the debrief", type="primary"):
                 _open_stored_race(lead)

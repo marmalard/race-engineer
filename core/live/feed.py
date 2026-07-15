@@ -140,7 +140,7 @@ def _fmt_clock(iso: str | None) -> str:
         return "--:--:--"
     try:
         return datetime.fromisoformat(iso).astimezone().strftime("%H:%M:%S")
-    except (ValueError, OverflowError):
+    except (TypeError, ValueError, OverflowError):
         return "--:--:--"
 
 

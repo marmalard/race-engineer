@@ -71,6 +71,23 @@ Content, cheapest first:
 - **Pace-implied iRating** (founder, 2026-07-15) — the generalizable benchmark self-referencing can't provide. Each combo's pace-vs-iR curve (§3) yields "you're lapping like a ~1,650 driver"; aggregated across combos it's a single driver-level number that trends over time — the Strava *fitness score* analog, and the direct answer to "how far off competitive am I?" Population benchmarking was a named gap; this closes it with tier-1 data alone (§6).
 - **Technique trends** — "trail-brake losses shrinking across combos" (needs loss-region persistence, §4). Segment-times-going-down, Strava-style.
 
+## 5b. Borrowing the pro playbook (research 2026-07-15)
+
+Full cited report: `docs/research/2026-07-15-pro-driver-prep-research.md` (how F1/academy programs prep drivers + existing amateur adaptations — Bentley, Driver61, Blayze). What survives adaptation for a solo sim racer at ~5 hrs/week, mapped to our surfaces:
+
+| Pro artifact | The adaptation | Lands in |
+|---|---|---|
+| Pre-event briefing pack + decision matrix | One-pager: corner notes w/ reference points, pace targets, prior-visit review, and pre-made in-race decisions ("if the start goes badly → bank lap 1, fight later") | Phase 4 briefing / week plan |
+| Run plan / run sheet (never "just do laps") | Session goal pre-filled from the last debrief + per-run change→comment→result rows; ABA discipline (verify last session's fix still holds) | Prescriptive practice (§4) — this is its concrete FORM |
+| Structured debrief, fixed frame, every session | **Driver's account first**: ask what they felt before showing analysis (question-led, Bentley-style); close every debrief with 2–3 owned items + named gains. Meta-analytic backing: structured debriefs ≈ 20–25% performance improvement (Tannenbaum & Cerasoli 2013) | Debrief chat — the data half exists; the driver's-account half is the gap |
+| Confidence-as-evidence ("prep ledger") | Before a race, show the preparation: briefing read, N laps at this combo, last goal achieved, delta trend. Confidence as an accumulation of evidence, not a pep talk | Week plan + grid briefing |
+| Real-time mental-lap rehearsal (Senna/FIA academy protocol, Bentley imagery + trigger words) | Generate a corner-by-corner narrative script **from the driver's own telemetry** (their actual brake points/references); eyes-closed run, stopwatch-checked against their real lap time. Zero-rig-time practice — uniquely valuable for the time-limited | New, cheap, LLM-native — candidate for the practice half of the week plan |
+| Identical pre-race routine + checklist | Fixed 5-min sequence (hardware/fuel checks + breathing + trigger word), same every race "irrespective of where we start" | Grid briefing v1.5 / Guide |
+| The 2–3 item cap | Bentley (3), Blayze (2), Baldwin (3), pro run plans (implicit) all converge on it — independent validation of the product's existing "surface 2–3 things" DNA | Already ours; now cited |
+| Academy skill sequencing (graded machinery, e.g. Antonelli's staged W12→W13) | Staged exposure and combo sequencing — the transfer principle (§4) is literally how academies use cars. **Adapted as sequencing, never as a gate** (§1 hard rule) | Prescriptions |
+
+Two findings worth flagging beyond the table: pro debriefs happen after *every* session including good ones (Brawn), and academies grade juniors on **quality of feedback** as a skill — the driver's-account-first debrief trains the user to be a better self-diagnoser over time, which compounds every other surface.
+
 ## 6. Data-leverage map (are we getting everything we can?)
 
 Three tiers, from official to inferred:

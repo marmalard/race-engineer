@@ -60,10 +60,22 @@ code, pre, kbd {{ font-family: {FONT_MONO}; }}
     background: #0b0e13;
     border-right: 1px solid {BORDER};
 }}
-/* Streamlit auto-builds a multipage nav from app/pages/*.py; those
-   entries bypass our dispatch (no theme, no wiring) — hide it. Routing
-   happens only through the radio below the brand block. */
-[data-testid="stSidebarNav"] {{ display: none; }}
+/* st.navigation renders the grouped nav here (A0 shell). It IS the
+   router now — style it, don't hide it. (Before A0 this selector was
+   display:none to suppress Streamlit's auto-discovered pages/ nav;
+   st.navigation disables that auto-discovery entirely.) */
+[data-testid="stSidebarNav"] a span {{
+    font-family: {FONT_BODY};
+    letter-spacing: 0.02em;
+}}
+[data-testid="stSidebarNav"] header,
+[data-testid="stNavSectionHeader"] {{
+    font-family: {FONT_DISPLAY};
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 0.68rem;
+    color: {TEXT_MUTED};
+}}
 .re-brand {{
     font-family: {FONT_DISPLAY};
     font-size: 1.25rem;

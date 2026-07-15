@@ -49,6 +49,16 @@ Mechanics:
 - **Prescription mapping** (skill → combo that teaches it): LLM-judgment over racing knowledge, seeded with curated lived examples (Porsche/Eau Rouge = throttle discipline & trail-brake bite; M2 = weight management; F4 = the transfer beneficiary that reveals gains). The mapping is a curated knowledge layer, not a data-mining problem — start with a hand-written seed table, let the corpus grow it.
 - **Tone:** positive, capability-framed. "This combo will make trail braking click" — never "you're bad at trail braking."
 
+### 4b. The diagnostic taxonomy (what the corpus can learn about a driver)
+
+Today's vocabulary — brake onset, brake release/trail, min speed, exit speed, throttle-on, consistency, four racecraft tendencies — is roughly a third of what the data supports. The full menu, by cost (detail belongs to the progression + persistence spec; this is the scope map):
+
+- **Recorded, unanalyzed** (channels already in every IBT): steering smoothness (corrections, mid-corner reversals), brake pressure *shape* (amateur signature: soft initial hit that builds — backwards), throttle *shape* (stabs, confidence lifts vs one progressive application), GPS line geometry (apex placement, entry width, line variance).
+- **Cheap channel additions** (`LatAccel`, `LongAccel`, `YawRate` — exposed by iRacing, not yet extracted): **friction-circle utilization** (the generalized trail-braking diagnosis: how much combined grip the driver leaves unused in the brake-turn overlap) and **balance inference** (understeer/oversteer signatures — what "the 911's bite point" is, quantified).
+- **Behavioral habits from session metadata** (sessions/laps tables already store this; no incumbent touches it): **time-to-pace** (laps to reach ~101% of session best — a long warm-up curve is a hidden race-anxiety driver: races give zero warmup laps; training the curve down IS training race-readiness), stint structure (5-lap bursts vs race-length runs), one-lap pace habit (does the driver ever practice qualifying?), frustration signature (late-session degradation + incident clustering), practice variety (the transfer principle, measured).
+
+The science this rests on (the founder's empirical discoveries have names): hard cars as teachers = **desirable difficulties** (Bjork) + **variability of practice** (Schmidt's schema theory — varied practice builds transferable skill, blocked repetition builds fragile skill); purposeful blocks = **deliberate practice** (Ericsson: specific goal, immediate feedback, edge-of-ability difficulty), which is what the week plan's practice half encodes.
+
 ## 5. Progression: the Strava layer
 
 Visible progress is both the retention mechanism (the strategy-doc blind spot the pull-up review flagged) and confidence made tangible — the driver doesn't have to believe they're improving; they can see it.

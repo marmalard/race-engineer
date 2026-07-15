@@ -14,6 +14,7 @@ from core.benchmark.iracing_api import (
     MemberLicense,
     MemberProfile,
     RaceGuideSession,
+    RaceTimeDescriptor,
     RaceWeek,
     RegisteredDriver,
     SeasonSchedule,
@@ -894,3 +895,79 @@ class TestNullListKeys:
             [{"series_id": 571, "season_id": 6266, "schedules": None}]
         )
         assert seasons[0].weeks == []
+
+
+# ---------------------------------------------------------------------------
+# RaceTimeDescriptor (briefing slots)
+# ---------------------------------------------------------------------------
+
+
+class TestRaceTimeDescriptors:
+    def _season(self, descriptors):
+        return {
+            "seasons": [
+                {
+                    "series_id": 1,
+                    "season_id": 10,
+                    "season_name": "S",
+                    "race_week": 0,
+                    "max_weeks": 12,
+                    "schedules": [
+                        {
+                            "series_name": "M2 Cup",
+                            "race_week_num": 0,
+                            "track": {"track_id": 9, "track_name": "Summit"},
+                            "start_date": "2026-07-14",
+                            "race_time_descriptors": descriptors,
+                        }
+                    ],
+                }
+            ]
+        }
+
+    def test_repeating_descriptor_parsed(self):
+        payload = self._season(
+            [
+                {
+                    "repeating": True,
+                    "first_session_time": "00:15",
+                    "repeat_minutes": 120,
+                    "day_offset": [0, 1, 2, 3, 4, 5, 6],
+                    "session_minutes": 27,
+                }
+            ]
+        )
+        week = parse_season_schedules(payload)[0].weeks[0]
+        d = week.race_time_descriptors[0]
+        assert d.repeating is True
+        assert d.first_session_time == "00:15"
+        assert d.repeat_minutes == 120
+        assert d.day_offset == [0, 1, 2, 3, 4, 5, 6]
+        assert d.session_times == []
+
+    def test_explicit_session_times_parsed(self):
+        payload = self._season(
+            [
+                {
+                    "repeating": False,
+                    "session_times": [
+                        "2026-07-18T17:00:00Z",
+                        "2026-07-18T21:00:00Z",
+                    ],
+                }
+            ]
+        )
+        week = parse_season_schedules(payload)[0].weeks[0]
+        d = week.race_time_descriptors[0]
+        assert d.repeating is False
+        assert d.session_times == [
+            "2026-07-18T17:00:00Z",
+            "2026-07-18T21:00:00Z",
+        ]
+        assert d.repeat_minutes is None
+
+    def test_missing_descriptors_default_empty(self):
+        payload = self._season(None)
+        payload["seasons"][0]["schedules"][0].pop("race_time_descriptors")
+        week = parse_season_schedules(payload)[0].weeks[0]
+        assert week.race_time_descriptors == []

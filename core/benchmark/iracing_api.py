@@ -148,6 +148,18 @@ class SpectatorSubsession:
 
 
 @dataclass
+class RaceTimeDescriptor:
+    """When a week's races go off. Either repeating (cadence anchored at
+    first_session_time GMT) or an explicit session_times list."""
+
+    repeating: bool
+    first_session_time: str | None  # "HH:MM" GMT when repeating
+    repeat_minutes: int | None
+    day_offset: list[int] = field(default_factory=list)
+    session_times: list[str] = field(default_factory=list)  # ISO, non-repeating
+
+
+@dataclass
 class RaceWeek:
     """One race week's track and race format from a season schedule."""
 
@@ -161,6 +173,7 @@ class RaceWeek:
     start_type: str  # e.g. "Standing", "Rolling"
     standing_start: bool
     max_pct_fuel_fill: float | None  # fuel-fill cap; None when unrestricted
+    race_time_descriptors: list[RaceTimeDescriptor] = field(default_factory=list)
 
 
 @dataclass
@@ -915,6 +928,15 @@ def parse_season_schedules(payload: list | dict) -> list[SeasonSchedule]:
                 if restrictions else None
             )
             start_type = sched.get("start_type", "")
+            descriptors = []
+            for d in sched.get("race_time_descriptors") or []:
+                descriptors.append(RaceTimeDescriptor(
+                    repeating=bool(d.get("repeating")),
+                    first_session_time=d.get("first_session_time"),
+                    repeat_minutes=d.get("repeat_minutes"),
+                    day_offset=list(d.get("day_offset") or []),
+                    session_times=list(d.get("session_times") or []),
+                ))
             weeks.append(RaceWeek(
                 race_week_num=sched.get("race_week_num", 0),
                 track_id=track.get("track_id", 0),
@@ -926,6 +948,7 @@ def parse_season_schedules(payload: list | dict) -> list[SeasonSchedule]:
                 start_type=start_type,
                 standing_start=start_type.lower() == "standing",
                 max_pct_fuel_fill=fuel_cap,
+                race_time_descriptors=descriptors,
             ))
         seasons.append(SeasonSchedule(
             series_id=season.get("series_id", 0),

@@ -110,34 +110,36 @@ def render_briefing_page() -> None:
     )
     st.session_state["briefing_ir"] = user_ir
 
-    if not st.button("Build briefing", type="primary"):
+    if st.button("Build briefing", type="primary"):
+        cache_key = (pick.season_id, pick.race_week, car, user_ir)
+        if st.session_state.get("briefing_key") != cache_key:
+            laps = {}
+            with st.spinner("Reading your practice history..."):
+                for s in sessions:
+                    laps[s.session_id] = db.get_session_laps(s.session_id)
+            api = _get_api()
+            try:
+                with st.spinner(
+                    "Fetching this week's races (first build for a series "
+                    "takes ~30s; cached after)..."
+                ):
+                    data = build_briefing(
+                        api=api, season=season, sessions=sessions, laps=laps,
+                        car=car, user_irating=user_ir or None,
+                        now_utc=datetime.now(timezone.utc),
+                    )
+            finally:
+                if api is not None:
+                    api.close()
+            st.session_state["briefing_key"] = cache_key
+            st.session_state["briefing_data"] = data
+            st.session_state.pop("briefing_narrative", None)
+            st.session_state.pop("briefing_chat", None)
+
+    data = st.session_state.get("briefing_data")
+    if data is None:
         return
-
-    cache_key = (pick.season_id, pick.race_week, car, user_ir)
-    if st.session_state.get("briefing_key") != cache_key:
-        laps = {}
-        with st.spinner("Reading your practice history..."):
-            for s in sessions:
-                laps[s.session_id] = db.get_session_laps(s.session_id)
-        api = _get_api()
-        try:
-            with st.spinner(
-                "Fetching this week's races (first build for a series "
-                "takes ~30s; cached after)..."
-            ):
-                data = build_briefing(
-                    api=api, season=season, sessions=sessions, laps=laps,
-                    car=car, user_irating=user_ir or None,
-                    now_utc=datetime.now(timezone.utc),
-                )
-        finally:
-            api.close()
-        st.session_state["briefing_key"] = cache_key
-        st.session_state["briefing_data"] = data
-        st.session_state.pop("briefing_narrative", None)
-        st.session_state.pop("briefing_chat", None)
-
-    data = st.session_state["briefing_data"]
+    st.caption("Showing the last built briefing - press Build briefing to refresh.")
 
     if data.curve is not None and data.curve.points:
         irs = [p[0] for p in data.curve.points]

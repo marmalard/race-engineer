@@ -1708,6 +1708,8 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'app.pages.briefing'`
 
 - [ ] **Step 3: Implement the page**
 
+> **Correction applied during execution:** the code below gates all rendering behind `if not st.button(...): return`, which breaks the AI-narrative button and chat (any rerun collapses the page). The implemented page uses race_debrief.py's data-presence guard instead: the Build button only writes session state; rendering is gated on `briefing_data` presence. See commit history.
+
 Create `app/pages/briefing.py`:
 
 ```python

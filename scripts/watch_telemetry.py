@@ -31,6 +31,13 @@ if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
         encoding="utf-8", errors="replace", line_buffering=True
     )
 
+# Load .env ourselves: only Toolbox-spawned instances inherit Streamlit's
+# dotenv-loaded env. Any other spawn (launcher, terminal, scheduler) was
+# silently running credential-less and capturing races PARTIAL (2026-07-14).
+from dotenv import load_dotenv  # noqa: E402
+
+load_dotenv()
+
 from core.benchmark.reference_store import ReferenceStore  # noqa: E402
 from core.race.race_store import RaceStore  # noqa: E402
 from core.telemetry.ibt_parser import IBTParser  # noqa: E402

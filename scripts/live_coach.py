@@ -142,7 +142,11 @@ def _load_corners(
     return corners
 
 
-def _parse_args() -> argparse.Namespace:
+def build_parser() -> argparse.ArgumentParser:
+    """The coach's CLI. Public so the Toolbox's spawn command can be
+    coupling-tested against it — the page passing a stale flag killed the
+    coach at startup on 2026-07-14 (round 2 renamed --corner-prompts to
+    --no-corner-prompts; the Toolbox was never updated)."""
     parser = argparse.ArgumentParser(description="Live between-lap coach")
     parser.add_argument("--mute", action="store_true",
                         help="disable voice output")
@@ -151,7 +155,11 @@ def _parse_args() -> argparse.Namespace:
                         help="disable approach cues before flagged corners "
                              "(on by default)")
     parser.set_defaults(corner_prompts=True)
-    return parser.parse_args()
+    return parser
+
+
+def _parse_args() -> argparse.Namespace:
+    return build_parser().parse_args()
 
 
 def _car_name(ir: "irsdk.IRSDK") -> str:

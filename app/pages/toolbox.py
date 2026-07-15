@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import streamlit as st
@@ -22,20 +23,32 @@ SESSION_LOG_DIR = Path("data/live_sessions")
 _PY = str(Path(".venv/Scripts/python.exe").resolve())
 
 
-def _coach(mute: bool = False, corner_prompts: bool = False) -> ManagedProcess:
+# PID files must resolve to the same place regardless of CWD (same pinning
+# as scripts/launch.py) or the status badges desync from reality.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_RUN_DIR = _REPO_ROOT / "data" / "run"
+
+
+def _coach(mute: bool = False, corner_prompts: bool = True) -> ManagedProcess:
+    """Coach spawn command. Round-2 CLI: corner prompts are ON by default,
+    --no-corner-prompts disables (coupling-tested in test_toolbox_commands —
+    a stale flag here killed the coach at startup on 2026-07-14)."""
     cmd = [_PY, "scripts/live_coach.py"]
     if mute:
         cmd.append("--mute")
-    if corner_prompts:
-        cmd.append("--corner-prompts")
-    return ManagedProcess("live-coach", cmd, workdir=Path.cwd())
+    if not corner_prompts:
+        cmd.append("--no-corner-prompts")
+    return ManagedProcess(
+        "live-coach", cmd, run_dir=_RUN_DIR, workdir=_REPO_ROOT
+    )
 
 
 def _watcher() -> ManagedProcess:
     return ManagedProcess(
         "telemetry-watcher",
         [_PY, "scripts/watch_telemetry.py", "--watch"],
-        workdir=Path.cwd(),
+        run_dir=_RUN_DIR,
+        workdir=_REPO_ROOT,
     )
 
 
@@ -83,12 +96,24 @@ def render_toolbox_page() -> None:
     with col_start:
         mute = st.checkbox("Mute (text only)", value=False, key="coach_mute")
         prompts = st.checkbox(
-            "Corner prompts", value=False, key="coach_prompts",
-            help="Approach-triggered in-corner prompts (validate plain voice first)",
+            "Corner prompts", value=True, key="coach_prompts",
+            help="Approach-triggered in-corner cues (on by default since "
+                 "voice round 2)",
         )
         if st.button("Start coach", disabled=coach.is_running()):
-            _coach(mute, prompts).start()
-            st.rerun()
+            proc = _coach(mute, prompts)
+            proc.start()
+            # An instant death (bad flag, import error) must not be silent:
+            # the 2026-07-14 argparse crash showed 'running' for one rerun
+            # and the user drove without radio.
+            time.sleep(1.0)
+            if not proc.is_running():
+                st.error(
+                    "Coach exited immediately - last log lines:\n\n"
+                    + (proc.log_tail(5) or "(no log output)")
+                )
+            else:
+                st.rerun()
     with col_stop:
         if st.button("Stop coach", disabled=not coach.is_running()):
             coach.stop()
@@ -132,7 +157,14 @@ def render_toolbox_page() -> None:
     with col_w2:
         if st.button("Start --watch", disabled=watcher.is_running()):
             watcher.start()
-            st.rerun()
+            time.sleep(1.0)
+            if not watcher.is_running():
+                st.error(
+                    "Watcher exited immediately - last log lines:\n\n"
+                    + (watcher.log_tail(5) or "(no log output)")
+                )
+            else:
+                st.rerun()
     with col_w3:
         if st.button("Stop --watch", disabled=not watcher.is_running()):
             watcher.stop()

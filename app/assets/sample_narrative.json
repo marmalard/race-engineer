@@ -1,0 +1,135 @@
+{
+  "header": {
+    "subsession_id": 0,
+    "cust_id": 0,
+    "driver_name": "Sam Vega",
+    "track_id": 166,
+    "track_name": "Okayama International Circuit",
+    "track_config": "Full Course",
+    "car_name": "Mazda MX-5 Cup",
+    "series_name": "Production Car Challenge (sample race)",
+    "session_date": "2026-07-04 19:00:00",
+    "sof": 1350,
+    "field_size": 11,
+    "start_position": 8,
+    "finish_position": 5,
+    "incidents": 5,
+    "irating_old": 1289,
+    "irating_new": 1322
+  },
+  "position_timeline": [
+    {"lap": 1, "position": 7},
+    {"lap": 2, "position": 7},
+    {"lap": 3, "position": 6},
+    {"lap": 4, "position": 8},
+    {"lap": 5, "position": 8},
+    {"lap": 6, "position": 7},
+    {"lap": 7, "position": 7},
+    {"lap": 8, "position": 6},
+    {"lap": 9, "position": 6},
+    {"lap": 10, "position": 6},
+    {"lap": 11, "position": 5},
+    {"lap": 12, "position": 5}
+  ],
+  "lap1": {
+    "grid_position": 8,
+    "position_after_lap1": 7,
+    "position_after_lap2": 7,
+    "place_changes": [
+      {
+        "lap": 1,
+        "lap_dist_pct": 0.12,
+        "corner_name": "Turn 1",
+        "from_position": 8,
+        "to_position": 7
+      }
+    ]
+  },
+  "gaps": [
+    {
+      "cust_id": 901,
+      "display_name": "Riley Mott",
+      "finish_position": 4,
+      "gaps": [
+        {"lap": 1, "gap_s": 4.1},
+        {"lap": 2, "gap_s": 3.8},
+        {"lap": 3, "gap_s": 3.5},
+        {"lap": 4, "gap_s": 10.9},
+        {"lap": 5, "gap_s": 10.2},
+        {"lap": 6, "gap_s": 9.0},
+        {"lap": 7, "gap_s": 7.6},
+        {"lap": 8, "gap_s": 6.1},
+        {"lap": 9, "gap_s": 4.7},
+        {"lap": 10, "gap_s": 3.2},
+        {"lap": 11, "gap_s": 1.9},
+        {"lap": 12, "gap_s": 0.8}
+      ]
+    },
+    {
+      "cust_id": 902,
+      "display_name": "Dana Kwan",
+      "finish_position": 6,
+      "gaps": [
+        {"lap": 1, "gap_s": 1.5},
+        {"lap": 2, "gap_s": 1.2},
+        {"lap": 3, "gap_s": 0.9},
+        {"lap": 4, "gap_s": -6.5},
+        {"lap": 5, "gap_s": -5.9},
+        {"lap": 6, "gap_s": -4.4},
+        {"lap": 7, "gap_s": -3.0},
+        {"lap": 8, "gap_s": 1.1},
+        {"lap": 9, "gap_s": 0.4},
+        {"lap": 10, "gap_s": -0.6},
+        {"lap": 11, "gap_s": -1.4},
+        {"lap": 12, "gap_s": -2.2}
+      ]
+    }
+  ],
+  "incidents": [
+    {
+      "lap": 4,
+      "lap_dist_pct": 0.55,
+      "corner_name": "Hairpin",
+      "delta_incidents": 2,
+      "position_before": 6,
+      "position_after": 8,
+      "time_lost_estimate_s": 7.4
+    }
+  ],
+  "stints": [
+    {
+      "start_lap": 1,
+      "end_lap": 12,
+      "median_clean_pace": 98.412,
+      "trend_s": -0.3
+    }
+  ],
+  "cautions": [],
+  "pace": {
+    "median_clean_lap": 98.412,
+    "best_lap": 97.821,
+    "consistency_stdev": 0.41,
+    "clean_lap_count": 9,
+    "pace_rank": 4,
+    "ranked_drivers": 9,
+    "unranked_drivers": 2,
+    "median_all_lap": 98.93,
+    "all_lap_rank": 5,
+    "all_lap_ranked_drivers": 11
+  },
+  "attribution": {
+    "irating_old": 1289,
+    "irating_new": 1322,
+    "irating_delta": 33,
+    "pace_deserved_position": 4,
+    "actual_position": 5,
+    "incident_time_lost_s": 7.4,
+    "lap1_net_positions": 1,
+    "summary_lines": [
+      "Your clean pace ranked P4 of 9 ranked drivers (9 clean laps).",
+      "The Hairpin contact on lap 4 cost about 7.4s and two places - you spent five laps winning them back.",
+      "Net: finished one place behind where your pace deserved."
+    ]
+  },
+  "key_rivals": [901, 902]
+}

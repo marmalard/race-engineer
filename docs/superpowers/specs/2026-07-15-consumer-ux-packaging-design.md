@@ -47,6 +47,19 @@ Two workstreams, one spec. A ships before B; B reuses A's copy.
    everywhere; same verdict-sentence pattern on every page; same map
    component; same tone. Polish is repetition discipline, not decoration.
 
+**North star (the Ive test, founder discussion 2026-07-15).** The ideal
+rendering has no feature pages: one time-axis surface showing the one
+thing that matters now (undebriefed race → the debrief, race window
+approaching → the briefing + slot), the engineer speaking first in one
+voice, machinery invisible (no uploads for files the machine already
+knows, no process UI), and the track map as the signature crafted object.
+The v3 addendum already specs the brain for this — proactive engineer,
+week plan, auto-capture; the full rendering is the Phase 6 re-platform's
+real job. Inside Streamlit, the down-payment is A1 evolved: the Start
+page is STATE-AWARE, not a menu — it checks for an undebriefed race, a
+fresh week plan, a ready combo, and leads with exactly one of them.
+Every A-item should move toward this north star, never away.
+
 ---
 
 ## Workstream A — the consumer surface (hosted app)
@@ -68,6 +81,12 @@ Two workstreams, one spec. A ships before B; B reuses A's copy.
 New first page in nav: **"Start"** (replaces Race Debrief as the default landing).
 
 - Three sentences on what Race Engineer is, in product voice: never start blind, never race alone, every race makes you smarter.
+- **State-aware, not a menu (north-star down-payment):** before showing
+  entry paths, check state and lead with the one thing that matters —
+  an undebriefed captured race ("Sunday's Summit race is ready to
+  debrief") beats everything; else a buildable briefing for the user's
+  top-ranked series. The two entry paths below are the fallback for
+  empty state and the guest path.
 - **Two entry paths, visually distinct:** "I just raced — debrief it" (→ Race Debrief page, with the IBT-location explainer inline) and "I'm about to race — brief me" (→ Race Briefing page).
 - **Sample debrief button** (A3) — see the product before uploading anything.
 - Status strip: watcher last-scan time when running locally ("telemetry watcher: last scan 2m ago"), app version (git short SHA), host mode vs guest mode.

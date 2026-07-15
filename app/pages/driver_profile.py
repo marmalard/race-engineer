@@ -4,10 +4,18 @@ Display only: everything is computed by core/profile (deterministic,
 tested); this file renders it. No AI on this page.
 """
 
+import time
 from collections import Counter
 from pathlib import Path
 
 import streamlit as st
+
+from app.components.host import (
+    is_host,
+    relative_time,
+    watcher_last_activity,
+    watcher_running,
+)
 
 from core.profile.builder import load_profile
 from core.profile.models import RACECRAFT_MIN_RACES
@@ -43,6 +51,29 @@ def _resolve_cust_id(store: RaceStore) -> int | None:
 
 def render_driver_profile_page() -> None:
     st.title("Driver Profile")
+    st.markdown(
+        "What your races say about how you race — and which combos are "
+        "race-ready."
+    )
+    if is_host():
+        last = watcher_last_activity()
+        if watcher_running():
+            when = relative_time(last, time.time()) if last else "just started"
+            st.caption(
+                f"History updates automatically — telemetry watcher "
+                f"running, last activity {when}."
+            )
+        elif last is not None:
+            st.caption(
+                f"History updates automatically — telemetry watcher last "
+                f"active {relative_time(last, time.time())}. Start it from "
+                f"the Toolbox to keep this fresh."
+            )
+        else:
+            st.caption(
+                "The telemetry watcher hasn't run yet — start it from "
+                "the Toolbox and this page fills itself in."
+            )
     store = RaceStore(RACES_DB)
     track_db = TrackDB(TRACKS_DB)
 

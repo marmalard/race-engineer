@@ -7,6 +7,7 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
+from app.components.host import is_host
 from app.components.track_map import build_loss_map
 from app.components.units import (
     distance_unit,
@@ -36,8 +37,8 @@ def render_coaching_page() -> None:
     """Render the lap coaching page."""
     st.header("Lap Coaching")
     st.markdown(
-        "Upload a telemetry file from your iRacing session to get "
-        "prioritized coaching on where you're leaving the most time."
+        "Upload practice telemetry — the engineer compares your laps to "
+        "your best reference and shows where the time is."
     )
 
     # --- Input ---
@@ -227,12 +228,13 @@ def render_coaching_page() -> None:
             report = cached_report
             st.markdown(report.report_text)
 
-            with st.expander("AI Metadata"):
-                st.markdown(
-                    f"- **Model**: {report.model_used}\n"
-                    f"- **Input tokens**: {report.input_tokens:,}\n"
-                    f"- **Output tokens**: {report.output_tokens:,}"
-                )
+            if is_host():
+                with st.expander("AI Metadata"):
+                    st.markdown(
+                        f"- **Model**: {report.model_used}\n"
+                        f"- **Input tokens**: {report.input_tokens:,}\n"
+                        f"- **Output tokens**: {report.output_tokens:,}"
+                    )
 
 
 # --- Helpers ---

@@ -22,6 +22,11 @@ _ROOT = str(Path(__file__).resolve().parent.parent)
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
+# Detached (ManagedProcess) stdout is a cp1252 file on Windows; make report
+# printing encoding-proof so one exotic char can't kill the daemon again.
+if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 from core.benchmark.reference_store import ReferenceStore  # noqa: E402
 from core.race.race_store import RaceStore  # noqa: E402
 from core.telemetry.ibt_parser import IBTParser  # noqa: E402
@@ -99,8 +104,11 @@ def _format_race_report(r: RaceReport) -> str:
         return (f"{name}\n  Race {r.track} — results not ready, "
                 f"will retry (subsession {r.subsession_id})")
     tag = " (partial — no results yet)" if r.partial else ""
+    # ASCII arrow: U+2192 is not encodable under the detached process's
+    # cp1252 stdout and killed the daemon on 2026-07-12 (em-dashes are
+    # cp1252-safe; the arrow is not).
     return (f"{name}\n  Race captured{tag}: {r.track}, {r.car}, "
-            f"P{r.start_position}→P{r.finish_position} "
+            f"P{r.start_position}->P{r.finish_position} "
             f"(subsession {r.subsession_id})")
 
 
@@ -154,7 +162,16 @@ def main() -> None:
         print(f"Watching {folder} (every {POLL_SECONDS:.0f}s, Ctrl-C to stop)...")
         while True:
             time.sleep(POLL_SECONDS)
-            _scan_once(folder, track_db, ref_store, race_store, api)
+            # A long-running daemon must outlive one bad scan (transient DB
+            # lock, half-written file, print error). SystemExit (folder gone)
+            # and KeyboardInterrupt still propagate.
+            try:
+                _scan_once(folder, track_db, ref_store, race_store, api)
+            except (KeyboardInterrupt, SystemExit):
+                raise
+            except Exception as exc:  # noqa: BLE001 — retry next poll
+                print(f"SCAN FAILED: {type(exc).__name__}: {exc} "
+                      "(retrying next poll)")
     except KeyboardInterrupt:
         print("\nStopped.")
     finally:

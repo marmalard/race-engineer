@@ -85,19 +85,23 @@ def _watcher() -> ManagedProcess:
 def main() -> int:
     """Start the rig: watcher (detached) + Streamlit (console child),
     then open the browser. Returns Streamlit's exit code."""
-    # Idempotency: if the app is already up, just surface it.
-    if is_port_listening(PORT):
-        print(f"Race Engineer already running at {URL} - opening browser.")
-        webbrowser.open(URL)
-        return 0
-
-    # Watcher first (detached, idempotent). A watcher failure must never
-    # block the app - it can be started later from the Toolbox.
+    # Watcher BEFORE the idempotency return: the shortcut must revive a
+    # dead watcher even when the app is already up (2026-07-14: watcher
+    # had crashed days earlier, app survived, shortcut skipped the watcher
+    # and a practice went unprocessed). start() is PID-file idempotent.
+    # A watcher failure must never block the app - it can be started
+    # later from the Toolbox.
     try:
         pid = _watcher().start()
         print(f"Telemetry watcher running (pid {pid}).")
     except Exception as exc:  # noqa: BLE001 - log and continue
         print(f"WARNING: watcher failed to start ({exc}); continuing.")
+
+    # Idempotency: if the app is already up, just surface it.
+    if is_port_listening(PORT):
+        print(f"Race Engineer already running at {URL} - opening browser.")
+        webbrowser.open(URL)
+        return 0
 
     # Streamlit as a child of this console so closing the window stops it.
     print("Starting Streamlit ...")

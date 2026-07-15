@@ -156,3 +156,30 @@ def test_pit_fragment_below_threshold_is_silent():
     out = tracker.feed(_tick(2, 0.0, 1.0))
     assert out.completed is None
     assert out.discarded is None
+
+
+def test_malformed_lap_value_is_ignored_not_fatal():
+    """pyirsdk hands back lists (whole-buffer churn) around session
+    transitions; one such tick crashed the coach mid-session (2026-07-12).
+    The tracker must ignore the tick, not raise."""
+    tracker = LapBoundaryTracker(min_lap_samples=100)
+    _drive_lap(tracker, lap_num=1, n=300)
+    # churn tick: Lap is a list
+    bad = _tick(1, 300.0, 6.0)
+    bad["Lap"] = [0, 0, 0]
+    out = tracker.feed(bad)
+    assert out.completed is None
+    assert out.discarded is None
+    # state survives: the next clean boundary still closes lap 1
+    closed = tracker.feed(_tick(2, 0.0, 6.02))
+    assert closed.completed is not None
+    assert closed.completed.lap_number == 1
+
+
+def test_none_lap_value_is_ignored_not_fatal():
+    tracker = LapBoundaryTracker(min_lap_samples=100)
+    bad = _tick(1, 0.0, 0.0)
+    bad["Lap"] = None
+    out = tracker.feed(bad)
+    assert out.completed is None
+    assert out.discarded is None

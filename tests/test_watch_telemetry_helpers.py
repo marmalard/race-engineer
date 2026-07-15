@@ -85,3 +85,18 @@ def test_process_candidate_routes_race_to_race_processor(monkeypatch, tmp_path):
     wt._process_candidate(cand, api=None, track_db=None, ref_store=None,
                           race_store=None, now=1.0)
     assert called == {"race": 1, "lap": 1}
+
+
+def test_race_report_block_survives_cp1252_stdout():
+    """The detached watcher's stdout is a cp1252-encoded file on Windows;
+    a report line with a non-cp1252 char (the old P4->P2 arrow, U+2192)
+    killed the daemon on 2026-07-12. Report blocks must encode cleanly."""
+    from pathlib import Path as _P
+    from core.watcher.race_processor import RaceReport
+    report = RaceReport(
+        path=_P("race.ibt"), subsession_id=86748877, track="Summit Point",
+        car="BMW M2", start_position=4, finish_position=2, captured=True,
+    )
+    block = watch_telemetry._format_race_report(report)
+    block.encode("cp1252")  # must not raise
+    assert "P4" in block and "P2" in block

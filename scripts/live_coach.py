@@ -25,6 +25,12 @@ _ROOT = str(Path(__file__).resolve().parent.parent)
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
+# Detached (ManagedProcess) stdout is a cp1252 file on Windows; utf-8 keeps
+# em-dash nudges readable in the Toolbox log tail (which reads utf-8) and
+# makes printing encoding-proof.
+if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 import irsdk  # noqa: E402
 
 from core.benchmark.reference_store import ReferenceLap, ReferenceStore  # noqa: E402
@@ -281,6 +287,14 @@ def main() -> None:
 
             ir.freeze_var_buffer_latest()
             sample = {ch: ir[ch] for ch in READ_CHANNELS}
+
+            # pyirsdk hands back lists (whole-buffer churn) around session
+            # transitions — one such tick crashed the coach mid-session
+            # (2026-07-12). Skip the whole tick so no downstream consumer
+            # (tracker, incident tracker, scheduler) sees non-scalar values.
+            if any(isinstance(v, list) for v in sample.values()):
+                time.sleep(TICK_SECONDS)
+                continue
 
             tick = tracker.feed(sample)
             completed = tick.completed

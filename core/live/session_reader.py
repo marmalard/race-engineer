@@ -58,7 +58,14 @@ class LapBoundaryTracker:
     def feed(self, sample: dict) -> TickResult:
         """Process one tick. Returns a TickResult describing whether this tick
         closed a valid lap, discarded an in-progress lap, or neither."""
-        lap = int(sample["Lap"])
+        # pyirsdk can hand back a list (whole-buffer churn) or None for a
+        # scalar var around session transitions — one such tick crashed the
+        # coach mid-session (2026-07-12). Ignore the tick; the next clean
+        # one re-syncs. bool is excluded: True would masquerade as lap 1.
+        lap_raw = sample.get("Lap")
+        if not isinstance(lap_raw, (int, float)) or isinstance(lap_raw, bool):
+            return TickResult()
+        lap = int(lap_raw)
 
         # First tick of the session: start tracking, no boundary yet.
         if self._current_lap is None:

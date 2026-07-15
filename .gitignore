@@ -49,6 +49,7 @@ Desktop.ini
 # Atlas (offline reconciliation queue is local; manifest itself is committed)
 .atlas/.pending-resolutions.json
 data/live_sessions/
+data/briefing_cache/
 
 # Brainstorm visual companion sessions
 .superpowers/

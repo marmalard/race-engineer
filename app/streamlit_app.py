@@ -29,6 +29,7 @@ brand_sidebar()
 # can never break the routing below.
 PAGES = {
     "\U0001f3c1 Race Debrief": "race_debrief",
+    "\U0001f4cb Race Briefing": "briefing",
     "\U0001f464 Driver Profile": "driver_profile",
     "\U0001f4d6 Guide": "guide",
     "\U0001f52d Scouting Report": "scouting",
@@ -46,6 +47,10 @@ if page == "race_debrief":
     from app.pages.race_debrief import render_race_debrief_page
 
     render_race_debrief_page()
+elif page == "briefing":
+    from app.pages.briefing import render_briefing_page
+
+    render_briefing_page()
 elif page == "guide":
     from app.pages.guide import render_guide_page
 

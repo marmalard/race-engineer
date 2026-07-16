@@ -52,7 +52,11 @@ def _quote(value: str) -> str:
 
 
 def _unquote(value: str) -> str:
-    """Strip surrounding double quotes and unescape backslash sequences."""
+    """Strip surrounding double quotes and unescape backslash sequences.
+
+    Only needs to round-trip what _quote() produces (double-quoted,
+    backslash-escaped), not the full dotenv quoting spec.
+    """
     if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
         inner = value[1:-1]
         out: list[str] = []
@@ -69,7 +73,13 @@ def _unquote(value: str) -> str:
 
 
 def read_env(path: Path | None = None) -> dict[str, str]:
-    """Return KEY=VALUE pairs from a .env file; {} when the file is absent."""
+    """Return KEY=VALUE pairs from a .env file; {} when the file is absent.
+
+    Deliberately simple single-line parser used only for self-checks
+    (is_complete) and merge-preserve reads in write_env.  python-dotenv's
+    load_dotenv() is the authority at app boot and handles forms this reader
+    doesn't (e.g. multi-line quoted values, variable expansion).
+    """
     path = path if path is not None else env_file()
     if not path.exists():
         return {}
@@ -100,6 +110,8 @@ def write_env(
 
     Args:
         values: Keys to write/overwrite (e.g. from the Setup page form).
+            Values are whitespace-trimmed before writing so that API keys
+            pasted with trailing spaces or newlines are stored cleanly.
         path: Target .env file; uses env_file() when None.
         defaults: Fallback values for keys not already present; uses
             module-level DEFAULTS when None.  Empty-string defaults are
@@ -112,7 +124,7 @@ def write_env(
     path = path if path is not None else env_file()
     defaults = DEFAULTS if defaults is None else defaults
     merged = read_env(path)
-    merged.update({k: v.strip() for k, v in values.items()})
+    merged.update({k: v.strip() for k, v in values.items()})  # trim trailing spaces/newlines users paste with API keys
     for key, default in defaults.items():
         if default and not merged.get(key):
             merged[key] = default

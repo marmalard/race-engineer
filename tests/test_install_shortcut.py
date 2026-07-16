@@ -53,3 +53,26 @@ class TestShortcutSpec:
     def test_cli_default_target(self):
         args = install_shortcut.build_parser().parse_args([])
         assert args.target == "launcher"
+
+
+class TestShortcutIcon:
+    """The .lnk icon is rendered FROM tray_app.make_icon_image -- the
+    Desktop icon and the tray icon are the same drawing by construction."""
+
+    def test_ensure_icon_writes_a_real_ico(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(install_shortcut, "_ICON", tmp_path / "t.ico")
+        path = install_shortcut.ensure_icon()
+        assert path.read_bytes()[:4] == b"\x00\x00\x01\x00"  # ICO header
+
+    def test_icon_matches_the_tray_drawing(self, tmp_path, monkeypatch):
+        from PIL import Image
+
+        from scripts.tray_app import make_icon_image
+
+        monkeypatch.setattr(install_shortcut, "_ICON", tmp_path / "t.ico")
+        path = install_shortcut.ensure_icon()
+        with Image.open(path) as ico:
+            ico.size = (256, 256)  # select the largest frame
+            frame = ico.convert("RGB")
+        expected = make_icon_image(256).convert("RGB")
+        assert frame.tobytes() == expected.tobytes()

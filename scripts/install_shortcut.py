@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,6 +25,8 @@ _ROOT = Path(__file__).resolve().parent.parent
 _BAT = _ROOT / "scripts" / "start-race-engineer.bat"
 _SHORTCUT_NAME = "Race Engineer.lnk"
 _CMD = r"C:\Windows\System32\cmd.exe"
+_ICON = _ROOT / "data" / "tray_icon.ico"
+_ICO_SIZES = [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (256, 256)]
 
 
 @dataclass(frozen=True)
@@ -52,9 +55,29 @@ def shortcut_spec(target: str = "launcher") -> ShortcutSpec:
     raise ValueError(f"unknown shortcut target: {target!r}")
 
 
+def ensure_icon() -> Path:
+    """Render the tray's checkered-flag drawing to data/tray_icon.ico.
+
+    The image is imported from tray_app (not copied) so the Desktop icon
+    can never drift from the tray icon.
+    """
+    if str(_ROOT) not in sys.path:
+        sys.path.insert(0, str(_ROOT))
+    from scripts.tray_app import make_icon_image
+
+    img = make_icon_image(256)
+    _ICON.parent.mkdir(parents=True, exist_ok=True)
+    img.save(_ICON, format="ICO", sizes=_ICO_SIZES)
+    return _ICON
+
+
 def create_shortcut(target: str = "launcher") -> str:
     """Create (or overwrite) the Desktop .lnk; returns its path."""
     spec = shortcut_spec(target)
+    try:
+        icon_clause = f"$s.IconLocation = '{ensure_icon()},0'; "
+    except Exception:  # noqa: BLE001 -- a default icon beats no shortcut
+        icon_clause = ""
     ps = (
         "$desktop = [Environment]::GetFolderPath('Desktop'); "
         f"$lnk = Join-Path $desktop '{_SHORTCUT_NAME}'; "
@@ -64,6 +87,7 @@ def create_shortcut(target: str = "launcher") -> str:
         f"$s.Arguments = '{spec.arguments}'; "
         f"$s.WorkingDirectory = '{_ROOT}'; "
         f"$s.Description = '{spec.description}'; "
+        f"{icon_clause}"
         "$s.Save(); "
         "Write-Output $lnk"
     )

@@ -4,8 +4,9 @@ How the founder cuts a release that installed clients pick up (spec §7).
 
 ## One-time build-machine setup
 
-1. Install Inno Setup 6: https://jrsoftware.org/isinfo.php (adds `ISCC.exe`,
-   typically `C:\Program Files (x86)\Inno Setup 6\ISCC.exe`).
+1. Install Inno Setup 6: https://jrsoftware.org/isinfo.php (adds `ISCC.exe`).
+   Installed on this machine 2026-07-16 via winget (per-user location):
+   `%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe`.
 2. Drop a current `uv.exe` at `installer\uv.exe` (gitignored): download
    `uv-x86_64-pc-windows-msvc.zip` from
    https://github.com/astral-sh/uv/releases/latest and extract `uv.exe`.

@@ -1,19 +1,23 @@
-"""One-time: create a Desktop shortcut to start-race-engineer.bat.
+"""Create the Desktop shortcut for Race Engineer.
 
-Run once:  .venv\\Scripts\\python.exe scripts\\install_shortcut.py
+Run once:  .venv\\Scripts\\python.exe scripts\\install_shortcut.py [--target tray]
 
-Uses the Windows Script Host COM object via PowerShell (no pywin32 dep) and
-resolves the Desktop through the shell special folder so OneDrive-redirected
-Desktops still work.
+Targets (B2 spec 6):
+  launcher (default) -- cmd.exe /c start-race-engineer.bat, the dev rig's
+      console launcher. cmd.exe as target keeps 'Pin to taskbar' offered.
+  tray -- pythonw.exe scripts/tray_app.py directly: no console flash, an
+      exe target (pinnable). Used by the installer.
 
-The target is cmd.exe /c <bat>, not the .bat itself: Windows only offers
-'Pin to taskbar' on shortcuts whose target is an executable. Double-click
-behavior is identical either way.
+Uses the Windows Script Host COM object via PowerShell (no pywin32 dep)
+and resolves the Desktop through the shell special folder so
+OneDrive-redirected Desktops still work.
 """
 
 from __future__ import annotations
 
+import argparse
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -22,17 +26,44 @@ _SHORTCUT_NAME = "Race Engineer.lnk"
 _CMD = r"C:\Windows\System32\cmd.exe"
 
 
-def create_shortcut() -> str:
+@dataclass(frozen=True)
+class ShortcutSpec:
+    target_path: str
+    arguments: str
+    description: str
+
+
+def shortcut_spec(target: str = "launcher") -> ShortcutSpec:
+    """Pure shortcut definition per target (coupling-tested)."""
+    if target == "launcher":
+        return ShortcutSpec(
+            target_path=_CMD,
+            arguments=f'/c ""{_BAT}""',
+            description="Start Race Engineer (Streamlit + watcher)",
+        )
+    if target == "tray":
+        pythonw = _ROOT / ".venv" / "Scripts" / "pythonw.exe"
+        tray = _ROOT / "scripts" / "tray_app.py"
+        return ShortcutSpec(
+            target_path=str(pythonw),
+            arguments=f'"{tray}"',
+            description="Start Race Engineer (system tray)",
+        )
+    raise ValueError(f"unknown shortcut target: {target!r}")
+
+
+def create_shortcut(target: str = "launcher") -> str:
     """Create (or overwrite) the Desktop .lnk; returns its path."""
+    spec = shortcut_spec(target)
     ps = (
         "$desktop = [Environment]::GetFolderPath('Desktop'); "
         f"$lnk = Join-Path $desktop '{_SHORTCUT_NAME}'; "
         "$ws = New-Object -ComObject WScript.Shell; "
         "$s = $ws.CreateShortcut($lnk); "
-        f"$s.TargetPath = '{_CMD}'; "
-        f"$s.Arguments = '/c \"\"{_BAT}\"\"'; "
+        f"$s.TargetPath = '{spec.target_path}'; "
+        f"$s.Arguments = '{spec.arguments}'; "
         f"$s.WorkingDirectory = '{_ROOT}'; "
-        "$s.Description = 'Start Race Engineer (Streamlit + watcher)'; "
+        f"$s.Description = '{spec.description}'; "
         "$s.Save(); "
         "Write-Output $lnk"
     )
@@ -43,6 +74,16 @@ def create_shortcut() -> str:
     return result.stdout.strip()
 
 
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Create the Desktop shortcut.")
+    parser.add_argument(
+        "--target", choices=("launcher", "tray"), default="launcher",
+        help="what the shortcut starts (default: the console launcher)",
+    )
+    return parser
+
+
 if __name__ == "__main__":
-    path = create_shortcut()
+    args = build_parser().parse_args()
+    path = create_shortcut(args.target)
     print(f"Created shortcut: {path}")

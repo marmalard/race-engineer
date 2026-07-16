@@ -614,6 +614,7 @@ def test_stub_race_endpoints_graceful():
     stub = StubIRacingAPI()
     assert stub.get_subsession_results(1) == {}
     assert stub.get_lap_chart_data(1, 0) == []
+    assert stub.get_lap_data(1, 0, 2) == []
 
 
 class TestVerifyLogin:

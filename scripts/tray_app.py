@@ -10,7 +10,10 @@ Composes ManagedProcess + launch/stop logic unchanged (spec B1). The
 voice coach is NEVER auto-started -- starting it is a deliberate click
 (locked decision 2026-07-14). Streamlit runs detached under a PID file
 ('streamlit-app') instead of as a console child; stop_all's cmdline
-fragment kill catches it either way.
+fragment kill catches it either way. Quit stops the whole rig (founder
+call 2026-07-15: a closed tray must not leave invisible services);
+'Stop everything' stops the rig but keeps the tray, and 'Open' revives
+a stopped rig before opening the browser.
 
 Pure and coupling-tested: spawn commands, icon image, menu spec, status
 text. Thin untested I/O: the pystray loop and process starts/stops.
@@ -36,6 +39,7 @@ from scripts.launch import (  # noqa: E402
     URL,
     _watcher,
     is_port_listening,
+    wait_for_port,
 )
 
 _RUN_DIR = _ROOT / "data" / "run"
@@ -134,7 +138,16 @@ def _guard(fn: Callable[[], object]) -> Callable[..., None]:
     return run
 
 
-def _open_app() -> None:
+def open_app() -> None:
+    """Revive the rig if it's down, THEN open the browser.
+
+    'Open' must never point at a dead server — founder acceptance
+    2026-07-15 found that Stop everything left no way back (the old
+    action only opened a browser). Same idempotent semantics as tray
+    startup; the wait keeps the browser from landing on a blank page.
+    """
+    _start_rig()
+    wait_for_port(PORT, timeout_s=20.0)
     webbrowser.open(URL)
 
 
@@ -164,7 +177,7 @@ class MenuItemSpec:
 def menu_spec() -> list[MenuItemSpec]:
     """The tray menu as pure data (exact-label tested)."""
     return [
-        MenuItemSpec("Open Race Engineer", _guard(_open_app)),
+        MenuItemSpec("Open Race Engineer", _guard(open_app)),
         MenuItemSpec("Status", None),
         MenuItemSpec("Start voice coach",
                      _guard(lambda: coach_process().start())),
@@ -175,7 +188,10 @@ def menu_spec() -> list[MenuItemSpec]:
         MenuItemSpec("Stop watcher",
                      _guard(lambda: watcher_process().stop())),
         MenuItemSpec("Stop everything", _guard(_stop_everything)),
-        MenuItemSpec("Quit (leave services running)", None),  # bound in main()
+        # Quit tears the whole rig down (founder call 2026-07-15: a
+        # closed tray must not leave invisible services running). The
+        # action is bound in main() -- it needs the icon reference.
+        MenuItemSpec("Quit (stops everything)", None),
     ]
 
 
@@ -192,10 +208,12 @@ def main(smoke: bool = False) -> int:
     for spec in menu_spec():
         if spec.label == "Status":
             items.append(pystray.MenuItem(_live_status, None, enabled=False))
-        elif spec.action is None:  # Quit
-            items.append(
-                pystray.MenuItem(spec.label, lambda icon, _i: icon.stop())
-            )
+        elif spec.action is None:  # Quit: stop the rig, then the tray
+            def _quit(icon, _item) -> None:
+                _guard(_stop_everything)()
+                icon.stop()
+
+            items.append(pystray.MenuItem(spec.label, _quit))
         else:
             items.append(pystray.MenuItem(spec.label, spec.action))
     icon = pystray.Icon(

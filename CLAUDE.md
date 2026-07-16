@@ -464,11 +464,11 @@ streamlit run app/streamlit_app.py
 - [ ] A7 corner mini-map (phase 2, after top-5) — separate plan
 
 **System-Tray App (B1)** (complete, branch tray-app-b1 — spec §B1 of docs/superpowers/specs/2026-07-15-consumer-ux-packaging-design.md, plan docs/superpowers/plans/2026-07-15-tray-app-b1.md)
-- [x] scripts/tray_app.py (pystray + Pillow): tray start = launcher semantics (revive watcher first — the 2026-07-14 lesson — then app detached if 8501 dark; coach NEVER auto-started); menu = Open / live Status / coach Start-Stop / watcher Start-Stop / Stop everything (stop_all reuse) / Quit-leaves-services-running
+- [x] scripts/tray_app.py (pystray + Pillow): tray start = launcher semantics (revive watcher first — the 2026-07-14 lesson — then app detached if 8501 dark; coach NEVER auto-started); menu = Open (REVIVES a stopped rig before opening the browser — founder acceptance finding: Stop everything had left no way back) / live Status / coach Start-Stop / watcher Start-Stop / Stop everything (rig off, tray stays) / Quit (stops everything — founder call: a closed tray must not leave invisible services)
 - [x] Streamlit runnable as ManagedProcess 'streamlit-app' (detached, PID-filed, launch.STREAMLIT_CMD imported not copied) — stop_all's cmdline-fragment kill catches it unchanged; launcher .bats remain
 - [x] Coupling tests (tests/test_tray_app.py): coach cmd parses via live_coach.build_parser(); watcher/app commands byte-identical to launch.py's by import; ManagedProcess names pinned to the rig's PID files; menu labels + status text exact-string
 - [x] scripts/start-tray.bat (pythonw, no console); icon drawn in code (PIL checkerboard, no asset); --smoke mode builds real icon+menu without touching processes
-- [ ] On-rig acceptance (founder): icon appears, Status reads right, coach Start/Stop from menu, Stop everything, Quit leaves services; if the icon dies silently under pythonw, run `python scripts/tray_app.py` in a console to see the traceback
+- [ ] On-rig acceptance (founder, round 2 after the Open/Quit fixes): icon appears, Status reads right, coach Start/Stop, Stop everything then Open brings the rig back, Quit stops rig + tray; if the icon dies silently under pythonw, run `python scripts/tray_app.py` in a console to see the traceback
 - [ ] After acceptance: re-point the desktop shortcut at the tray (install_shortcut.py) — founder call; then B2 installer
 
 **Phase 5: Live Engineer (push-to-talk)**

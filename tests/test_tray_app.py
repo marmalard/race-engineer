@@ -63,13 +63,13 @@ class TestMenuSpec:
             "Start watcher",
             "Stop watcher",
             "Stop everything",
-            "Quit (leave services running)",
+            "Quit (stops everything)",
         ]
 
     def test_every_item_has_an_action_except_status(self):
         # Status has no action (display-only); Quit's action is bound in
         # main() to get the icon reference -- it is intentionally None here.
-        no_action_labels = {"Status", "Quit (leave services running)"}
+        no_action_labels = {"Status", "Quit (stops everything)"}
         for item in tray_app.menu_spec():
             if item.label in no_action_labels:
                 assert item.action is None
@@ -92,3 +92,24 @@ class TestStatusText:
             app_up=False, watcher_up=False, watcher_when=None, coach_up=False,
         )
         assert text == "App: stopped \xb7 Watcher: stopped \xb7 Coach: stopped"
+
+
+class TestOpenRevivesTheRig:
+    def test_open_app_starts_rig_then_waits_then_opens(self, monkeypatch):
+        # Founder acceptance 2026-07-15: Stop everything left no way back —
+        # Open must revive a dead rig before pointing a browser at it.
+        calls = []
+        monkeypatch.setattr(
+            tray_app, "_start_rig", lambda: calls.append("start")
+        )
+        monkeypatch.setattr(
+            tray_app, "wait_for_port",
+            lambda port, timeout_s: calls.append(("wait", port)) or True,
+        )
+        monkeypatch.setattr(
+            tray_app.webbrowser, "open", lambda url: calls.append(("open", url))
+        )
+        tray_app.open_app()
+        assert calls == [
+            "start", ("wait", tray_app.PORT), ("open", tray_app.URL),
+        ]

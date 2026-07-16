@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import re
 import shutil
 import tempfile
 import zipfile
@@ -32,10 +33,15 @@ def apply_update(
     """Verify zip_bytes against expected_sha256, then selectively swap
     RELEASE_ENTRIES into install_root. Raises before writing anything on
     verification or layout failure."""
-    digest = hashlib.sha256(zip_bytes).hexdigest()
-    if digest != expected_sha256.strip().lower():
+    expected = (expected_sha256 or "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", expected):
         raise UpdateVerificationError(
-            f"sha256 mismatch: got {digest}, expected {expected_sha256}"
+            f"malformed expected sha256: {expected_sha256!r}"
+        )
+    digest = hashlib.sha256(zip_bytes).hexdigest()
+    if digest != expected:
+        raise UpdateVerificationError(
+            f"sha256 mismatch: got {digest}, expected {expected}"
         )
 
     install_root = Path(install_root)

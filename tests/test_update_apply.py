@@ -73,6 +73,21 @@ class TestVerification:
         assert (root / "app" / "pages" / "new.py").exists()
 
 
+    def test_empty_expected_digest_raises_verification_error(self, tmp_path):
+        root = _install_root(tmp_path)
+        blob = _good_zip()
+        with pytest.raises(UpdateVerificationError):
+            apply_update(blob, "", root)
+        assert (root / "app" / "old.py").exists()
+
+    def test_none_expected_digest_raises_verification_error(self, tmp_path):
+        root = _install_root(tmp_path)
+        blob = _good_zip()
+        with pytest.raises(UpdateVerificationError):
+            apply_update(blob, None, root)
+        assert (root / "app" / "old.py").exists()
+
+
 class TestSelectiveSwap:
     def test_swap_replaces_code_entries(self, tmp_path):
         root = _install_root(tmp_path)

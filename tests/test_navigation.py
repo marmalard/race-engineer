@@ -43,3 +43,10 @@ class TestNavSpec:
                 module = importlib.import_module(spec.module)
                 func = getattr(module, spec.func)
                 assert callable(func), f"{spec.module}.{spec.func}"
+
+    def test_host_group_pages_exact(self):
+        # Settings & Keys is the re-editable Setup page (B2 spec 4) —
+        # it must stay reachable after first run so keys can rotate
+        # without hand-editing .env.
+        host = dict(NAV_SPEC)["Host"]
+        assert [p.title for p in host] == ["Toolbox", "Settings & Keys"]

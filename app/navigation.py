@@ -57,6 +57,8 @@ NAV_SPEC: list[tuple[str, list[PageSpec]]] = [
         [
             PageSpec("Toolbox", "\U0001f39b", "toolbox",
                      "app.pages.toolbox", "render_toolbox_page"),
+            PageSpec("Settings & Keys", "\U0001f511", "setup",
+                     "app.pages.setup", "render_setup_page"),
         ],
     ),
 ]

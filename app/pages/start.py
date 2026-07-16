@@ -26,6 +26,7 @@ from app.components.sample import load_sample_narrative
 from app.components.theme import section_header
 from app.navigation import page_for
 from core.race.race_store import RaceStore, StoredRaceMeta
+from core.update.version import get_version
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -141,8 +142,15 @@ def render_start_page() -> None:
         st.switch_page(page_for("debrief"))
 
     # --- Status strip ----------------------------------------------------
+    try:
+        version = f"v{get_version()}"
+    except Exception:  # noqa: BLE001 -- cosmetic only, like _app_version
+        version = "v?"
+    sha = _app_version()
+    if sha != "unknown":
+        version += f" ({sha})"
     parts = [
-        f"v {_app_version()}",
+        version,
         "host mode" if is_host() else "guest mode",
     ]
     if is_host():

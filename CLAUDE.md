@@ -26,7 +26,8 @@ race-engineer/
 │   │   ├── coaching.py           # Lap coaching UI (debrief wired in)
 │   │   ├── race_debrief.py       # Race debrief UI (Surface 1): picker, charts, chat, export
 │   │   ├── guide.py              # In-app guide: friend onboarding + founder reference
-│   │   └── toolbox.py            # Host-only start/stop/status for live coach + watcher
+│   │   ├── toolbox.py            # Host-only start/stop/status for live coach + watcher
+│   │   └── setup.py              # First-run wizard + Settings & Keys (key rotation)
 │   └── components/               # Shared Streamlit components
 │       ├── units.py              # Unit conversion helpers (metric/imperial)
 │       └── track_map.py          # GPS track outline with colored loss regions
@@ -76,6 +77,13 @@ race-engineer/
 │   │   ├── pace.py               # PURE: session history → per-combo readiness (representative-lap filter)
 │   │   ├── render.py             # Verdict lines, page markdown, capped prompt block
 │   │   └── builder.py            # load_profile — the package's only I/O; degrades to empty
+│   ├── config/
+│   │   └── env_setup.py          # .env contract: REQUIRED keys, baked defaults (gitignored _baked.py), Setup page backend
+│   ├── update/
+│   │   ├── version.py            # get_version from pyproject [project] version; bump_version
+│   │   ├── manifest.py           # RELEASE_ENTRIES whitelist; is_installed_layout gate
+│   │   ├── releases.py           # check_for_update (tag-only GitHub latest, SHA256SUMS required); download_zip
+│   │   └── apply.py              # apply_update: sha256 gate → zip-slip guard → extract in temp → selective swap
 │   └── race/
 │       ├── models.py             # RaceData (raw) + RaceNarrative (product) dataclasses
 │       ├── ingest.py             # Race IBT + YAML + Data API → RaceData (disk cache, partial mode)
@@ -85,7 +93,8 @@ race-engineer/
 ├── scripts/
 │   ├── live_coach.py             # Terminal entry point (pyirsdk driver)
 │   ├── watch_telemetry.py        # Telemetry folder scan CLI (--watch to poll)
-│   └── record_race_fixture.py    # Record real race API fixtures for integration tests
+│   ├── record_race_fixture.py    # Record real race API fixtures for integration tests
+│   └── build_release.py          # Release artifact cutter: bump, flat zip, SHA256SUMS, baked-cred refresh
 ├── data/
 │   ├── tracks.db                 # SQLite track database
 │   ├── profiles.db               # SQLite driver profile and session history
@@ -132,7 +141,13 @@ race-engineer/
     ├── test_watcher_scanner.py
     ├── test_watcher_processor.py
     ├── test_watch_telemetry_helpers.py
-    └── test_process_control.py
+    ├── test_process_control.py
+    ├── test_update_version.py
+    ├── test_env_setup.py
+    ├── test_install_shortcut.py
+    ├── test_build_release.py
+    ├── test_update_releases.py
+    └── test_update_apply.py
 ```
 
 ## Key Technical Concepts
@@ -471,6 +486,19 @@ streamlit run app/streamlit_app.py
 - [ ] On-rig acceptance (founder, round 2 after the Open/Quit fixes): icon appears, Status reads right, coach Start/Stop, Stop everything then Open brings the rig back, Quit stops rig + tray; if the icon dies silently under pythonw, run `python scripts/tray_app.py` in a console to see the traceback
 - [ ] After acceptance: re-point the desktop shortcut at the tray (install_shortcut.py) — founder call; then B2 installer
 
+**Friend Installer (B2)** (complete, branch friend-installer-b2 — spec docs/superpowers/specs/2026-07-16-friend-installer-design.md, plan docs/superpowers/plans/2026-07-16-friend-installer.md)
+- [x] `core/update/` package: version.py (get_version from pyproject [project] version — the single version source; bump_version), manifest.py (RELEASE_ENTRIES whitelist shared by zip builder + swap; is_installed_layout = uv.exe beside the code), releases.py (check_for_update — tag-only GitHub /releases/latest, draft/prerelease rejected, SHA256SUMS asset required or no offer, fail-quiet None; download_zip), apply.py (apply_update — sha256 gate BEFORE any write incl. malformed-digest typed error, zip-slip guard, extract+validate in temp dir, then selective swap of RELEASE_ENTRIES; data/ + .env + .venv + uv.exe preserved by omission)
+- [x] `core/config/env_setup.py`: the ONLY module knowing the .env contract — REQUIRED=(ANTHROPIC_API_KEY, IRACING_USERNAME, IRACING_PASSWORD), DEFAULTS from gitignored `core/config/_baked.py` (ImportError fallback — the repo is PUBLIC, so the founder iRacing app credential is injected at BUILD time by build_release.py and ships only in release artifacts, never git); read/write with dotenv-compatible double-quote escaping (nasty passwords round-trip); write_env updates os.environ so saved keys work without restart
+- [x] First-run Setup page (`app/pages/setup.py`, display-only): routes as the ONLY page when is_complete() is False (streamlit_app.py); collects the 3 keys with non-blocking per-field Test buttons (verify_login() on LiveIRacingAPI — new public method; anthropic models.list); re-editable as Settings & Keys in the Host nav group; Start status strip now leads with v{get_version()} (git SHA = dev-only suffix)
+- [x] `scripts/build_release.py`: --bump patch|minor, refreshes _baked.py from .env, flat zip of RELEASE_ENTRIES (nested __pycache__/.pyc/.venv excluded; forward-slash names pinned by test), dist/SHA256SUMS (GNU two-space format); SHAs are per-build (zip embeds mtimes) — published SHA256SUMS is the source of truth
+- [x] `installer/race-engineer.iss` (Inno Setup 6, per-user, PrivilegesRequired=lowest): FLAT layout — %LOCALAPPDATA%\RaceEngineer IS the code root (data/, .env, .venv live beside app/ core/ scripts/; plan amendment 1 — the spec's nested app\ diagram contradicted every _ROOT-derived path); [Run] = uv sync → install_shortcut --target tray → tray launch + browser; uninstall stops the rig, always removes .venv, PROMPTS before deleting data/.env
+- [x] `install_shortcut.py --target launcher|tray`: tray variant targets pythonw.exe directly (no .bat console flash, pinnable) — also satisfies the queued shortcut re-point item; launcher default byte-identical to before
+- [x] Tray update channel (spec 5.2): 6h background check caches UpdateInfo; menu item flips "Check for updates" → "Update available (vX.Y.Z) - install"; apply is consent-gated (click) = _stop_rig → download → apply_update → uv sync (uv.exe, CREATE_NO_WINDOW) → _start_rig, watcher-intent semantics preserved by reusing the B1 helpers; any pre-swap failure restarts the old code; dev checkouts never check (is_installed_layout gate); data/run/update.log
+- [x] `docs/RELEASING.md`: build_release → ISCC /DAppVersion → tag → gh release create (zip + SHA256SUMS + Setup.exe); tag-only rule; SmartScreen v1 acceptance
+- [x] uv.lock refreshed (was stale since B1 — pystray/pillow/pyttsx3 were unlocked; installer uv sync needs the pinned lock)
+- [ ] Founder acceptance (not agent-executable): install Inno Setup 6 + drop installer/uv.exe, compile Setup.exe, clean-machine install (3 keys → working Start page; SmartScreen "run anyway" expected), cut v0.1.1 and watch an installed client update with data/.env preserved, uninstall data-prompt check
+- Security notes: repo is PUBLIC — release assets (zip/installer) carry the baked pwlimited credential and are world-downloadable (same v1 acceptance class as the spec, revisit at v2 proxy); update trust anchor = tag-only + SHA256SUMS gate + verify-before-write (adversarially reviewed)
+
 **Phase 5: Live Engineer (push-to-talk)**
 - [ ] Rolling race-state summarizer (CarIdx arrays → compact briefing state)
 - [ ] PTT + realtime voice, ≤2s latency; sparse event-driven calls, strict rate limiting
@@ -637,7 +665,7 @@ streamlit run app/streamlit_app.py
 - Deployment: `tailscale serve/funnel 8501` + `streamlit run` from the host PC; `.streamlit/config.toml` sets maxUploadSize 400
 
 ### Test Suite
-- 703 tests passing on master (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`); skip count varies with local gitignored fixtures (race-capture integration tests need Oulton; some lap tests need specific telemetry files)
+- 809 tests passing on this branch (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`); skip count varies with local gitignored fixtures (race-capture integration tests need Oulton; some lap tests need specific telemetry files)
 - Test fixtures: `tests/fixtures/sample.ibt` (Spa, BMW M2 CS Racing, 2 laps — gitignored)
 - Multi-lap fixture from `C:\Users\antho\Documents\iRacing\telemetry\` (Road America F4, 7 laps)
 - Bathurst fixture also available for corner detection tuning tests

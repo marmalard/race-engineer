@@ -11,6 +11,8 @@ degrades to the fallbacks — never to broken layout.
 
 from __future__ import annotations
 
+import html
+
 import streamlit as st
 
 # --- Palette (mirrors .streamlit/config.toml [theme]) --------------------
@@ -202,12 +204,30 @@ def brand_sidebar() -> None:
 
 def section_header(title: str) -> None:
     """Small-caps green section label with a fading rule."""
-    st.markdown(f'<div class="re-section">{title}</div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="re-section">{html.escape(title)}</div>',
+        unsafe_allow_html=True,
+    )
 
 
-def header_strip(parts: list[str]) -> None:
-    """Monospace context strip, e.g. track / car / series / SoF."""
-    joined = " · ".join(p for p in parts if p)
+def header_strip(parts: list[str], bold: tuple[int, ...] = ()) -> None:
+    """Monospace context strip, e.g. track / car / series / SoF.
+
+    Every part is HTML-escaped here — callers pass plain text, never markup,
+    because these values are often derived from uploaded telemetry files.
+    ``bold`` holds the original indices to wrap in <b>; escaping happens first
+    so a part cannot smuggle in raw HTML.
+    """
+    bold_idx = set(bold)
+    cells = []
+    for i, part in enumerate(parts):
+        if not part:
+            continue
+        cell = html.escape(str(part))
+        if i in bold_idx:
+            cell = f"<b>{cell}</b>"
+        cells.append(cell)
+    joined = " · ".join(cells)
     st.markdown(
         f'<div class="re-headerstrip">{joined}</div>', unsafe_allow_html=True
     )

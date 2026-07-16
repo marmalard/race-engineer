@@ -369,13 +369,16 @@ def render_race_debrief_page():
         st.warning(API_DOWN)
 
     config = f" ({h.track_config})" if h.track_config else ""
-    header_strip([
-        f"<b>{h.track_name}{config}</b>",
-        h.car_name,
-        h.series_name,
-        h.session_date[:10],
-        f"<b>{h.driver_name}</b>",
-    ])
+    header_strip(
+        [
+            f"{h.track_name}{config}",
+            h.car_name,
+            h.series_name,
+            h.session_date[:10],
+            h.driver_name,
+        ],
+        bold=(0, 4),
+    )
     cols = st.columns(4)
     cols[0].metric("Finish", f"P{h.finish_position}", f"from P{h.start_position}")
     if h.irating_new > 0:

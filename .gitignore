@@ -9,8 +9,7 @@ wheels/
 # Virtual environments
 .venv
 
-# uv
-.python-version
+# uv (note: .python-version is tracked — installer needs it pinned)
 
 # Environment
 .env

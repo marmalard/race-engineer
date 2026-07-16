@@ -19,14 +19,14 @@ from core.config.env_setup import (
 from core.update.version import get_version
 
 _FIRST_RUN_INTRO = (
-    "Welcome -- three keys and you're racing. Your **iRacing login** lets "
+    "Welcome — three keys and you're racing. Your **iRacing login** lets "
     "the engineer pull official results and field data; your **Anthropic "
     "API key** powers the AI debriefs (get one at console.anthropic.com). "
     "Everything is stored only on this machine, in a local `.env` file."
 )
 
 _EDIT_INTRO = (
-    "Update your saved keys here. Changes take effect immediately -- no "
+    "Update your saved keys here. Changes take effect immediately — no "
     "restart needed."
 )
 
@@ -49,7 +49,7 @@ def _test_iracing_login(username: str, password: str) -> str | None:
     client_secret = DEFAULTS.get("IRACING_CLIENT_SECRET", "")
     if not client_id or not client_secret:
         return (
-            "This build has no iRacing app credential baked in -- "
+            "This build has no iRacing app credential baked in — "
             "set IRACING_CLIENT_ID / IRACING_CLIENT_SECRET in .env."
         )
     try:
@@ -86,7 +86,7 @@ def render_setup_page() -> None:
             if err is None:
                 st.success("iRacing login works.")
             else:
-                st.warning(f"iRacing login failed -- you can still save. {err}")
+                st.warning(f"iRacing login failed — you can still save. {err}")
 
     anthropic_key = st.text_input(
         "Anthropic API key",
@@ -101,7 +101,7 @@ def render_setup_page() -> None:
             if err is None:
                 st.success("Anthropic key works.")
             else:
-                st.warning(f"Key test failed -- you can still save. {err}")
+                st.warning(f"Key test failed — you can still save. {err}")
 
     st.divider()
     if st.button("Save and start", type="primary"):

@@ -32,6 +32,8 @@ def _fake_checkout(tmp_path: Path) -> Path:
     for entry in ("app", "core", "scripts"):
         (root / entry).mkdir(parents=True)
         (root / entry / "keep.py").write_text("# code\n", encoding="utf-8")
+    (root / "core" / "sub").mkdir()
+    (root / "core" / "sub" / "deep.py").write_text("# nested\n", encoding="utf-8")
     (root / "core" / "__pycache__").mkdir()
     (root / "core" / "__pycache__" / "keep.cpython-314.pyc").write_bytes(b"x")
     (root / "pyproject.toml").write_text(
@@ -74,6 +76,7 @@ class TestBuildZip:
         names = zipfile.ZipFile(out).namelist()
         assert "app/keep.py" in names
         assert "core/keep.py" in names
+        assert "core/sub/deep.py" in names
         assert "scripts/keep.py" in names
         assert "pyproject.toml" in names
         assert "uv.lock" in names

@@ -11,6 +11,11 @@ dist/SHA256SUMS -> print the tag, paths, and SHA.
 
 The zip is FLAT (entries at the zip root) -- apply_update and the
 installer both rely on that layout.
+
+SHAs are per-build: the zip embeds file mtimes, so a rebuild of the same
+tree yields a different SHA. The published SHA256SUMS is the source of
+truth; re-running this script is safe (both artifacts are overwritten
+together).
 """
 
 from __future__ import annotations

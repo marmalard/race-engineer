@@ -414,6 +414,15 @@ class LiveIRacingAPI(IRacingAPIClient):
                 self._authenticate()
         return self._token.access_token
 
+    def verify_login(self) -> bool:
+        """Perform a full authentication and return True on success.
+
+        Setup-page credential check (B2): raises the underlying httpx
+        error on bad credentials so the page can show it.
+        """
+        self._authenticate()
+        return True
+
     # --- Data API calls ---
 
     def _api_get(self, endpoint: str, params: dict | None = None) -> dict:

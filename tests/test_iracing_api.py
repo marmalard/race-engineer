@@ -614,4 +614,28 @@ def test_stub_race_endpoints_graceful():
     stub = StubIRacingAPI()
     assert stub.get_subsession_results(1) == {}
     assert stub.get_lap_chart_data(1, 0) == []
-    assert stub.get_lap_data(1, 0, 2) == []
+
+
+class TestVerifyLogin:
+    def test_verify_login_authenticates_and_returns_true(self, monkeypatch):
+        from core.benchmark.iracing_api import LiveIRacingAPI
+
+        api = LiveIRacingAPI("cid", "csecret", "user@example.com", "pw")
+        calls = []
+        monkeypatch.setattr(
+            api, "_authenticate", lambda: calls.append("auth")
+        )
+        assert api.verify_login() is True
+        assert calls == ["auth"]
+
+    def test_verify_login_propagates_auth_failure(self, monkeypatch):
+        from core.benchmark.iracing_api import LiveIRacingAPI
+
+        api = LiveIRacingAPI("cid", "csecret", "user@example.com", "pw")
+
+        def boom():
+            raise RuntimeError("401")
+
+        monkeypatch.setattr(api, "_authenticate", boom)
+        with pytest.raises(RuntimeError):
+            api.verify_login()

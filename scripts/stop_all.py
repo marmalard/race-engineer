@@ -27,6 +27,10 @@ _RUN_DIR = _ROOT / "data" / "run"
 # app/streamlit_app.py').
 _CMDLINE_FRAGMENTS = (str(_ROOT), "streamlit", "streamlit_app.py")
 
+# Invoked from the windowless tray as well as the .bat: shell-outs must
+# not flash console windows.
+_CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
+
 
 def _parse_pids(stdout: str) -> list[int]:
     """Integers from a newline-separated PID list; non-numeric lines ignored."""
@@ -60,7 +64,7 @@ def _streamlit_pids() -> list[int]:
     )
     result = subprocess.run(
         ["powershell", "-NoProfile", "-Command", ps],
-        capture_output=True, text=True,
+        capture_output=True, text=True, creationflags=_CREATE_NO_WINDOW,
     )
     return _parse_pids(result.stdout)
 
@@ -73,7 +77,8 @@ def stop_streamlit() -> None:
         return
     for pid in pids:
         subprocess.run(
-            ["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True
+            ["taskkill", "/PID", str(pid), "/T", "/F"],
+            capture_output=True, creationflags=_CREATE_NO_WINDOW,
         )
         print(f"Stopped Streamlit (pid {pid}).")
 

@@ -18,8 +18,15 @@ from pathlib import Path
 
 DEFAULT_RUN_DIR = Path("data/run")
 
-# Windows: detach so the child survives the Streamlit process entirely.
-_DETACHED_PROCESS = 0x00000008
+# Windows: the child must survive its parent AND show no window.
+# CREATE_NO_WINDOW (not DETACHED_PROCESS): uv's venv python.exe is a
+# launcher shim that spawns the real interpreter as a grandchild — under
+# DETACHED_PROCESS the shim has no console, so Windows allocates a fresh
+# VISIBLE one for the console-subsystem grandchild (empty black windows,
+# found in tray acceptance 2026-07-15). With CREATE_NO_WINDOW the shim
+# owns a hidden console the grandchild inherits — nothing on screen, and
+# lifetime/tree-kill semantics are unchanged.
+_CREATE_NO_WINDOW = 0x08000000
 _CREATE_NEW_PROCESS_GROUP = 0x00000200
 
 # Windows liveness check. os.kill(pid, 0) is NOT an existence probe there:
@@ -102,7 +109,7 @@ class ManagedProcess:
             return self.pid()  # type: ignore[return-value]
         flags = 0
         if os.name == "nt":
-            flags = _DETACHED_PROCESS | _CREATE_NEW_PROCESS_GROUP
+            flags = _CREATE_NO_WINDOW | _CREATE_NEW_PROCESS_GROUP
         with open(self.log_file, "ab") as log:
             proc = subprocess.Popen(
                 self.command,
@@ -123,9 +130,12 @@ class ManagedProcess:
             return False
         if os.name == "nt":
             # /T kills the tree (SAPI/child threads), /F is unconditional.
+            # NO_WINDOW: called from the windowless tray, a bare taskkill
+            # would flash a console.
             subprocess.run(
                 ["taskkill", "/PID", str(pid), "/T", "/F"],
                 capture_output=True,
+                creationflags=_CREATE_NO_WINDOW,
             )
         else:
             try:

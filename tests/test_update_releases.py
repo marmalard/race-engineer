@@ -113,6 +113,18 @@ class TestCheckForUpdate:
         get = _fake_get(_release_payload("nightly"), f"{_SHA}  x.zip\n")
         assert check_for_update("0.1.0", get=get) is None
 
+    def test_draft_release_returns_none(self):
+        payload = _release_payload("v0.2.0")
+        payload["draft"] = True
+        get = _fake_get(payload, f"{_SHA}  race-engineer-v0.2.0.zip\n")
+        assert check_for_update("0.1.0", get=get) is None
+
+    def test_prerelease_returns_none(self):
+        payload = _release_payload("v0.2.0")
+        payload["prerelease"] = True
+        get = _fake_get(payload, f"{_SHA}  race-engineer-v0.2.0.zip\n")
+        assert check_for_update("0.1.0", get=get) is None
+
 
 class TestDownloadZip:
     def test_returns_bytes_on_200(self):

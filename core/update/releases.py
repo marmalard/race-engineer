@@ -63,6 +63,10 @@ def check_for_update(
         if resp.status_code != 200:
             return None
         release = resp.json()
+        # /releases/latest should never return these, but the trust-anchor
+        # path must not depend on an implicit API guarantee.
+        if release.get("draft") or release.get("prerelease"):
+            return None
         tag = release.get("tag_name", "")
         latest, current = parse_tag(tag), parse_tag(current_version)
         if latest is None or current is None or latest <= current:

@@ -22,9 +22,11 @@ text. Thin untested I/O: the pystray loop and process starts/stops.
 from __future__ import annotations
 
 import sys
+import threading
 import time
 import webbrowser
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
@@ -153,6 +155,7 @@ def open_app() -> None:
 
 def _start_rig() -> None:
     """Launcher semantics: revive watcher, then the app if 8501 is dark."""
+    _watcher_intended.set()
     try:
         watcher_process().start()
     except Exception:  # noqa: BLE001 -- watcher failure must not block the app
@@ -166,6 +169,68 @@ def _stop_everything() -> None:
 
     stop_managed()
     stop_streamlit()
+
+
+# --- watcher watchdog ------------------------------------------------------
+# The recurring incident class on this rig is never 'watcher on when
+# unwanted' -- it's 'watcher silently dead while the app looks fine'
+# (2026-07-12, -14, -15: races went uncaptured). The tray is long-lived,
+# so it revives a dead watcher every couple of minutes. The intent flag
+# keeps it honest: a DELIBERATE stop (Stop watcher / Stop everything /
+# Quit) clears it, and the watchdog never resurrects against your will.
+
+WATCHDOG_INTERVAL_S = 120.0
+
+_watcher_intended = threading.Event()
+
+
+def watchdog_tick(intended: bool, proc, log_file: Path, now_iso: str) -> bool:
+    """Revive the watcher when it should be running but isn't.
+
+    Injected process/log/clock so tests never touch the live rig.
+    Returns True when a revival was attempted.
+    """
+    if not intended or proc.is_running():
+        return False
+    try:
+        with open(log_file, "a", encoding="utf-8") as fh:
+            fh.write(
+                f"[tray watchdog] watcher was down - revived {now_iso}\n"
+            )
+    except OSError:
+        pass  # the revival matters more than the log line
+    proc.start()
+    return True
+
+
+def _watchdog_loop() -> None:
+    while True:
+        time.sleep(WATCHDOG_INTERVAL_S)
+        try:
+            proc = watcher_process()
+            watchdog_tick(
+                _watcher_intended.is_set(),
+                proc,
+                proc.log_file,
+                datetime.now().isoformat(timespec="seconds"),
+            )
+        except Exception:  # noqa: BLE001 -- the watchdog itself never dies
+            pass
+
+
+def _start_watcher() -> None:
+    _watcher_intended.set()
+    watcher_process().start()
+
+
+def _stop_watcher() -> None:
+    _watcher_intended.clear()
+    watcher_process().stop()
+
+
+def _stop_rig() -> None:
+    _watcher_intended.clear()
+    _stop_everything()
 
 
 @dataclass(frozen=True)
@@ -183,11 +248,9 @@ def menu_spec() -> list[MenuItemSpec]:
                      _guard(lambda: coach_process().start())),
         MenuItemSpec("Stop voice coach",
                      _guard(lambda: coach_process().stop())),
-        MenuItemSpec("Start watcher",
-                     _guard(lambda: watcher_process().start())),
-        MenuItemSpec("Stop watcher",
-                     _guard(lambda: watcher_process().stop())),
-        MenuItemSpec("Stop everything", _guard(_stop_everything)),
+        MenuItemSpec("Start watcher", _guard(_start_watcher)),
+        MenuItemSpec("Stop watcher", _guard(_stop_watcher)),
+        MenuItemSpec("Stop everything", _guard(_stop_rig)),
         # Quit tears the whole rig down (founder call 2026-07-15: a
         # closed tray must not leave invisible services running). The
         # action is bound in main() -- it needs the icon reference.
@@ -210,7 +273,7 @@ def main(smoke: bool = False) -> int:
             items.append(pystray.MenuItem(_live_status, None, enabled=False))
         elif spec.action is None:  # Quit: stop the rig, then the tray
             def _quit(icon, _item) -> None:
-                _guard(_stop_everything)()
+                _guard(_stop_rig)()
                 icon.stop()
 
             items.append(pystray.MenuItem(spec.label, _quit))
@@ -223,6 +286,7 @@ def main(smoke: bool = False) -> int:
     if smoke:
         return 0
     _start_rig()
+    threading.Thread(target=_watchdog_loop, daemon=True).start()
     icon.run()
     return 0
 

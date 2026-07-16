@@ -94,6 +94,97 @@ class TestStatusText:
         assert text == "App: stopped \xb7 Watcher: stopped \xb7 Coach: stopped"
 
 
+class _FakeProc:
+    """Stand-in for ManagedProcess — tests must NEVER touch the live rig."""
+
+    def __init__(self, running: bool):
+        self.running = running
+        self.started = 0
+        self.stopped = 0
+
+    def is_running(self) -> bool:
+        return self.running
+
+    def start(self) -> int:
+        self.started += 1
+        self.running = True
+        return 1
+
+    def stop(self) -> bool:
+        self.stopped += 1
+        self.running = False
+        return True
+
+
+class TestWatchdog:
+    def test_revives_dead_watcher_when_intended(self, tmp_path):
+        proc = _FakeProc(running=False)
+        log = tmp_path / "telemetry-watcher.log"
+        assert tray_app.watchdog_tick(True, proc, log, "2026-07-15T22:00:00")
+        assert proc.started == 1
+        assert "[tray watchdog]" in log.read_text(encoding="utf-8")
+
+    def test_leaves_running_watcher_alone(self, tmp_path):
+        proc = _FakeProc(running=True)
+        assert not tray_app.watchdog_tick(
+            True, proc, tmp_path / "w.log", "t"
+        )
+        assert proc.started == 0
+
+    def test_respects_deliberate_stop(self, tmp_path):
+        # Stop watcher / Stop everything clear the intent flag — the
+        # watchdog must never resurrect a deliberately stopped watcher.
+        proc = _FakeProc(running=False)
+        assert not tray_app.watchdog_tick(
+            False, proc, tmp_path / "w.log", "t"
+        )
+        assert proc.started == 0
+
+    def test_log_write_failure_does_not_block_revival(self, tmp_path):
+        proc = _FakeProc(running=False)
+        bad_log = tmp_path / "no-such-dir" / "w.log"
+        assert tray_app.watchdog_tick(True, proc, bad_log, "t")
+        assert proc.started == 1
+
+
+class TestIntentWiring:
+    def _action(self, label: str):
+        return next(
+            i for i in tray_app.menu_spec() if i.label == label
+        ).action
+
+    def test_start_watcher_sets_intent(self, monkeypatch):
+        fake = _FakeProc(running=False)
+        monkeypatch.setattr(tray_app, "watcher_process", lambda: fake)
+        tray_app._watcher_intended.clear()
+        self._action("Start watcher")()
+        assert tray_app._watcher_intended.is_set()
+        assert fake.started == 1
+
+    def test_stop_watcher_clears_intent(self, monkeypatch):
+        fake = _FakeProc(running=True)
+        monkeypatch.setattr(tray_app, "watcher_process", lambda: fake)
+        tray_app._watcher_intended.set()
+        self._action("Stop watcher")()
+        assert not tray_app._watcher_intended.is_set()
+        assert fake.stopped == 1
+
+    def test_stop_everything_clears_intent(self, monkeypatch):
+        monkeypatch.setattr(tray_app, "_stop_everything", lambda: None)
+        tray_app._watcher_intended.set()
+        self._action("Stop everything")()
+        assert not tray_app._watcher_intended.is_set()
+
+    def test_start_rig_sets_intent(self, monkeypatch):
+        fake_watcher = _FakeProc(running=False)
+        monkeypatch.setattr(tray_app, "watcher_process", lambda: fake_watcher)
+        monkeypatch.setattr(tray_app, "is_port_listening", lambda port: True)
+        tray_app._watcher_intended.clear()
+        tray_app._start_rig()
+        assert tray_app._watcher_intended.is_set()
+        assert fake_watcher.started == 1
+
+
 class TestOpenRevivesTheRig:
     def test_open_app_starts_rig_then_waits_then_opens(self, monkeypatch):
         # Founder acceptance 2026-07-15: Stop everything left no way back —

@@ -59,3 +59,6 @@ data/briefing_cache/
 data/run/
 .playwright-mcp/
 tests/fixtures/briefing/**/*.json
+
+# B2 installer: build-time-injected app credential (dist/ already above)
+core/config/_baked.py

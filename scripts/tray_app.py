@@ -43,6 +43,14 @@ from scripts.launch import (  # noqa: E402
     is_port_listening,
     wait_for_port,
 )
+from core.update.apply import apply_update  # noqa: E402
+from core.update.manifest import is_installed_layout  # noqa: E402
+from core.update.releases import (  # noqa: E402
+    UpdateInfo,
+    check_for_update,
+    download_zip,
+)
+from core.update.version import get_version  # noqa: E402
 
 _RUN_DIR = _ROOT / "data" / "run"
 VENV_PY = _ROOT / ".venv" / "Scripts" / "python.exe"
@@ -233,6 +241,130 @@ def _stop_rig() -> None:
     _stop_everything()
 
 
+# --- update channel (B2 spec 5.2) ------------------------------------------
+# The tray owns the WHEN: a slow background check caches the result; the
+# apply is consent-gated (a menu click) because the file swap needs the
+# rig stopped anyway. Dev checkouts (no bundled uv.exe) never check --
+# git manages those.
+
+UPDATE_CHECK_INTERVAL_S = 6 * 3600.0
+
+_CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
+
+_available_update: UpdateInfo | None = None
+
+
+def update_label(info: UpdateInfo | None) -> str:
+    """Menu text for the update item (pure, exact-string tested)."""
+    if info is not None:
+        return f"Update available ({info.tag}) - install"
+    return "Check for updates"
+
+
+def _update_label_live(_item=None) -> str:
+    return update_label(_available_update)
+
+
+def _update_log(message: str) -> None:
+    try:
+        log_dir = _ROOT / "data" / "run"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().isoformat(timespec="seconds")
+        with open(log_dir / "update.log", "a", encoding="utf-8") as fh:
+            fh.write(f"{stamp} {message}\n")
+    except OSError:
+        pass  # logging must never block an update
+
+
+def _check_now() -> UpdateInfo | None:
+    if not is_installed_layout(_ROOT):
+        return None
+    return check_for_update(get_version())
+
+
+def _uv_sync() -> None:
+    import subprocess
+
+    result = subprocess.run(
+        [str(_ROOT / "uv.exe"), "sync"],
+        cwd=str(_ROOT), capture_output=True,
+        creationflags=_CREATE_NO_WINDOW,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"uv sync exited {result.returncode}: {result.stderr[-500:]}"
+        )
+
+
+def run_update_flow(
+    info: UpdateInfo,
+    *,
+    stop_rig: Callable[[], None],
+    download: Callable[[str], bytes],
+    apply: Callable[[bytes, str], None],
+    sync: Callable[[], None],
+    restart: Callable[[], None],
+    log: Callable[[str], None],
+) -> bool:
+    """stop -> download -> verify+swap -> sync -> restart (spec 5.2).
+
+    Injected side effects (watchdog_tick precedent). Any failure before
+    the swap leaves the previous install intact; the rig is restarted on
+    whatever code is present either way. Returns True when the new code
+    is in place.
+    """
+    try:
+        stop_rig()
+        blob = download(info.zip_url)
+        apply(blob, info.sha256)
+        log(f"update {info.tag}: verified and swapped")
+    except Exception as exc:  # noqa: BLE001 -- reported, old code restored
+        log(f"update {info.tag} FAILED: {exc}")
+        restart()
+        return False
+    try:
+        sync()
+    except Exception as exc:  # noqa: BLE001 -- old .venv still works
+        log(f"update {info.tag}: uv sync failed ({exc}); "
+            "old dependencies still in place")
+    restart()
+    log(
+        f"update {info.tag}: done - rig restarted "
+        "(quit and reopen the tray to update it too)"
+    )
+    return True
+
+
+def _do_update() -> None:
+    """Menu action: check when nothing is cached, apply when it is."""
+    global _available_update
+    if _available_update is None:
+        _available_update = _check_now()
+        return
+    ok = run_update_flow(
+        _available_update,
+        stop_rig=_stop_rig,
+        download=download_zip,
+        apply=lambda blob, sha: apply_update(blob, sha, _ROOT),
+        sync=_uv_sync,
+        restart=_start_rig,
+        log=_update_log,
+    )
+    if ok:
+        _available_update = None
+
+
+def _update_check_loop() -> None:
+    global _available_update
+    while True:
+        try:
+            if _available_update is None:
+                _available_update = _check_now()
+        except Exception:  # noqa: BLE001 -- the checker never dies
+            pass
+        time.sleep(UPDATE_CHECK_INTERVAL_S)
+
+
 @dataclass(frozen=True)
 class MenuItemSpec:
     label: str
@@ -244,6 +376,7 @@ def menu_spec() -> list[MenuItemSpec]:
     return [
         MenuItemSpec("Open Race Engineer", _guard(open_app)),
         MenuItemSpec("Status", None),
+        MenuItemSpec("Check for updates", _guard(_do_update)),
         MenuItemSpec("Start voice coach",
                      _guard(lambda: coach_process().start())),
         MenuItemSpec("Stop voice coach",
@@ -271,6 +404,8 @@ def main(smoke: bool = False) -> int:
     for spec in menu_spec():
         if spec.label == "Status":
             items.append(pystray.MenuItem(_live_status, None, enabled=False))
+        elif spec.label == "Check for updates":
+            items.append(pystray.MenuItem(_update_label_live, spec.action))
         elif spec.action is None:  # Quit: stop the rig, then the tray
             def _quit(icon, _item) -> None:
                 _guard(_stop_rig)()
@@ -287,6 +422,7 @@ def main(smoke: bool = False) -> int:
         return 0
     _start_rig()
     threading.Thread(target=_watchdog_loop, daemon=True).start()
+    threading.Thread(target=_update_check_loop, daemon=True).start()
     icon.run()
     return 0
 

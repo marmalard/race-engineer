@@ -58,6 +58,7 @@ class TestMenuSpec:
         assert labels == [
             "Open Race Engineer",
             "Status",
+            "Check for updates",
             "Start voice coach",
             "Stop voice coach",
             "Start watcher",
@@ -204,3 +205,112 @@ class TestOpenRevivesTheRig:
         assert calls == [
             "start", ("wait", tray_app.PORT), ("open", tray_app.URL),
         ]
+
+
+class TestUpdateLabel:
+    def test_no_update_reads_check(self):
+        assert tray_app.update_label(None) == "Check for updates"
+
+    def test_available_update_names_the_tag(self):
+        from core.update.releases import UpdateInfo
+
+        info = UpdateInfo("v0.2.0", "https://gh/z.zip", "a" * 64, "")
+        assert tray_app.update_label(info) == (
+            "Update available (v0.2.0) - install"
+        )
+
+
+class TestCheckNow:
+    def test_dev_checkout_never_calls_the_network(self, monkeypatch):
+        # No uv.exe beside the code -> git manages updates, not the tray.
+        def boom(*a, **k):
+            raise AssertionError("check_for_update must not be called in dev")
+
+        monkeypatch.setattr(tray_app, "check_for_update", boom)
+        assert tray_app._check_now() is None
+
+
+class TestRunUpdateFlow:
+    def _info(self):
+        from core.update.releases import UpdateInfo
+
+        return UpdateInfo("v0.2.0", "https://gh/z.zip", "a" * 64, "")
+
+    def test_success_runs_stop_download_apply_sync_restart(self):
+        calls = []
+        ok = tray_app.run_update_flow(
+            self._info(),
+            stop_rig=lambda: calls.append("stop"),
+            download=lambda url: calls.append(("download", url)) or b"zip",
+            apply=lambda blob, sha: calls.append(("apply", blob, sha)),
+            sync=lambda: calls.append("sync"),
+            restart=lambda: calls.append("restart"),
+            log=lambda msg: None,
+        )
+        assert ok is True
+        assert calls == [
+            "stop",
+            ("download", "https://gh/z.zip"),
+            ("apply", b"zip", "a" * 64),
+            "sync",
+            "restart",
+        ]
+
+    def test_download_failure_restarts_old_code_and_returns_false(self):
+        calls = []
+
+        def bad_download(url):
+            raise RuntimeError("404")
+
+        ok = tray_app.run_update_flow(
+            self._info(),
+            stop_rig=lambda: calls.append("stop"),
+            download=bad_download,
+            apply=lambda blob, sha: calls.append("apply"),
+            sync=lambda: calls.append("sync"),
+            restart=lambda: calls.append("restart"),
+            log=lambda msg: calls.append(("log", msg)),
+        )
+        assert ok is False
+        assert "apply" not in calls and "sync" not in calls
+        assert calls[-1] == "restart"  # rig comes back up on the old code
+
+    def test_verification_failure_never_syncs(self):
+        from core.update.apply import UpdateVerificationError
+
+        calls = []
+
+        def bad_apply(blob, sha):
+            raise UpdateVerificationError("mismatch")
+
+        ok = tray_app.run_update_flow(
+            self._info(),
+            stop_rig=lambda: calls.append("stop"),
+            download=lambda url: b"zip",
+            apply=bad_apply,
+            sync=lambda: calls.append("sync"),
+            restart=lambda: calls.append("restart"),
+            log=lambda msg: None,
+        )
+        assert ok is False
+        assert "sync" not in calls
+        assert "restart" in calls
+
+    def test_sync_failure_still_restarts_and_reports_success(self):
+        # Deps are additive - the old .venv still works (spec 5.2).
+        calls = []
+
+        def bad_sync():
+            raise RuntimeError("uv exploded")
+
+        ok = tray_app.run_update_flow(
+            self._info(),
+            stop_rig=lambda: None,
+            download=lambda url: b"zip",
+            apply=lambda blob, sha: None,
+            sync=bad_sync,
+            restart=lambda: calls.append("restart"),
+            log=lambda msg: calls.append(("log", msg)),
+        )
+        assert ok is True
+        assert "restart" in calls

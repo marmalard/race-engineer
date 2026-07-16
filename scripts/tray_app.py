@@ -376,7 +376,7 @@ def menu_spec() -> list[MenuItemSpec]:
     return [
         MenuItemSpec("Open Race Engineer", _guard(open_app)),
         MenuItemSpec("Status", None),
-        MenuItemSpec("Check for updates", _guard(_do_update)),
+        MenuItemSpec("Check for updates", _guard(_do_update)),  # static label; main() swaps in the live update_label text
         MenuItemSpec("Start voice coach",
                      _guard(lambda: coach_process().start())),
         MenuItemSpec("Stop voice coach",

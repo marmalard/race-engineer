@@ -55,3 +55,11 @@ How the founder cuts a release that installed clients pick up (spec §7).
 - SmartScreen will warn on the unsigned Setup.exe ("More info → Run
   anyway") — known v1 limitation (spec §5.3); Authenticode signing is a
   future improvement.
+- **Restart-critical changes need a note.** After an update applies, the
+  RUNNING tray restarts the rig with its OLD in-memory code — new
+  `scripts/` land on disk but don't execute until the tray is quit and
+  reopened. If a release changes `STREAMLIT_CMD`, ManagedProcess PID-file
+  names, `_start_rig`/`stop_all` semantics, or the `run_update_flow`
+  contract, say so in the release notes (users should Quit + reopen the
+  tray) — and never change PID names and the restart path in the same
+  release without thinking through the old-tray-restarts-new-rig seam.

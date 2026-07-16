@@ -20,6 +20,7 @@ st.set_page_config(
     layout="wide",
 )
 
+from app.components.prefs import load_unit_system, save_unit_system  # noqa: E402
 from app.components.theme import apply_theme, brand_sidebar  # noqa: E402
 from app.navigation import build_pages  # noqa: E402
 
@@ -30,8 +31,19 @@ apply_theme()
 pg = st.navigation(build_pages(), position="sidebar")
 
 brand_sidebar()
+
+# Units survive reloads: seed a fresh session from the host pref file,
+# save on change (deselecting reads as Metric everywhere).
+if "unit_system" not in st.session_state:
+    st.session_state["unit_system"] = load_unit_system()
+
+
+def _save_units() -> None:
+    save_unit_system(st.session_state.get("unit_system") or "Metric")
+
+
 st.sidebar.segmented_control(
-    "Units", ["Metric", "Imperial"], key="unit_system", default="Metric"
+    "Units", ["Metric", "Imperial"], key="unit_system", on_change=_save_units
 )
 
 pg.run()

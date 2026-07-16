@@ -18,6 +18,7 @@ wheels/
 # Data (large files)
 *.ibt
 data/*.db
+data/ui_prefs.json
 data/crew_chief_cache.json
 data/race_cache/
 data/races.db

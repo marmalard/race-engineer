@@ -1,8 +1,8 @@
-"""Progression page -- the Strava layer (spec section 6).
+"""Progression page — the Strava layer (spec §6).
 
 Display only: streak, pace trends, PB timeline, iR/SR history, technique
 trends, pace-implied iR. Every block renders a collecting state below
-threshold -- the page is useful at any corpus size. These numbers inform;
+threshold — the page is useful at any corpus size. These numbers inform;
 nothing here gates.
 """
 
@@ -63,7 +63,7 @@ def _week_band_series(
 def render_progression_page() -> None:
     st.title("Progression")
     st.markdown(
-        "Your season at a glance -- race volume, pace trends, and what the "
+        "Your season at a glance — race volume, pace trends, and what the "
         "numbers say about where you're heading."
     )
 
@@ -85,7 +85,7 @@ def render_progression_page() -> None:
     c3.metric("Races captured", streak.total_races)
     if streak.total_races == 0:
         st.caption(
-            "No races captured yet -- race, and the watcher fills this in "
+            "No races captured yet — race, and the watcher fills this in "
             "automatically."
         )
 
@@ -97,7 +97,7 @@ def render_progression_page() -> None:
         sessions = []
     series = combo_pace_series(sessions)
     if not series:
-        st.caption("Collecting -- practice sessions build this chart.")
+        st.caption("Collecting — practice sessions build this chart.")
     else:
         laps = {}
         try:
@@ -110,7 +110,7 @@ def render_progression_page() -> None:
             for r in build_readiness(sessions, laps)
             if (r.track_id, r.car) in series
         ]
-        # readiness may exclude thin combos -- append the rest, practiced-first
+        # readiness may exclude thin combos — append the rest, practiced-first
         seen = {(t, c) for t, c, _ in ordered}
         names = {s.track_id: s.track_name for s in sessions}
         rest = sorted(
@@ -120,7 +120,7 @@ def render_progression_page() -> None:
         options = ordered + [(t, c, names.get(t, t)) for t, c in rest]
         choice = st.selectbox(
             "Combo", options,
-            format_func=lambda o: f"{o[2]} -- {o[1]}",
+            format_func=lambda o: f"{o[2]} — {o[1]}",
         )
         pts = series[(choice[0], choice[1])]
         fig = go.Figure(go.Scatter(
@@ -137,7 +137,7 @@ def render_progression_page() -> None:
         )
         st.plotly_chart(fig, use_container_width=True)
         if len(pts) < 2:
-            st.caption("One session so far at this combo -- trends need two.")
+            st.caption("One session so far at this combo — trends need two.")
 
     # ---- 3. PB timeline --------------------------------------------------
     st.subheader("Personal bests")
@@ -147,7 +147,7 @@ def render_progression_page() -> None:
         pbs = []
     if not pbs:
         st.caption(
-            "No personal-best references yet -- the watcher promotes your "
+            "No personal-best references yet — the watcher promotes your "
             "fastest clean lap per combo automatically."
         )
     else:
@@ -155,7 +155,7 @@ def render_progression_page() -> None:
         st.table([
             {
                 "Set": m.imported_at[:10],
-                "Combo": f"{names.get(m.track_id, m.track_id)} -- {m.car}",
+                "Combo": f"{names.get(m.track_id, m.track_id)} — {m.car}",
                 "Lap": fmt_lap(m.lap_time),
             }
             for m in reversed(pbs)  # newest first for reading
@@ -167,13 +167,13 @@ def render_progression_page() -> None:
     cust_id = _resolve_cust_id(store)
     if api is None or cust_id is None:
         st.caption(
-            "Needs iRacing credentials and at least one captured race -- "
+            "Needs iRacing credentials and at least one captured race — "
             "then your official rating history appears here."
         )
     else:
         ir_pts, sr_pts = fetch_rating_history(api, cust_id)
         if not ir_pts:
-            st.caption("Rating history unavailable right now -- it'll retry.")
+            st.caption("Rating history unavailable right now — it'll retry.")
         else:
             fig = go.Figure(go.Scatter(
                 x=[p.when for p in ir_pts], y=[p.value for p in ir_pts],
@@ -222,7 +222,7 @@ def render_progression_page() -> None:
         st.plotly_chart(fig, use_container_width=True)
         st.caption(
             f"Time lost per session by habit, across {n_sessions} diagnosed "
-            f"sessions -- down and to the right is the goal. Measured against "
+            f"sessions — down and to the right is the goal. Measured against "
             f"the reference of the day: a new PB can make later losses look "
             f"bigger."
         )
@@ -236,7 +236,7 @@ def render_progression_page() -> None:
         agg = aggregate_implied_ir(rows)
         if agg is not None:
             st.markdown(
-                f"### {agg.lo:,}--{agg.hi:,}"
+                f"### {agg.lo:,}–{agg.hi:,}"
             )
             st.caption(
                 f"Where your practice pace sits on this week's field curves, "
@@ -246,10 +246,10 @@ def render_progression_page() -> None:
             )
             st.table([
                 {
-                    "Combo": f"{r.track_name} -- {r.car}",
+                    "Combo": f"{r.track_name} — {r.car}",
                     "Series curve": r.series_name,
                     "Your lap": fmt_lap(r.lap_s),
-                    "Implied iR": f"{r.implied_lo:,}--{r.implied_hi:,}",
+                    "Implied iR": f"{r.implied_lo:,}–{r.implied_hi:,}",
                 }
                 for r in rows
             ])
@@ -267,7 +267,7 @@ def render_progression_page() -> None:
             st.plotly_chart(fig, use_container_width=True)
     else:
         st.caption(
-            "Not computed yet -- this places your practice pace on this "
+            "Not computed yet — this places your practice pace on this "
             "week's field curves, the same math as the Race Briefing."
         )
     if api is None:

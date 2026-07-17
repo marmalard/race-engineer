@@ -44,7 +44,7 @@ def _fmt_lap_time(t: float) -> str:
     return f"{int(t // 60)}:{t % 60:06.3f}"
 
 
-def _load_corners(
+def load_corners(
     track_db: TrackDB,
     track_id: str,
     track_directory: str,
@@ -235,7 +235,7 @@ def process_ibt(
         if not _is_clean(best):
             report.best_lap_dirty = True
             first = cleanliness[best.lap_number].marks[0]
-            corners = _load_corners(
+            corners = load_corners(
                 track_db, track_id, session.track_directory, track_length_m,
             )
             where = (
@@ -265,7 +265,7 @@ def process_ibt(
             and ref.source == "personal_best"
         )
         if ref is not None and not is_own_new_pb:
-            corners = _load_corners(
+            corners = load_corners(
                 track_db, track_id, session.track_directory,
                 track_length_m,
             )

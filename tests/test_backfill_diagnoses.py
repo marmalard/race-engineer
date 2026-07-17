@@ -59,6 +59,11 @@ def test_backfill_end_to_end(sample_ibt_path, dbs):
         best_lap_time=parsed.best.lap_time, lap_count=2,
         ibt_file_path=str(sample_ibt_path),
     )
+    # No reference yet -> skipped, nothing written
+    counts = backfill(track_db, ref_store)
+    assert counts["skipped_no_ref"] == 1
+    assert track_db.list_region_diagnoses() == []
+
     factor = 0.95
     faster = dataclasses.replace(
         parsed.best,

@@ -32,7 +32,7 @@ if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
 from core.benchmark.reference_store import ReferenceStore
 from core.coaching.debrief import build_debrief
 from core.track.track_db import DiagnosisContext, TrackDB
-from core.watcher.processor import _load_corners, parse_best_lap
+from core.watcher.processor import load_corners, parse_best_lap
 
 TRACKS_DB = Path("data/tracks.db")
 REFS_DB = Path("data/reference_laps.db")
@@ -53,6 +53,7 @@ def backfill(
             continue
         if not row.ibt_file_path or not Path(row.ibt_file_path).exists():
             counts["skipped_missing"] += 1
+            print(f"skip {name}: file missing")
             continue
         try:
             parsed = parse_best_lap(Path(row.ibt_file_path))
@@ -65,7 +66,7 @@ def backfill(
                 counts["skipped_no_ref"] += 1
                 print(f"skip {name}: no reference for combo")
                 continue
-            corners = _load_corners(
+            corners = load_corners(
                 track_db, row.track_id, parsed.session.track_directory,
                 parsed.track_length_m,
             )

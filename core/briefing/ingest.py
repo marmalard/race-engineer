@@ -23,7 +23,7 @@ from core.briefing.models import (
     RaceFormat,
     RaceSlot,
 )
-from core.briefing.slots import infer_window, upcoming_slots
+from core.briefing.slots import infer_window, slot_fits_window, upcoming_slots
 from core.profile.pace import build_readiness
 from core.race.ingest import _cached_fetch, parse_results
 from core.track.track_db import LapRow, SessionRow
@@ -76,11 +76,17 @@ def max_license_group(member_info: dict) -> int | None:
 def rank_series_candidates(
     seasons: list[SeasonSchedule],
     sessions: list[SessionRow],
+    week_delta: int = 0,
 ) -> list[SeriesCandidate]:
-    """Rank this week's series by the user's practice depth at each track.
+    """Rank the (current + week_delta) week's series by the user's practice
+    depth at each track.
+
+    week_delta=0 (default) ranks the current race week — existing behaviour.
+    week_delta=1 ranks NEXT week (the Sunday/Monday week-plan case); seasons
+    whose target week has no schedule entry are skipped, including seasons
+    ending this week.
 
     tracks.db track_id is TEXT; RaceWeek.track_id is int — compared as str.
-    Seasons whose current race_week has no schedule entry are skipped.
     """
     by_track: dict[str, int] = {}
     for s in sessions:
@@ -89,8 +95,9 @@ def rank_series_candidates(
 
     out: list[SeriesCandidate] = []
     for season in seasons:
+        target = season.race_week + week_delta
         week = next(
-            (w for w in season.weeks if w.race_week_num == season.race_week),
+            (w for w in season.weeks if w.race_week_num == target),
             None,
         )
         if week is None:
@@ -99,7 +106,7 @@ def rank_series_candidates(
             season_id=season.season_id,
             series_name=season.series_name,
             season_name=season.season_name,
-            race_week=season.race_week,
+            race_week=target,
             track_id=week.track_id,
             track_name=week.track_name,
             practice_sessions=by_track.get(str(week.track_id), 0),
@@ -251,9 +258,10 @@ def build_briefing(
     for slot in upcoming_slots(
         week.race_time_descriptors, now_utc, count=4
     ):
-        local_hour = slot.astimezone().hour
-        fits = window is not None and window[0] <= local_hour <= window[1]
         data.slots.append(
-            RaceSlot(start_utc=slot.isoformat(), fits_window=fits)
+            RaceSlot(
+                start_utc=slot.isoformat(),
+                fits_window=slot_fits_window(slot, window),
+            )
         )
     return data

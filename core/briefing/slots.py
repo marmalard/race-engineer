@@ -50,6 +50,18 @@ def upcoming_slots(
     return sorted(set(slots))[:count]
 
 
+def slot_fits_window(
+    start_utc: datetime,
+    window: tuple[int, int] | None,
+) -> bool:
+    """True when the slot's LOCAL start hour falls inside the inferred
+    usual-practice window (inclusive). No window (thin history) -> False."""
+    if window is None:
+        return False
+    local_hour = start_utc.astimezone().hour
+    return window[0] <= local_hour <= window[1]
+
+
 def infer_window(session_dates: list[str]) -> tuple[int, int] | None:
     """Usual practice window (start_hour, end_hour) local, from watcher
     session_date strings ('YYYY-MM-DD HH-MM-SS'). None below 3 sessions."""

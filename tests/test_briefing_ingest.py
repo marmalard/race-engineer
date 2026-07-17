@@ -289,3 +289,75 @@ class TestBuildBriefing:
         )
         assert data.curve is None
         assert any("field data" in w for w in data.warnings)
+
+
+# ---------------------------------------------------------------------------
+# Task 2: week_delta ranking
+# ---------------------------------------------------------------------------
+
+def _season_with_weeks(race_week: int, weeks: list[tuple[int, int, str]]):
+    """Build a SeasonSchedule whose .weeks list has one RaceWeek per tuple
+    (race_week_num, track_id, track_name). The season's current race_week
+    is set to `race_week`."""
+    return SeasonSchedule(
+        series_id=999,
+        series_name="Test Series",
+        season_id=999,
+        season_name="Test S3",
+        race_week=race_week,
+        max_weeks=12,
+        weeks=[
+            RaceWeek(
+                race_week_num=wn,
+                track_id=tid,
+                track_name=tname,
+                config_name="",
+                start_date="2026-07-14",
+                race_time_limit=25,
+                race_lap_limit=None,
+                start_type="Standing",
+                standing_start=True,
+                max_pct_fuel_fill=None,
+            )
+            for wn, tid, tname in weeks
+        ],
+    )
+
+
+def _practice_session(session_id: str, track_id: str):
+    return SessionRow(
+        session_id=session_id,
+        track_id=track_id,
+        track_name="",
+        car="M2",
+        session_type="Practice",
+        session_date="2026-07-01 21-00-00",
+        best_lap_time=90.0,
+        lap_count=10,
+    )
+
+
+class TestRankSeriesCandidatesWeekDelta:
+    def test_delta_one_selects_next_weeks_track(self):
+        # season at race_week=5 with weeks 5 (track 525) and 6 (track 219)
+        season = _season_with_weeks(
+            race_week=5,
+            weeks=[(5, 525, "Spa"), (6, 219, "Bathurst")],
+        )
+        sessions = [_practice_session("s1", "219")]
+        out = rank_series_candidates([season], sessions, week_delta=1)
+        assert len(out) == 1
+        assert out[0].track_id == 219
+        assert out[0].race_week == 6
+        assert out[0].practice_sessions == 1
+
+    def test_delta_one_skips_season_final_week(self):
+        # season only has week 5 in schedule; delta=1 asks for week 6 -> None
+        season = _season_with_weeks(race_week=5, weeks=[(5, 525, "Spa")])
+        out = rank_series_candidates([season], [], week_delta=1)
+        assert out == []
+
+    def test_default_delta_zero_unchanged(self):
+        season = _season_with_weeks(race_week=5, weeks=[(5, 525, "Spa")])
+        out = rank_series_candidates([season], [])
+        assert len(out) == 1 and out[0].race_week == 5

@@ -69,3 +69,22 @@ class TestInferWindow:
             "2026-07-03 21-00-00",
         ]
         assert infer_window(dates) == (18, 22)
+
+
+class TestSlotFitsWindow:
+    def test_inside_window(self):
+        from datetime import datetime, timezone
+        from core.briefing.slots import slot_fits_window
+        # Use a UTC datetime and compute expected local hour the same way
+        # the function does, so the test is timezone-agnostic.
+        dt = datetime(2026, 7, 21, 2, 15, tzinfo=timezone.utc)
+        local_hour = dt.astimezone().hour
+        assert slot_fits_window(dt, (local_hour, local_hour)) is True
+        assert slot_fits_window(dt, ((local_hour + 2) % 24,
+                                     (local_hour + 3) % 24)) is False
+
+    def test_none_window_never_fits(self):
+        from datetime import datetime, timezone
+        from core.briefing.slots import slot_fits_window
+        dt = datetime(2026, 7, 21, 2, 15, tzinfo=timezone.utc)
+        assert slot_fits_window(dt, None) is False

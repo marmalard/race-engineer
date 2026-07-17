@@ -153,3 +153,15 @@ def test_reference_brake_onset_recorded():
     result = build_debrief(_slower_driver(), _reference(), CORNERS)
     top = result.diagnoses[0]
     assert top.reference_brake_onset_m == pytest.approx(380.0, abs=15.0)
+
+
+def test_reference_absolutes_exposed_for_verdicts():
+    # The three new fields mirror reference_brake_onset_m: absolute
+    # distances / speed on the ALIGNED reference, for live verdicts.
+    result = build_debrief(_slower_driver(), _reference(), [])
+    d = result.diagnoses[0]
+    assert d.reference_throttle_on_m is not None
+    assert d.reference_exit_speed_ms is not None
+    # release absolute is None unless the reference trails (same trail
+    # guard as brake_release_delta_m)
+    assert (d.reference_release_m is None) == (d.brake_release_delta_m is None)

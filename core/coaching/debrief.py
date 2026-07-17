@@ -39,6 +39,12 @@ class RegionDiagnosis:
     brake_release_delta_m: float | None = None  # negative = driver releases earlier
     exit_speed_delta_ms: float = 0.0  # negative = driver slower at region end
     reference_brake_onset_m: float | None = None  # absolute distance, for prompts
+    # Absolute reference positions for live exit verdicts (same idea as
+    # reference_brake_onset_m). None when the underlying onset is absent;
+    # release also None when the reference doesn't trail (trail guard).
+    reference_release_m: float | None = None
+    reference_throttle_on_m: float | None = None
+    reference_exit_speed_ms: float | None = None
 
 
 @dataclass
@@ -138,6 +144,15 @@ def _diagnose_region(
         reference_brake_onset_m=(
             ref_brake * interval_m if ref_brake is not None else None
         ),
+        reference_release_m=(
+            ref_release * interval_m
+            if reference_trails and ref_release is not None
+            else None
+        ),
+        reference_throttle_on_m=(
+            ref_thr * interval_m if ref_thr is not None else None
+        ),
+        reference_exit_speed_ms=float(reference.speed[exit_idx]),
     )
 
 

@@ -94,7 +94,8 @@ race-engineer/
 │   ├── live_coach.py             # Terminal entry point (pyirsdk driver)
 │   ├── watch_telemetry.py        # Telemetry folder scan CLI (--watch to poll)
 │   ├── record_race_fixture.py    # Record real race API fixtures for integration tests
-│   └── build_release.py          # Release artifact cutter: bump, flat zip, SHA256SUMS, baked-cred refresh
+│   ├── build_release.py          # Release artifact cutter: bump, flat zip, SHA256SUMS, baked-cred refresh
+│   └── backfill_diagnoses.py     # Back-fill region diagnoses over recorded history (vs current reference)
 ├── data/
 │   ├── tracks.db                 # SQLite track database
 │   ├── profiles.db               # SQLite driver profile and session history
@@ -147,7 +148,8 @@ race-engineer/
     ├── test_install_shortcut.py
     ├── test_build_release.py
     ├── test_update_releases.py
-    └── test_update_apply.py
+    ├── test_update_apply.py
+    └── test_backfill_diagnoses.py
 ```
 
 ## Key Technical Concepts
@@ -411,6 +413,16 @@ streamlit run app/streamlit_app.py
 - [x] live_coach wiring — SessionNum channel (churn-guarded int coercion, session_reader pattern), verdict feed try/except in tick path, verdict/session_type/schedule JSONL events (gated_out count logged for tuning)
 - [x] Anti-drift coupling test — replays a real multilap IBT through the watcher; live brake onset == offline diagnosis (0.0m drift observed; brake onset ONLY — live throttle/min-speed definitions intentionally deviate: running min vs argmin)
 - [ ] Driving validation: verdict timing (VERDICT_POINT_M 100m), bucket accuracy vs felt reality, race-gate quietness in traffic; tune IMPROVED_FRACTION / RACE_STREAK_MIN from session logs; if the gate "never engages" in a race, check the SessionNum channel first (fail-open to practice behavior)
+
+**Loss-Region Persistence + Technique Tendencies** (complete, branch loss-region-persistence — spec docs/superpowers/specs/2026-07-17-progression-loss-region-persistence-design.md, plan docs/superpowers/plans/2026-07-17-loss-region-persistence.md)
+- [x] region_diagnoses table in tracks.db (typed rows, no blobs; DELETE+INSERT idempotent keyed session_id; reference_source/lap_time context per row) + SessionRow.ibt_file_path
+- [x] Watcher persists the best-lap debrief's diagnoses (`diagnoses_recorded` on SessionReport; CLI prints it); watcher-only write path — coaching page + live coach stay read-only (locked); parse_best_lap extracted (plausibility gates defined once, shared with back-fill)
+- [x] scripts/backfill_diagnoses.py — re-debriefs recorded practice history vs the CURRENT reference per combo (consistent yardstick, deliberate); never promotes, idempotent, --dry-run
+- [x] core/profile/technique.py — PURE; adapter row→RegionDiagnosis classified by the live FaultKind ladder (fault_kinds_from_diagnosis — one ranking, three consumers, coupling-tested); dominant fault + per-fault aggregates/trends + recurring corners (position-fallback "~" labels excluded); unlocks at TECHNIQUE_MIN_SESSIONS=5
+- [x] Time-to-pace in core/profile/pace.py — median laps to reach 101% of session best (TTP_FACTOR, TTP_MIN_LAPS=5); the first behavioral diagnosis (races give zero warm-up laps)
+- [x] Profile wiring: DriverProfile.technique/.time_to_pace, Technique section on the page (warm-up collecting state always visible), prompt-block payloads (enough_data-gated, inside the capped tendencies dict)
+- [ ] Run the back-fill on the rig (founder: `.venv/Scripts/python.exe scripts/backfill_diagnoses.py --dry-run` first, then real run; restart the watcher after merge to pick up new code)
+- [ ] Post-Fable: progression page, pace-implied iR, prescription seed table (spec §6–8)
 
 **Stage 3: Telemetry Watcher** (complete, merged 2026-07-09)
 - [x] TrackDB session-history methods — sessions/laps tables activated; record_session pre-creates a stub track row for the FK, healed by the processor's early upsert_track (`core/track/track_db.py`)

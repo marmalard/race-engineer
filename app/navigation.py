@@ -39,6 +39,8 @@ NAV_SPEC: list[tuple[str, list[PageSpec]]] = [
     (
         "Practice",
         [
+            PageSpec("Progression", "\U0001f4c8", "progression",
+                     "app.pages.progression", "render_progression_page"),
             PageSpec("Lap Coaching", "⏱️", "coaching",
                      "app.pages.coaching", "render_coaching_page"),
             PageSpec("Scouting Report", "\U0001f52d", "scouting",

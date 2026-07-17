@@ -24,7 +24,7 @@ class TestNavSpec:
 
     def test_practice_group_pages_exact(self):
         practice = dict(NAV_SPEC)["Practice"]
-        assert [p.title for p in practice] == ["Lap Coaching", "Scouting Report"]
+        assert [p.title for p in practice] == ["Progression", "Lap Coaching", "Scouting Report"]
 
     def test_url_paths_unique(self):
         paths = [p.url_path for _, specs in NAV_SPEC for p in specs]

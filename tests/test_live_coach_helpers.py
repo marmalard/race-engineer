@@ -160,6 +160,25 @@ def test_load_reference_survives_store_exception(tmp_path, monkeypatch, capsys):
     assert "Reference lookup failed" in capsys.readouterr().out
 
 
+class TestRaceCuesFlag:
+    def test_default_is_persistent(self):
+        args = live_coach.build_parser().parse_args([])
+        assert args.race_cues == "persistent"
+
+    def test_choices(self):
+        for mode in ("full", "persistent", "off"):
+            args = live_coach.build_parser().parse_args(["--race-cues", mode])
+            assert args.race_cues == mode
+
+    def test_choices_come_from_race_gate(self):
+        # The parser's choices tuple IS race_gate.RACE_CUE_MODES — a mode
+        # added in one place cannot silently miss the other.
+        from core.live.race_gate import RACE_CUE_MODES
+        action = next(a for a in live_coach.build_parser()._actions
+                      if a.dest == "race_cues")
+        assert tuple(action.choices) == RACE_CUE_MODES
+
+
 def test_diag_fields_flattens_all_tuning_numbers():
     from core.coaching.debrief import RegionDiagnosis
     from core.telemetry.loss_regions import LossRegion

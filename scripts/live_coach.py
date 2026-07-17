@@ -39,7 +39,9 @@ from core.benchmark.reference_store import ReferenceLap, ReferenceStore  # noqa:
 from core.coaching.debrief import build_debrief  # noqa: E402
 from core.live.feed import NudgeFeed, start_web_display  # noqa: E402
 from core.live.lap_buffer import SAMPLE_CHANNELS  # noqa: E402
+from core.live.exit_verdict import VerdictWatcher  # noqa: E402
 from core.live.nudges import (  # noqa: E402
+    fault_kinds_from_diagnosis,
     format_asterisk_speech,
     format_dirty_baseline_speech,
     format_discard_speech,
@@ -47,8 +49,14 @@ from core.live.nudges import (  # noqa: E402
     format_lap_speech,
     format_radio_check,
 )
+from core.live.race_gate import (  # noqa: E402
+    RACE_CUE_MODES,
+    FaultStreakTracker,
+    current_session_type,
+    gate_diagnoses,
+)
 from core.telemetry.cleanliness import IncidentTracker  # noqa: E402
-from core.live.prompt_scheduler import PromptScheduler, build_schedule  # noqa: E402
+from core.live.prompt_scheduler import PromptScheduler, build_plan  # noqa: E402
 from core.live.session_reader import LapBoundaryTracker  # noqa: E402
 from core.live.session_log import SessionLog  # noqa: E402
 from core.live.speaker import create_speaker  # noqa: E402
@@ -64,6 +72,7 @@ LOG_DIR = Path("data/live_sessions")
 # boundary/validity flags the state machine reads.
 READ_CHANNELS = SAMPLE_CHANNELS + [
     "Lap", "OnPitRoad", "PlayerTrackSurface", "PlayerCarMyIncidentCount",
+    "SessionNum",
 ]
 TICK_SECONDS = 1.0 / 60.0
 
@@ -154,6 +163,11 @@ def build_parser() -> argparse.ArgumentParser:
                         action="store_false",
                         help="disable approach cues before flagged corners "
                              "(on by default)")
+    parser.add_argument("--race-cues", dest="race_cues",
+                        choices=RACE_CUE_MODES, default="persistent",
+                        help="cue behavior in Race sessions: full = like "
+                             "practice, persistent = only faults seen 2+ "
+                             "consecutive laps (default), off = silent")
     parser.set_defaults(corner_prompts=True)
     return parser
 
@@ -227,6 +241,10 @@ def main() -> None:
     tracker = LapBoundaryTracker()
     normalizer = Normalizer()
     scheduler = PromptScheduler()
+    verdict_watcher = VerdictWatcher()
+    streaks = FaultStreakTracker()
+    session_num: int | None = None
+    session_type = ""
     incident_tracker = IncidentTracker()
     session_log: SessionLog | None = None
     reference_lap = None       # stored (G61/PB) lap; never replaced mid-session
@@ -255,6 +273,10 @@ def main() -> None:
                 reference_lap = ref.lap if ref is not None else None
                 session_best = None
                 scheduler.set_schedule([])
+                verdict_watcher.set_plan([], track_length_m)
+                streaks = FaultStreakTracker()
+                session_num = None
+                session_type = ""
                 incident_tracker = IncidentTracker()
                 prev_flagged = set()
                 prev_delta = None
@@ -278,6 +300,7 @@ def main() -> None:
                         if ref is not None else None
                     ),
                     corner_prompts=args.corner_prompts, mute=args.mute,
+                    race_cues=args.race_cues,
                 )
                 print(f"Session log: {session_log.path}")
                 if ref is not None:
@@ -305,6 +328,23 @@ def main() -> None:
             if any(isinstance(v, list) for v in sample.values()):
                 time.sleep(TICK_SECONDS)
                 continue
+
+            # Session-type refresh — the YAML is parsed only when SessionNum
+            # changes (practice -> qualify -> race transitions), never per
+            # tick. WeekendInfo.EventType is NOT trustworthy here: it reads
+            # "Race" for practice sessions on a race server.
+            snum = sample.get("SessionNum")
+            if snum is not None and int(snum) != session_num:
+                session_num = int(snum)
+                try:
+                    session_type = current_session_type(
+                        ir["SessionInfo"], session_num
+                    )
+                except Exception:
+                    session_type = ""
+                if session_log is not None:
+                    session_log.log("session_type", session_num=session_num,
+                                    session_type=session_type)
 
             tick = tracker.feed(sample)
             completed = tick.completed
@@ -342,12 +382,37 @@ def main() -> None:
                                 lap_dist_m=float(lap_dist),
                                 lap=int(sample.get("Lap") or 0),
                             )
+                    try:
+                        verdict = verdict_watcher.feed(
+                            float(lap_dist), float(sample.get("Speed") or 0.0),
+                            float(sample.get("Brake") or 0.0),
+                            float(sample.get("Throttle") or 0.0),
+                        )
+                    except Exception:  # noqa: BLE001 -- never kill the coach
+                        verdict = None
+                    if verdict is not None:
+                        emit(f"  << {verdict.text}")
+                        speaker.say(verdict.text)
+                        if session_log is not None:
+                            session_log.log(
+                                "verdict", text=verdict.text,
+                                corner=verdict.label,
+                                fault=verdict.kind.value,
+                                bucket=verdict.bucket,
+                                live_delta=verdict.live_delta,
+                                brake_onset_m=verdict.observed_brake_onset_m,
+                                min_speed_ms=verdict.observed_min_speed_ms,
+                                throttle_on_m=verdict.observed_throttle_on_m,
+                                lap=int(sample.get("Lap") or 0),
+                            )
                 else:
                     scheduler.reset_position()
+                    verdict_watcher.reset_position()
 
             if completed is not None:
                 marks = incident_tracker.close_lap()
                 scheduler.rearm()
+                verdict_watcher.rearm()
                 # track_length_m was captured at connect time and is stable
                 # for the session, so reuse it rather than re-reading the YAML.
                 nlap = normalizer.normalize_lap(
@@ -429,15 +494,31 @@ def main() -> None:
                             )
                         prev_delta = result.total_time_delta
                         if args.corner_prompts:
-                            schedule = build_schedule(
-                                result.diagnoses, corners, track_length_m,
+                            # Exactly once per completed comparison lap, with
+                            # the FULL fault set — absent keys reset streaks
+                            # (FaultStreakTracker.update contract).
+                            streaks.update({
+                                (d.label, kinds[0])
+                                for d in result.diagnoses
+                                if (kinds := fault_kinds_from_diagnosis(d))
+                            })
+                            gated = gate_diagnoses(
+                                result.diagnoses, mode=args.race_cues,
+                                is_race=(session_type == "Race"),
+                                tracker=streaks,
                             )
-                            scheduler.set_schedule(schedule)
+                            prompts, verdicts = build_plan(
+                                gated, corners, track_length_m,
+                            )
+                            scheduler.set_schedule(prompts)
+                            verdict_watcher.set_plan(verdicts, track_length_m)
                             if session_log is not None:
                                 session_log.log("schedule", prompts=[
                                     {"trigger_m": p.trigger_m, "text": p.text}
-                                    for p in schedule
-                                ])
+                                    for p in prompts
+                                ], verdicts=[
+                                    v.diagnosis.label for v in verdicts
+                                ], gated_out=len(result.diagnoses) - len(gated))
                         if (reference_lap is None and not marks
                                 and nlap.lap_time < session_best.lap_time):
                             session_best = nlap

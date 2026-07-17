@@ -33,6 +33,15 @@ class TestPrescriptions:
             assert "you are bad" not in text
 
 
+    def test_skill_lines_compose_after_it(self):
+        """The week-plan render composes 'it {skill_line}.' — every
+        line must open with a third-person verb. Extend the set
+        deliberately when authoring new rows."""
+        verbs = {"teaches", "forces", "rewards", "demands", "builds"}
+        for p in PRESCRIPTIONS:
+            assert p.skill_line.split()[0] in verbs, p.combo
+
+
 class TestFaultLabels:
     def test_public_labels_cover_every_fault_kind(self):
         assert set(FAULT_LABELS) == {k.value for k in FaultKind}

@@ -71,7 +71,7 @@ PRESCRIPTIONS: tuple[Prescription, ...] = (
         fault="braking",
         combo="Porsche 992 Cup at Bathurst",
         skill_line=(
-            "the Chase demands absolute brake-point precision — there is "
+            "demands absolute brake-point precision into the Chase — there is "
             "no runoff to hide a long one"
         ),
         transfer_line=(

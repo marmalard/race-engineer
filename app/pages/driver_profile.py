@@ -18,12 +18,14 @@ from app.components.host import (
 )
 
 from core.profile.builder import load_profile
-from core.profile.models import RACECRAFT_MIN_RACES
+from core.profile.models import RACECRAFT_MIN_RACES, TECHNIQUE_MIN_SESSIONS
 from core.profile.render import (
     verdict_incidents,
     verdict_pace_vs_result,
     verdict_readiness,
     verdict_starts,
+    verdict_technique,
+    verdict_time_to_pace,
     verdict_trajectory,
 )
 from core.race.race_store import RaceStore
@@ -112,6 +114,27 @@ def render_driver_profile_page() -> None:
                     f"Collecting data — {t.sample} of "
                     f"{RACECRAFT_MIN_RACES} races captured."
                 )
+
+    st.subheader("Technique")
+    tech = profile.technique
+    with st.container(border=True):
+        st.markdown("**Recurring loss**")
+        if tech.enough_data:
+            st.write(verdict_technique(tech))
+            st.caption(f"Across {tech.sessions_diagnosed} diagnosed sessions.")
+        else:
+            st.caption(
+                f"Collecting data — {tech.sessions_diagnosed} of "
+                f"{TECHNIQUE_MIN_SESSIONS} diagnosed sessions. Practice "
+                "sessions are diagnosed automatically by the telemetry "
+                "watcher once a reference lap exists for the combo."
+            )
+    ttp = profile.time_to_pace
+    if ttp.enough_data:
+        with st.container(border=True):
+            st.markdown("**Warm-up**")
+            st.write(verdict_time_to_pace(ttp))
+            st.caption(f"Across {ttp.sample_sessions} practice sessions.")
 
     st.subheader("Practice readiness")
     if not profile.readiness:

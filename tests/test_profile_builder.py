@@ -63,3 +63,61 @@ def test_load_profile_track_db_failure_still_returns_racecraft(tmp_path):
     profile = load_profile(race_store, ExplodingTrackDB(), cust_id=100)
     assert profile.races_captured == 1        # race layer intact
     assert profile.readiness == []            # pace layer degraded
+
+
+from core.coaching.debrief import RegionDiagnosis
+from core.race.race_store import RaceStore
+from core.telemetry.loss_regions import LossRegion
+from core.track.track_db import DiagnosisContext, TrackDB
+
+
+def _seed_diagnosed_sessions(track_db, n):
+    for i in range(1, n + 1):
+        track_db.record_session(
+            session_id=f"s{i}", track_id="523", car="M2",
+            session_type="practice",
+            session_date=f"2026-07-{i:02d} 10-00-00",
+            best_lap_time=150.0, lap_count=5, ibt_file_path="",
+        )
+        track_db.record_region_diagnoses(
+            f"s{i}",
+            DiagnosisContext(driver_lap_number=2, driver_lap_time=150.0,
+                             reference_source="personal_best",
+                             reference_lap_time=148.0, total_time_delta_s=2.0),
+            [RegionDiagnosis(
+                region=LossRegion(100.0, 250.0, 0.8),
+                label="Eau Rouge", braking_delta_m=None,
+                min_speed_delta_ms=-3.0, throttle_delta_m=None,
+                driver_min_speed_ms=30.0, reference_min_speed_ms=33.0,
+                brake_release_delta_m=None, exit_speed_delta_ms=0.0,
+            )],
+        )
+
+
+def test_profile_includes_technique_and_ttp(tmp_path):
+    from core.profile.builder import load_profile
+
+    track_db = TrackDB(tmp_path / "t.db")
+    store = RaceStore(tmp_path / "r.db")
+    _seed_diagnosed_sessions(track_db, 6)
+    p = load_profile(store, track_db, cust_id=1)
+    assert p.technique.enough_data
+    assert p.technique.dominant == "lift"   # -3.0 m/s min-speed deficit
+    assert p.technique.sessions_diagnosed == 6
+    # No lap rows recorded -> time_to_pace stays empty but present
+    assert p.time_to_pace.sample_sessions == 0
+
+
+def test_diagnosis_load_failure_degrades_to_empty(tmp_path, monkeypatch):
+    from core.profile.builder import load_profile
+
+    track_db = TrackDB(tmp_path / "t.db")
+    store = RaceStore(tmp_path / "r.db")
+
+    def _boom(self):
+        raise RuntimeError("db locked")
+
+    monkeypatch.setattr(TrackDB, "list_region_diagnoses", _boom)
+    p = load_profile(store, track_db, cust_id=1)
+    assert p.technique.sessions_diagnosed == 0
+    assert not p.technique.enough_data

@@ -8,8 +8,9 @@ degrades to an empty profile — the profile must never break a page.
 import logging
 
 from core.profile.models import DriverProfile
-from core.profile.pace import build_readiness
+from core.profile.pace import build_readiness, build_time_to_pace
 from core.profile.racecraft import build_racecraft
+from core.profile.technique import build_technique
 from core.race.race_store import RaceStore
 from core.track.track_db import TrackDB
 
@@ -32,6 +33,11 @@ def load_profile(
     except Exception:  # noqa: BLE001
         logger.exception("Profile: session-history load failed")
         sessions, laps = [], {}
+    try:
+        diagnoses = track_db.list_region_diagnoses()
+    except Exception:  # noqa: BLE001
+        logger.exception("Profile: diagnosis load failed")
+        diagnoses = []
 
     readiness = build_readiness(sessions, laps)
     return DriverProfile(
@@ -41,4 +47,6 @@ def load_profile(
         combos_tracked=len(readiness),
         racecraft=build_racecraft(narratives),
         readiness=readiness,
+        technique=build_technique(diagnoses),
+        time_to_pace=build_time_to_pace(sessions, laps),
     )

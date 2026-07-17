@@ -14,7 +14,7 @@ from core.live.nudges import format_lap_block, incident_noun
 from core.race.narrative import corner_name_at
 from core.telemetry.cleanliness import check_lap_cleanliness
 from core.telemetry.ibt_parser import IBTParser
-from core.telemetry.normalizer import Normalizer
+from core.telemetry.normalizer import Normalizer, NormalizedLap
 from core.track.lovely_seeder import seed_track_from_lovely
 from core.track.models import Track, TrackType
 from core.track.track_db import DiagnosisContext, TrackDB
@@ -32,10 +32,10 @@ class SessionReport:
     valid_laps: int = 0
     best_lap_time: float | None = None
     promoted: bool = False
-    diagnoses_recorded: int = 0
     best_lap_dirty: bool = False
     dirty_note: str | None = None
     debrief_text: str | None = None
+    diagnoses_recorded: int = 0
     error: str | None = None
 
 
@@ -93,9 +93,9 @@ class ParsedBestLap:
     session: object            # IBT session metadata (track/car/driver)
     track_length_m: float
     lap_dfs: list
-    valid: list                # normalizer-valid NormalizedLaps
-    plausible: list            # valid + plausible time + full coverage
-    best: object | None        # fastest plausible NormalizedLap
+    valid: list[NormalizedLap]
+    plausible: list[NormalizedLap]  # valid + plausible time + full coverage
+    best: NormalizedLap | None
 
 
 def parse_best_lap(path: Path) -> ParsedBestLap:

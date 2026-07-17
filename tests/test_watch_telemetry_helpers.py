@@ -168,3 +168,86 @@ def test_format_report_silent_when_no_diagnoses():
     r = SessionReport(path=Path("x.ibt"), track="Spa", car="M2",
                       laps_found=5, valid_laps=4, best_lap_time=150.0)
     assert "diagnoses" not in watch_telemetry._format_report(r)
+
+
+class TestWeekPlanTick:
+    def test_no_api_is_quiet(self):
+        assert watch_telemetry._week_plan_tick(None, object()) is None
+
+    def test_generate_saves_and_writes_marker(self, monkeypatch, tmp_path):
+        from core.weekplan.models import WeekPlan
+        saved, markers = [], []
+
+        class _Store:
+            def latest(self):
+                return None
+            def get(self, week):
+                return None
+            def save(self, plan):
+                saved.append(plan)
+
+        fake_plan = WeekPlan(week_start="2026-07-21", created_at="x",
+                             updated_at="x")
+        monkeypatch.setattr(watch_telemetry, "_weekplan_store",
+                            lambda: _Store())
+        monkeypatch.setattr(watch_telemetry, "_build_plan_now",
+                            lambda api, track_db: fake_plan)
+        monkeypatch.setattr(
+            watch_telemetry, "write_marker",
+            lambda week_start: markers.append(week_start))
+        out = watch_telemetry._week_plan_tick(object(), object())
+        assert saved and markers == ["2026-07-21"]
+        assert "WEEK PLAN generated" in out
+
+    def test_refresh_saves_without_marker(self, monkeypatch):
+        from datetime import date, datetime, timezone
+        from core.weekplan.build import target_week_start
+        from core.weekplan.models import WeekPlan
+        saved, markers = [], []
+        week = target_week_start(date.today()).isoformat()
+        stale = datetime.now(timezone.utc).replace(
+            year=2020).isoformat()
+        existing = WeekPlan(week_start=week, created_at=stale,
+                            updated_at=stale, curve_filled=False)
+
+        class _Store:
+            def latest(self):
+                return existing
+            def get(self, w):
+                return existing if w == week else None
+            def save(self, plan):
+                saved.append(plan)
+
+        fake_plan = WeekPlan(week_start=week, created_at="x",
+                             updated_at="x")
+        monkeypatch.setattr(watch_telemetry, "_weekplan_store",
+                            lambda: _Store())
+        monkeypatch.setattr(watch_telemetry, "_build_plan_now",
+                            lambda api, track_db: fake_plan)
+        monkeypatch.setattr(
+            watch_telemetry, "write_marker",
+            lambda week_start: markers.append(week_start))
+        out = watch_telemetry._week_plan_tick(object(), object())
+        assert saved and markers == []
+        assert "WEEK PLAN refreshed" in out
+
+    def test_up_to_date_is_quiet(self, monkeypatch):
+        from datetime import date, datetime, timezone
+        from core.weekplan.build import target_week_start
+        from core.weekplan.models import WeekPlan
+        week = target_week_start(date.today()).isoformat()
+        fresh = datetime.now(timezone.utc).isoformat()
+        existing = WeekPlan(week_start=week, created_at=fresh,
+                            updated_at=fresh, curve_filled=True)
+
+        class _Store:
+            def latest(self):
+                return existing
+            def get(self, w):
+                return existing if w == week else None
+            def save(self, plan):
+                raise AssertionError("must not save")
+
+        monkeypatch.setattr(watch_telemetry, "_weekplan_store",
+                            lambda: _Store())
+        assert watch_telemetry._week_plan_tick(object(), object()) is None

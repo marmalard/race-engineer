@@ -15,6 +15,7 @@ import argparse
 import os
 import sys
 import time
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 # Ensure project root on path when run as a script.
@@ -49,6 +50,11 @@ from core.watcher.race_processor import (  # noqa: E402
     process_race_ibt,
 )
 from core.watcher.scanner import IbtCandidate, find_new_ibts  # noqa: E402
+from core.weekplan.build import (  # noqa: E402
+    build_week_plan, should_generate, should_refresh, target_week_start,
+)
+from core.weekplan.notify import write_marker  # noqa: E402
+from core.weekplan.store import WeekPlanStore  # noqa: E402
 
 TELEMETRY_DIR = Path(r"C:\Users\antho\Documents\iRacing\telemetry")
 DB_PATH = Path("data/tracks.db")
@@ -106,6 +112,65 @@ def _make_api():
         return None
     from core.benchmark.iracing_api import LiveIRacingAPI
     return LiveIRacingAPI(client_id, client_secret, username, password)
+
+
+def _load_seasons(api) -> list:
+    """Load this season's series schedules from the iRacing API.
+    Mirrors _load_seasons_cached in app/pages/briefing.py (minus the
+    st.cache_data decorator) — the exact same api call + return."""
+    try:
+        return api.get_series_seasons()
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _weekplan_store() -> WeekPlanStore:
+    """Factory — a seam for tests."""
+    return WeekPlanStore()
+
+
+def _build_plan_now(api, track_db):
+    """Gather live inputs and build the plan. Mirrors the briefing
+    page's seasons load (check _load_seasons_cached in
+    app/pages/briefing.py and use the SAME api call + parse)."""
+    from core.profile.pace import build_time_to_pace
+    from core.profile.technique import build_technique
+
+    seasons = _load_seasons(api)  # same call chain as the briefing page
+    sessions = track_db.list_session_history()
+    laps = {s.session_id: track_db.get_session_laps(s.session_id)
+            for s in sessions}
+    diagnoses = track_db.list_region_diagnoses()
+    return build_week_plan(
+        api, seasons, sessions, laps, diagnoses,
+        build_technique(diagnoses),
+        build_time_to_pace(sessions, laps),
+        datetime.now(timezone.utc), date.today(),
+    )
+
+
+def _week_plan_tick(api, track_db) -> "str | None":
+    """Generate or refresh the week plan. Returns a status line for the
+    log, or None when there is nothing to do (the common case)."""
+    if api is None:
+        return None
+    store = _weekplan_store()
+    latest = store.latest()
+    today = date.today()
+    generate = should_generate(
+        today, latest.week_start if latest else None)
+    if generate:
+        plan = _build_plan_now(api, track_db)
+        store.save(plan)
+        write_marker(plan.week_start)
+        return f"WEEK PLAN generated for {plan.week_start}"
+    current = store.get(target_week_start(today).isoformat())
+    if current is not None and should_refresh(
+            current, datetime.now(timezone.utc), today):
+        plan = _build_plan_now(api, track_db)
+        store.save(plan)
+        return f"WEEK PLAN refreshed for {plan.week_start}"
+    return None
 
 
 def _format_race_report(r: RaceReport) -> str:
@@ -184,6 +249,15 @@ def main() -> None:
               "(positions/results absent); practice unaffected.")
     try:
         n = _scan_once(folder, track_db, ref_store, race_store, api)
+        try:
+            note = _week_plan_tick(api, track_db)
+            if note:
+                print(note)
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except Exception as exc:  # noqa: BLE001 — never blocks telemetry
+            print(f"WEEK PLAN FAILED: {type(exc).__name__}: {exc} "
+                  "(retrying next poll)")
         if not args.watch:
             print(f"Processed {n} new file(s).")
             return
@@ -199,6 +273,15 @@ def main() -> None:
                 raise
             except Exception as exc:  # noqa: BLE001 — retry next poll
                 print(f"SCAN FAILED: {type(exc).__name__}: {exc} "
+                      "(retrying next poll)")
+            try:
+                note = _week_plan_tick(api, track_db)
+                if note:
+                    print(note)
+            except (KeyboardInterrupt, SystemExit):
+                raise
+            except Exception as exc:  # noqa: BLE001 — never blocks telemetry
+                print(f"WEEK PLAN FAILED: {type(exc).__name__}: {exc} "
                       "(retrying next poll)")
     except KeyboardInterrupt:
         print("\nStopped.")

@@ -1,4 +1,3 @@
-# core/weekplan/models.py
 """Dataclasses for the week plan (v3 arc §3 — the unifying artifact).
 
 Every section is optional; a missing section is a warning, never an

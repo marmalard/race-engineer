@@ -1,4 +1,3 @@
-# core/progression/ingest.py
 """Progression I/O: member rating history + weekly implied-iR compute.
 
 The package's only networked module (the briefing-ingest precedent).

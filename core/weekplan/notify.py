@@ -1,4 +1,3 @@
-# core/weekplan/notify.py
 """The watcher->tray toast handshake. This module is the ONLY owner of
 the marker path, shape, and toast copy — the watcher imports
 write_marker, the tray imports consume_marker + the strings. One toast

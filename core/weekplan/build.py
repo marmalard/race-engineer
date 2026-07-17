@@ -1,4 +1,3 @@
-# core/weekplan/build.py
 """Week-plan assembly: target-week math, tick decisions, and (Task 3)
 the build itself. PURE except build_week_plan's api calls; never raises
 to the caller -- every failed sub-build degrades to a warning."""

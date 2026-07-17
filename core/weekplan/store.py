@@ -1,4 +1,3 @@
-# core/weekplan/store.py
 """SQLite store for week plans (data/progression.db, week_plans table).
 
 Plans are document-shaped -> stored as JSON (the races.db narrative_json

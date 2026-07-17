@@ -120,7 +120,8 @@ def _load_seasons(api) -> list:
     st.cache_data decorator) — the exact same api call + return."""
     try:
         return api.get_series_seasons()
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        print(f"SEASONS FETCH FAILED: {type(exc).__name__}: {exc}")
         return []
 
 

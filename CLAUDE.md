@@ -27,6 +27,7 @@ race-engineer/
 │   │   ├── race_debrief.py       # Race debrief UI (Surface 1): picker, charts, chat, export
 │   │   ├── guide.py              # In-app guide: friend onboarding + founder reference
 │   │   ├── toolbox.py            # Host-only start/stop/status for live coach + watcher
+│   │   ├── progression.py        # Progression page: streak, trends, PB timeline, iR/SR, implied iR
 │   │   └── setup.py              # First-run wizard + Settings & Keys (key rotation)
 │   └── components/               # Shared Streamlit components
 │       ├── units.py              # Unit conversion helpers (metric/imperial)
@@ -76,7 +77,15 @@ race-engineer/
 │   │   ├── racecraft.py          # PURE: narratives → 4 racecraft tendencies (per-tendency samples)
 │   │   ├── pace.py               # PURE: session history → per-combo readiness (representative-lap filter)
 │   │   ├── render.py             # Verdict lines, page markdown, capped prompt block
-│   │   └── builder.py            # load_profile — the package's only I/O; degrades to empty
+│   │   ├── builder.py            # load_profile — the package's only I/O; degrades to empty
+│   │   └── prescriptions.py      # Curated combo→skill prescription seed table (week-plan input)
+│   ├── progression/
+│   │   ├── models.py             # StreakSummary / ComboImplied / DriverImpliedIR
+│   │   ├── streak.py             # PURE: race-week streak math (Tuesday flip)
+│   │   ├── trends.py             # PURE: pace / fault / PB trend series (fault ladder reused)
+│   │   ├── implied_ir.py         # PURE: weighted implied-iR band roll-up
+│   │   ├── ingest.py             # I/O: chart_data per-day cache + weekly implied-iR compute
+│   │   └── store.py              # data/progression.db — implied_ir_history weekly snapshots
 │   ├── config/
 │   │   └── env_setup.py          # .env contract: REQUIRED keys, baked defaults (gitignored _baked.py), Setup page backend
 │   ├── update/
@@ -101,6 +110,7 @@ race-engineer/
 │   ├── profiles.db               # SQLite driver profile and session history
 │   ├── reference_laps.db         # SQLite reference lap store (npz-compressed blobs)
 │   ├── races.db                  # SQLite race debrief store (gitignored)
+│   ├── progression.db            # SQLite implied-iR history snapshots (gitignored)
 │   └── race_cache/               # Cached Data API JSON per subsession (gitignored)
 └── tests/
     ├── test_ibt_parser.py
@@ -149,7 +159,14 @@ race-engineer/
     ├── test_build_release.py
     ├── test_update_releases.py
     ├── test_update_apply.py
-    └── test_backfill_diagnoses.py
+    ├── test_backfill_diagnoses.py
+    ├── test_progression_streak.py
+    ├── test_progression_trends.py
+    ├── test_progression_implied_ir.py
+    ├── test_progression_store.py
+    ├── test_progression_ingest.py
+    ├── test_progression_page.py
+    └── test_prescriptions.py
 ```
 
 ## Key Technical Concepts
@@ -423,7 +440,13 @@ streamlit run app/streamlit_app.py
 - Watch item: technique trend measures time_lost vs the reference OF THE DAY — a PB improvement makes later losses look bigger ("growing" can mean the yardstick moved, not decline) and the trend pools across combos; rows store reference_source/lap_time so a per-(combo, reference) trend split is a computable follow-up; re-running the back-fill after PB waves re-baselines history to one yardstick
 - [x] Profile wiring: DriverProfile.technique/.time_to_pace, Technique section on the page (warm-up collecting state always visible), prompt-block payloads (enough_data-gated, inside the capped tendencies dict)
 - [ ] Run the back-fill on the rig (founder: `.venv/Scripts/python.exe scripts/backfill_diagnoses.py --dry-run` first, then real run; restart the watcher after merge to pick up new code)
-- [ ] Post-Fable: progression page, pace-implied iR, prescription seed table (spec §6–8)
+
+**Progression Build** (complete, branch progression-build — spec §6-8 of docs/superpowers/specs/2026-07-17-progression-loss-region-persistence-design.md, plan docs/superpowers/plans/2026-07-17-progression-build.md)
+- [x] core/progression/ package: streak (Tuesday-flip race weeks, partial-capture created_at fallback), trends (combo pace series / per-FaultKind time-lost-per-session via the technique adapter — fourth consumer of fault_kinds_from_diagnosis, coupling-tested / PB timeline), implied_ir (weighted band roll-up, ALWAYS a band), store (data/progression.db implied_ir_history, DELETE+INSERT per week), ingest (member_chart_data iR+SR per-day cache via _cached_fetch; compute_week_implied_ir = rank_series_candidates top-3 practice-depth series → harvest_field → place_on_curve raw, MIN_BIN_N honesty rail, cross-series combo dedupe)
+- [x] Progression page (Practice nav, first entry): six blocks cheapest-first, every block has a collecting state; implied-iR renders last snapshot on load, recomputes only on button (30 fetches/series first time, week-cached after); snapshot keyed to iracing_week_start
+- [x] core/profile/prescriptions.py — 8 curated rows (Porsche/Spa release+throttle, M2 braking+release, F4 lift+exit_speed), capability-framed, no consumer yet (week-plan input contract); FAULT_LABELS promoted public in render.py
+- Known limits: implied-iR curve is series-scoped not car-filtered (same approximation as the shipped briefing page; series_name is the honesty label per row); SR chart assumes x100 scaling (normalize_sr heuristic); only combos at CURRENT-week series tracks get placed — coverage varies week to week by design; _cached_fetch (race ingest) now has 3 cross-package consumers — promote to public name on next core/race/ingest.py touch
+- [ ] Founder validation: open the page with real data, click Recompute for this week, sanity-check the implied band against felt pace
 
 **Stage 3: Telemetry Watcher** (complete, merged 2026-07-09)
 - [x] TrackDB session-history methods — sessions/laps tables activated; record_session pre-creates a stub track row for the FK, healed by the processor's early upsert_track (`core/track/track_db.py`)
@@ -688,7 +711,7 @@ streamlit run app/streamlit_app.py
 - Deployment: `tailscale serve/funnel 8501` + `streamlit run` from the host PC; `.streamlit/config.toml` sets maxUploadSize 400
 
 ### Test Suite
-- 809 tests passing on this branch (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`); skip count varies with local gitignored fixtures (race-capture integration tests need Oulton; some lap tests need specific telemetry files)
+- 942 tests passing on this branch (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`); skip count varies with local gitignored fixtures (race-capture integration tests need Oulton; some lap tests need specific telemetry files)
 - Test fixtures: `tests/fixtures/sample.ibt` (Spa, BMW M2 CS Racing, 2 laps — gitignored)
 - Multi-lap fixture from `C:\Users\antho\Documents\iRacing\telemetry\` (Road America F4, 7 laps)
 - Bathurst fixture also available for corner detection tuning tests
@@ -697,4 +720,5 @@ streamlit run app/streamlit_app.py
 - Stage 1 new test files: test_parser_cross_validation, test_alignment, test_loss_regions, test_reference_store, test_lovely_seeder, test_segment_annotator, test_debrief, test_track_assets, test_track_map, test_g61_import, test_g61_validation_gate
 - Live coaching spike new test files: test_lap_buffer, test_session_reader, test_nudges, test_live_coach_helpers, test_feed
 - Live voice coaching new test files: test_speaker (fake engines only, no SAPI), test_prompt_scheduler
+- Progression build new test files: test_progression_streak, test_progression_trends, test_progression_implied_ir, test_progression_store, test_progression_ingest, test_progression_page, test_prescriptions
 - Legacy test files: test_ibt_parser, test_normalizer, test_corner_detector, test_corner_detection_tuning, test_lap_comparator, test_multilap_comparator, test_track_db, test_iracing_api, test_synthesizer, test_analyzer, test_crew_chief_seeder, test_scouting, test_unit_helpers

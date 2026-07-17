@@ -22,6 +22,7 @@ data/tray_icon.ico
 data/crew_chief_cache.json
 data/race_cache/
 data/races.db
+data/progression.db
 data/api_spike/
 
 # Track map SVG cache (iRacing copyright — local use only)

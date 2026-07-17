@@ -35,3 +35,13 @@ def test_chat_system_without_block_unchanged():
 def test_tone_contract_permits_profile_as_cited_source():
     assert "driver-profile block" in RACE_DEBRIEF_SYSTEM_PROMPT
     assert "cross-race" in RACE_DEBRIEF_SYSTEM_PROMPT
+
+
+def test_tone_contract_states_the_irating_mechanism():
+    # Real failure (VIR 87253600, 2026-07-16): the debrief claimed two
+    # incident points "cost you 23 iRating but no track position" —
+    # impossible; iR is driven only by finish position vs the field,
+    # incident points hit Safety Rating. Rule 6 pins the mechanism.
+    flat = " ".join(RACE_DEBRIEF_SYSTEM_PROMPT.split())
+    assert "solely by finish position" in flat
+    assert "Safety Rating, never iRating directly" in flat

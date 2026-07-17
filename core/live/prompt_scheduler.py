@@ -164,10 +164,7 @@ class PromptScheduler:
         if prev is None:
             return None
         for p in self._schedule:
-            if not p.fired and _crossed(prev, lap_dist_m, p.trigger_m):
+            if not p.fired and crossed(prev, lap_dist_m, p.trigger_m):
                 p.fired = True
                 return p.text
         return None
-
-
-_crossed = crossed  # shared wrap-safe crossing (lives in exit_verdict)

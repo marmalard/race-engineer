@@ -76,7 +76,7 @@ class TestCrossed:
         assert crossed(6900.0, 20.0, 6950.0)  # start/finish wrap
 
 
-from core.coaching.debrief import RegionDiagnosis
+from core.coaching.debrief import RegionDiagnosis, build_debrief
 from core.live.exit_verdict import ArmedVerdict, VerdictResult, VerdictWatcher
 from core.telemetry.loss_regions import LossRegion
 
@@ -209,3 +209,75 @@ class TestVerdictWatcher:
         # release observed at 1038 vs ref 1040 -> -2, under 10m threshold
         assert r is not None and r.kind is FaultKind.RELEASE
         assert r.bucket == "fixed"
+
+
+# ---------------------------------------------------------------------------
+# Anti-drift coupling test (spec's anti-drift lock): a REAL lap replayed
+# through the live watcher must agree with the offline diagnosis.
+
+import pytest
+
+from core.telemetry.ibt_parser import IBTParser
+from core.telemetry.normalizer import Normalizer
+
+
+def test_live_brake_onset_matches_offline_diagnosis(multilap_ibt_path):
+    """Replay a REAL normalized lap through the watcher tick-by-tick and
+    assert its observed brake onset agrees with _diagnose_region's for a
+    braking loss region — the anti-drift lock from the spec.
+
+    ONLY brake onset is coupled: the live throttle / min-speed definitions
+    intentionally deviate from the offline ones (running min re-armed on
+    each new low vs window argmin) and must NOT be asserted here. Lap
+    cleanliness is irrelevant — is_valid (telemetry-valid) is what the
+    replay needs; real laps with incidents are fine.
+    """
+    parser = IBTParser()
+    ibt = parser.parse(multilap_ibt_path)
+    track_length_m = ibt.session.track_length_km * 1000
+    lap_dfs = parser.get_laps(ibt)
+    lap_numbers = [int(df["Lap"].iloc[0]) for df in lap_dfs]
+    # normalize_session returns only the telemetry-valid laps.
+    valid = Normalizer().normalize_session(lap_dfs, lap_numbers,
+                                           track_length_m)
+    if len(valid) < 2:
+        pytest.skip("fixture lacks two valid laps")
+    # Reference = fastest lap; driver = slowest REPRESENTATIVE lap (within
+    # 110% of the reference — the profile precedent) so the pair carries
+    # genuine braking deltas without a stopped/tow lap dominating the
+    # loss regions.
+    by_time = sorted(valid, key=lambda lap: lap.lap_time)
+    reference = by_time[0]
+    representative = [lap for lap in by_time[1:]
+                      if lap.lap_time <= 1.10 * reference.lap_time]
+    if not representative:
+        pytest.skip("no representative driver lap in fixture")
+    driver = representative[-1]
+
+    result = build_debrief(driver, reference, [])
+    diags = [d for d in result.diagnoses
+             if d.reference_brake_onset_m is not None
+             and d.braking_delta_m is not None]
+    if not diags:
+        pytest.skip("no braking diagnosis in fixture")
+    diag = diags[0]
+    interval = float(driver.distance[1] - driver.distance[0])
+
+    w = VerdictWatcher()
+    w.set_plan([ArmedVerdict(diagnosis=diag, faults=[FaultKind.BRAKING])],
+               driver.track_length)
+    for i in range(len(driver.distance)):
+        w.feed(float(driver.distance[i]), float(driver.speed[i]),
+               float(driver.brake[i]), float(driver.throttle[i]))
+    obs = w._obs[0]
+
+    # WHY this comparison is valid without re-aligning: the offline
+    # debrief diagnoses against the ALIGNED reference (shift_lap), so
+    # reference_brake_onset_m is in aligned coordinates — and
+    # braking_delta_m is (driver onset - ref onset) on that same grid.
+    # Their SUM therefore recovers the DRIVER's onset in the driver
+    # lap's own coordinates, which is exactly what the watcher observes
+    # from the replayed driver ticks.
+    offline_onset_m = diag.reference_brake_onset_m + diag.braking_delta_m
+    assert obs.brake_onset_m is not None
+    assert abs(obs.brake_onset_m - offline_onset_m) <= 2 * interval

@@ -5,10 +5,13 @@ import json
 from core.profile.models import (
     ComboReadiness,
     DriverProfile,
+    FaultAggregate,
     IncidentTendency,
     PaceVsResultTendency,
     RacecraftTendencies,
     StartsTendency,
+    TechniqueTendencies,
+    TimeToPace,
     TrajectoryTendency,
 )
 from core.profile.render import (
@@ -18,6 +21,8 @@ from core.profile.render import (
     verdict_pace_vs_result,
     verdict_readiness,
     verdict_starts,
+    verdict_technique,
+    verdict_time_to_pace,
     verdict_trajectory,
 )
 
@@ -198,3 +203,80 @@ def test_profile_markdown_mixes_ready_and_collecting():
     assert "Pace vs result" in md
     assert "collecting data (2 of 3 races captured)" in md   # trajectory
     assert "Bathurst / 992 — collecting data (1 session, 4 clean laps)" in md
+
+
+# ---------------------------------------------------------------------------
+# Technique + Time-to-pace verdicts, prompt block, markdown (Task 6)
+# ---------------------------------------------------------------------------
+
+def _tech(trend=-0.12):
+    return TechniqueTendencies(
+        dominant="release",
+        faults=[FaultAggregate(kind="release", occurrences=9, combos=4,
+                               mean_time_lost_s=0.42,
+                               trend_time_lost_s=trend)],
+        recurring_corners=[("Bruxelles", 3)],
+        sessions_diagnosed=12,
+        enough_data=True,
+    )
+
+
+class TestVerdictTechnique:
+    def test_shrinking(self):
+        assert verdict_technique(_tech()) == (
+            "Brake release is your recurring loss — 9 regions across "
+            "4 combos, avg 0.4s each, shrinking (-0.1s recent). "
+            "Repeat corners: Bruxelles (3x)."
+        )
+
+    def test_growing(self):
+        assert "growing (+0.2s recent)" in verdict_technique(_tech(trend=0.2))
+
+    def test_flat_trend_omitted(self):
+        out = verdict_technique(_tech(trend=0.01))
+        assert "shrinking" not in out and "growing" not in out
+
+    def test_no_faults_empty(self):
+        assert verdict_technique(TechniqueTendencies()) == ""
+
+
+class TestVerdictTimeToPace:
+    def test_basic(self):
+        t = TimeToPace(median_laps=4.0, sample_sessions=78,
+                       trend_laps=None, enough_data=True)
+        assert verdict_time_to_pace(t) == (
+            "You need ~4 laps to reach pace (78 sessions) — races give "
+            "you zero warm-up."
+        )
+
+    def test_improving_trend(self):
+        t = TimeToPace(median_laps=3.0, sample_sessions=10,
+                       trend_laps=-1.5, enough_data=True)
+        assert "Reaching pace sooner lately (-2 laps)." in verdict_time_to_pace(t)
+
+    def test_empty(self):
+        assert verdict_time_to_pace(TimeToPace()) == ""
+
+
+def test_prompt_block_includes_technique_and_ttp():
+    from core.profile.models import DriverProfile
+    from core.profile.render import profile_prompt_block
+
+    p = DriverProfile(
+        cust_id=1, driver_name="A", races_captured=3,
+        technique=_tech(),
+        time_to_pace=TimeToPace(median_laps=4.0, sample_sessions=20,
+                                enough_data=True),
+    )
+    block = profile_prompt_block(p)
+    assert '"technique"' in block
+    assert '"time_to_pace"' in block
+
+
+def test_markdown_has_technique_section():
+    from core.profile.models import DriverProfile
+    from core.profile.render import profile_markdown
+
+    md = profile_markdown(DriverProfile())
+    assert "## Technique" in md
+    assert "collecting data (0 of 5 diagnosed sessions)" in md

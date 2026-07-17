@@ -9,11 +9,14 @@ import json
 
 from core.profile.models import (
     RACECRAFT_MIN_RACES,
+    TECHNIQUE_MIN_SESSIONS,
     ComboReadiness,
     DriverProfile,
     IncidentTendency,
     PaceVsResultTendency,
     StartsTendency,
+    TechniqueTendencies,
+    TimeToPace,
     TrajectoryTendency,
 )
 
@@ -21,6 +24,16 @@ PROMPT_BLOCK_MAX_CHARS = 2000
 PROMPT_BLOCK_MAX_COMBOS = 5
 NEUTRAL_BAND = 0.5          # |mean| below this = "roughly neutral"
 FADE_BAND_S = 0.15          # |fade| below this = not worth mentioning
+TREND_BAND_S = 0.05          # |technique trend| below this = not worth saying
+TTP_TREND_BAND_LAPS = 1.0    # |time-to-pace trend| below this = flat
+
+_FAULT_LABEL = {
+    "lift": "Carrying apex speed",
+    "braking": "Brake point",
+    "release": "Brake release",
+    "exit_speed": "Corner exit speed",
+    "throttle": "Throttle pickup",
+}
 
 
 def _signed(x: float) -> str:
@@ -110,6 +123,43 @@ def verdict_readiness(c: ComboReadiness) -> str:
     return line
 
 
+def verdict_technique(t: TechniqueTendencies) -> str:
+    if not t.faults:
+        return ""
+    f = t.faults[0]
+    line = (
+        f"{_FAULT_LABEL.get(f.kind, f.kind)} is your recurring loss — "
+        f"{_plural(f.occurrences, 'region')} across "
+        f"{_plural(f.combos, 'combo')}, avg {f.mean_time_lost_s:.1f}s each"
+    )
+    trend = f.trend_time_lost_s
+    if trend is not None and trend <= -TREND_BAND_S:
+        line += f", shrinking ({trend:+.1f}s recent)"
+    elif trend is not None and trend >= TREND_BAND_S:
+        line += f", growing ({trend:+.1f}s recent)"
+    line += "."
+    if t.recurring_corners:
+        repeats = ", ".join(f"{c} ({k}x)" for c, k in t.recurring_corners[:3])
+        line += f" Repeat corners: {repeats}."
+    return line
+
+
+def verdict_time_to_pace(t: TimeToPace) -> str:
+    if t.median_laps is None:
+        return ""
+    line = (
+        f"You need ~{t.median_laps:.0f} laps to reach pace "
+        f"({_plural(t.sample_sessions, 'session')}) — races give "
+        "you zero warm-up."
+    )
+    trend = t.trend_laps
+    if trend is not None and trend <= -TTP_TREND_BAND_LAPS:
+        line += f" Reaching pace sooner lately ({trend:+.0f} laps)."
+    elif trend is not None and trend >= TTP_TREND_BAND_LAPS:
+        line += f" Taking longer lately ({trend:+.0f} laps)."
+    return line
+
+
 def _tendency_payloads(p: DriverProfile) -> dict:
     r = p.racecraft
     out: dict[str, dict] = {}
@@ -131,6 +181,14 @@ def _tendency_payloads(p: DriverProfile) -> dict:
         out["trajectory"] = {"verdict": verdict_trajectory(r.trajectory),
                              "mean_race_net": r.trajectory.mean_race_net,
                              "sample": r.trajectory.sample}
+    if p.technique.enough_data:
+        out["technique"] = {"verdict": verdict_technique(p.technique),
+                            "dominant": p.technique.dominant,
+                            "sessions": p.technique.sessions_diagnosed}
+    if p.time_to_pace.enough_data:
+        out["time_to_pace"] = {"verdict": verdict_time_to_pace(p.time_to_pace),
+                               "median_laps": p.time_to_pace.median_laps,
+                               "sample": p.time_to_pace.sample_sessions}
     return out
 
 
@@ -189,6 +247,16 @@ def profile_markdown(p: DriverProfile) -> str:
                 f"- **{label}** — collecting data "
                 f"({t.sample} of {RACECRAFT_MIN_RACES} races captured)."
             )
+    lines += ["", "## Technique"]
+    if p.technique.enough_data:
+        lines.append(f"- **Technique** — {verdict_technique(p.technique)}")
+    else:
+        lines.append(
+            f"- **Technique** — collecting data ({p.technique.sessions_diagnosed} of "
+            f"{TECHNIQUE_MIN_SESSIONS} diagnosed sessions)."
+        )
+    if p.time_to_pace.enough_data:
+        lines.append(f"- **Warm-up** — {verdict_time_to_pace(p.time_to_pace)}")
     lines += ["", "## Practice readiness"]
     if not p.readiness:
         lines.append("_No practice history yet — sessions accrue "

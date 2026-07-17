@@ -179,3 +179,33 @@ class TestVerdictWatcher:
         w = VerdictWatcher()
         w.set_plan([], TRACK_LEN)
         assert _drive(w, 0.0, 500.0) is None
+
+    def test_nan_speed_tick_is_ignored_not_poisonous(self):
+        # iRacing surfaces NaN at session transitions; a NaN min speed
+        # must not stick and produce a confident wrong verdict.
+        armed = _armed(faults=(FaultKind.LIFT,))
+        armed.diagnosis.min_speed_delta_ms = -4.0
+        w = VerdictWatcher()
+        w.set_plan([armed], TRACK_LEN)
+        w.feed(850.0, float("nan"), 0.0, 0.0)        # poisoned tick: skipped
+        _drive(w, 860.0, 990.0, speed=40.0)
+        _drive(w, 1000.0, 1090.0, speed=19.0)
+        r = _drive(w, 1100.0, 1250.0, speed=30.0)
+        assert r is not None and r.bucket == "fixed"  # min 19, not NaN
+
+    def test_release_verdict_observes_trail_braking(self):
+        # Release = last brake-on at/before the final min-speed point.
+        armed = _armed(faults=(FaultKind.RELEASE,))
+        armed.diagnosis.brake_release_delta_m = -12.0   # released early last lap
+        armed.diagnosis.reference_release_m = 1040.0
+        w = VerdictWatcher()
+        w.set_plan([armed], TRACK_LEN)
+        _drive(w, 700.0, 970.0)
+        _drive(w, 980.0, 1030.0, speed=25.0, brake=0.6)  # braking, slowing
+        w.feed(1038.0, 22.0, 0.4, 0.0)                   # still on brakes
+        w.feed(1050.0, 20.0, 0.0, 0.0)                   # off brakes, new min
+        _drive(w, 1060.0, 1190.0, speed=24.0)
+        r = w.feed(1210.0, 30.0, 0.0, 1.0)
+        # release observed at 1038 vs ref 1040 -> -2, under 10m threshold
+        assert r is not None and r.kind is FaultKind.RELEASE
+        assert r.bucket == "fixed"

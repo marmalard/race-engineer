@@ -17,6 +17,7 @@ alignment tolerance the approach-cue triggers already accept.
 Spec: docs/superpowers/specs/2026-07-16-exit-verdict-cues-design.md
 """
 
+import math
 from dataclasses import dataclass
 
 from core.coaching.debrief import (
@@ -146,8 +147,8 @@ class _Observation:
     min_speed_ms: "float | None" = None
     min_speed_m: "float | None" = None
     last_brake_on_m: "float | None" = None
-    release_m: "float | None" = None       # last brake-on at/before the
-    throttle_on_m: "float | None" = None   # (final) min-speed point
+    release_m: "float | None" = None      # last brake-on at/before the (final) min-speed point
+    throttle_on_m: "float | None" = None  # first sustained throttle after the final min-speed point
     exit_speed_ms: "float | None" = None
 
 
@@ -182,6 +183,8 @@ class VerdictWatcher:
         self, lap_dist_m: float, speed_ms: float, brake: float,
         throttle: float,
     ) -> "VerdictResult | None":
+        if not (math.isfinite(lap_dist_m) and math.isfinite(speed_ms)):
+            return None
         prev, self._prev_dist = self._prev_dist, lap_dist_m
         result: "VerdictResult | None" = None
         for armed, obs in zip(self._armed, self._obs):
@@ -220,6 +223,9 @@ class VerdictWatcher:
                 # recorded before it was pre-apex — rearm it.
                 obs.release_m = obs.last_brake_on_m
                 obs.throttle_on_m = None
+        # Offline (_diagnose_region) searches from the window's argmin;
+        # live uses the running min, re-armed on each new low — equal on
+        # monotone-to-apex traces. Only brake onset is coupling-tested.
         if (obs.throttle_on_m is None and obs.min_speed_m is not None
                 and dist > obs.min_speed_m
                 and dist <= span_end + VERDICT_POINT_M

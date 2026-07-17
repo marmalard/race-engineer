@@ -28,6 +28,7 @@ race-engineer/
 │   │   ├── guide.py              # In-app guide: friend onboarding + founder reference
 │   │   ├── toolbox.py            # Host-only start/stop/status for live coach + watcher
 │   │   ├── progression.py        # Progression page: streak, trends, PB timeline, iR/SR, implied iR
+│   │   ├── week_plan.py          # Week Plan page: latest plan + history + optional AI chat
 │   │   └── setup.py              # First-run wizard + Settings & Keys (key rotation)
 │   └── components/               # Shared Streamlit components
 │       ├── units.py              # Unit conversion helpers (metric/imperial)
@@ -59,7 +60,8 @@ race-engineer/
 │   │   ├── scouting.py           # Scouting report generation
 │   │   └── prompts/              # Prompt templates for AI synthesis
 │   │       ├── coaching.py
-│   │       └── scouting.py
+│   │       ├── scouting.py
+│   │       └── week_plan.py      # WEEKPLAN_SYSTEM_PROMPT — page-only, never the scheduled path
 │   ├── live/
 │   │   ├── lap_buffer.py         # Accumulate live ticks into normalizer-ready DataFrame
 │   │   ├── session_reader.py     # LapBoundaryTracker pure state machine
@@ -86,6 +88,12 @@ race-engineer/
 │   │   ├── implied_ir.py         # PURE: weighted implied-iR band roll-up
 │   │   ├── ingest.py             # I/O: chart_data per-day cache + weekly implied-iR compute
 │   │   └── store.py              # data/progression.db — implied_ir_history weekly snapshots
+│   ├── weekplan/
+│   │   ├── models.py             # WeekPlan/RaceHalf/PracticeHalf/SRCheck + constants
+│   │   ├── build.py              # target-week math, tick decisions, build_week_plan (no AI)
+│   │   ├── render.py             # Deterministic markdown; verdicts exact-string pinned
+│   │   ├── store.py              # week_plans JSON table in data/progression.db
+│   │   └── notify.py             # Marker handshake: watcher writes, tray consumes, one owner
 │   ├── config/
 │   │   └── env_setup.py          # .env contract: REQUIRED keys, baked defaults (gitignored _baked.py), Setup page backend
 │   ├── update/
@@ -166,7 +174,12 @@ race-engineer/
     ├── test_progression_store.py
     ├── test_progression_ingest.py
     ├── test_progression_page.py
-    └── test_prescriptions.py
+    ├── test_prescriptions.py
+    ├── test_weekplan_build.py
+    ├── test_weekplan_render.py
+    ├── test_weekplan_store.py
+    ├── test_weekplan_notify.py
+    └── test_weekplan_page.py
 ```
 
 ## Key Technical Concepts
@@ -448,6 +461,15 @@ streamlit run app/streamlit_app.py
 - Known limits: implied-iR curve is series-scoped not car-filtered (same approximation as the shipped briefing page; series_name is the honesty label per row); SR chart assumes x100 scaling (normalize_sr heuristic); only combos at CURRENT-week series tracks get placed — coverage varies week to week by design; _cached_fetch (race ingest) now has 3 cross-package consumers — promote to public name on next core/race/ingest.py touch; pace/technique chart x-axes are categorical (session_date strings, even spacing); streak week boundary mixes UTC race dates with local today
 - [ ] Founder validation: open the page with real data, click Recompute for this week, sanity-check the implied band against felt pace
 
+**Week Plan v1 — scheduled push** (complete, branch week-plan — spec docs/superpowers/specs/2026-07-17-week-plan-design.md, plan docs/superpowers/plans/2026-07-17-week-plan.md)
+- [x] core/weekplan/ package: models (every section optional, warnings never exceptions), build (target week = Tue-Sat current / Sun-Mon next; race half via rank_series_candidates week_delta=1 + harvest_field + place_on_curve raw; practice ladder prescription→race-combo-fallback via the one fault ladder; sports_car_license SR check SR_COMFORT=2.5), render (v3 §3 voice, verdicts exact-string pinned incl. both SR sentences and the curve-pending line — the pins ARE the no-gating guarantee), store (week_plans JSON in progression.db, re-save preserves created_at), notify (single owner of marker path/shape/toast copy)
+- [x] Watcher weekly tick (after scans, own try/except, WEEK PLAN FAILED retries next poll): generate on create + write marker; silent hourly refresh while curve unfilled, daily after; no creds = quiet skip
+- [x] Tray toast: watchdog tick consumes the marker → one pystray notify per week; tray down = marker persists, toasts on next start
+- [x] Week Plan page (Race group, after Start): latest plan + history expander + optional AI narrative/chat (WEEKPLAN_SYSTEM_PROMPT tone contract); Start-page teaser card
+- Living artifact: born Sunday with schedule/slots/SR/prescription, curve verdict backfills after the Tuesday flip (curve_filled flag drives refresh + page copy)
+- [ ] Founder validation: first real Sunday push (toast fires, plan reads right), curve backfill lands Wednesday, prescription matches felt priorities
+- Deferred: prep ledger, run sheet, mental-lap rehearsal, email/Discord channels, per-timeslot split prediction, mid-week conversational adjustments
+
 **Stage 3: Telemetry Watcher** (complete, merged 2026-07-09)
 - [x] TrackDB session-history methods — sessions/laps tables activated; record_session pre-creates a stub track row for the FK, healed by the processor's early upsert_track (`core/track/track_db.py`)
 - [x] Scanner — 90s write-stability window, sessions-table dedupe, strictly-faster promotion, `is_plausible_lap` 85 m/s gate (ROAD-ONLY assumption — oval needs a track_type-dependent ceiling), `covers_full_lap` 98% gate (`core/watcher/scanner.py`)
@@ -711,7 +733,7 @@ streamlit run app/streamlit_app.py
 - Deployment: `tailscale serve/funnel 8501` + `streamlit run` from the host PC; `.streamlit/config.toml` sets maxUploadSize 400
 
 ### Test Suite
-- 1007 tests passing on master with local fixtures (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`); skip count varies with local gitignored fixtures (race-capture integration tests need Oulton; some lap tests need specific telemetry files)
+- 1022 tests passing on this branch with local fixtures (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`); skip count varies with local gitignored fixtures (race-capture integration tests need Oulton; some lap tests need specific telemetry files)
 - Test fixtures: `tests/fixtures/sample.ibt` (Spa, BMW M2 CS Racing, 2 laps — gitignored)
 - Multi-lap fixture from `C:\Users\antho\Documents\iRacing\telemetry\` (Road America F4, 7 laps)
 - Bathurst fixture also available for corner detection tuning tests

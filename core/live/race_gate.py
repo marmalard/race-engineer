@@ -33,7 +33,11 @@ class FaultStreakTracker:
         self._streaks: dict[tuple[str, FaultKind], int] = {}
 
     def update(self, lap_faults: "set[tuple[str, FaultKind]]") -> None:
-        """Feed one completed lap's (label, primary fault) pairs."""
+        """Feed one completed lap's (label, primary fault) pairs.
+
+        Call exactly once per completed coached lap, with the FULL set
+        (empty included) — keys absent from `lap_faults` reset to zero,
+        so a skipped or doubled call corrupts every streak."""
         self._streaks = {
             key: self._streaks.get(key, 0) + 1 for key in lap_faults
         }

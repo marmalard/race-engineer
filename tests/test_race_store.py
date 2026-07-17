@@ -53,6 +53,17 @@ def test_debrief_save_and_get(store):
     assert store.get_debrief(86748877, 1226848) == "Updated."
 
 
+def test_clear_chat_scoped_to_one_race(store):
+    # Regenerating a debrief clears its chat (grounded in the replaced
+    # text) but must not touch any other race's chat.
+    store.append_chat_message(86748877, 1226848, "user", "why P6?")
+    store.append_chat_message(86748877, 1226848, "assistant", "traffic")
+    store.append_chat_message(99999999, 1226848, "user", "other race")
+    store.clear_chat(86748877, 1226848)
+    assert store.get_chat(86748877, 1226848) == []
+    assert len(store.get_chat(99999999, 1226848)) == 1
+
+
 def test_list_races_returns_meta_newest_first(store):
     a = _minimal_narrative()
     store.save_race(a, ibt_file_path="")

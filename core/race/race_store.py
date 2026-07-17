@@ -225,6 +225,16 @@ class RaceStore:
                 (subsession_id, cust_id, role, content, self._now()),
             )
 
+    def clear_chat(self, subsession_id: int, cust_id: int) -> None:
+        """Delete one race's chat — used when its debrief is regenerated
+        (the transcript is grounded in the replaced text)."""
+        with self._conn() as conn:
+            conn.execute(
+                "DELETE FROM chat_messages "
+                "WHERE subsession_id = ? AND cust_id = ?",
+                (subsession_id, cust_id),
+            )
+
     def get_chat(self, subsession_id: int, cust_id: int) -> list[dict]:
         """Chat transcript in insertion order as role/content dicts."""
         with self._conn() as conn:

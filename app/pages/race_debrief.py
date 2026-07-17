@@ -222,29 +222,40 @@ def _render_debrief_and_chat(narrative: RaceNarrative, store: RaceStore):
             "The engineer is unreachable right now (AI API error). "
             "The narrative above is unaffected — try again later."
         )
+        def _generate_and_save(clear_chat: bool) -> None:
+            with st.spinner("Engineer is reviewing the race..."):
+                try:
+                    synth = Synthesizer(api_key=api_key)
+                    report = synth.generate_race_debrief(
+                        narrative,
+                        profile_block=_profile_block(
+                            store, narrative.header.cust_id
+                        ),
+                    )
+                except Exception:
+                    logger.exception("generate_race_debrief failed")
+                    st.error(_AI_ERROR)
+                else:
+                    if clear_chat:
+                        store.clear_chat(h.subsession_id, h.cust_id)
+                    store.save_debrief(
+                        h.subsession_id, h.cust_id,
+                        report.report_text, report.model_used,
+                    )
+                    st.rerun()
+
         if debrief_text is None:
             if st.button("Generate debrief"):
-                with st.spinner("Engineer is reviewing the race..."):
-                    try:
-                        synth = Synthesizer(api_key=api_key)
-                        report = synth.generate_race_debrief(
-                            narrative,
-                            profile_block=_profile_block(
-                                store, narrative.header.cust_id
-                            ),
-                        )
-                    except Exception:
-                        logger.exception("generate_race_debrief failed")
-                        st.error(_AI_ERROR)
-                    else:
-                        store.save_debrief(
-                            h.subsession_id, h.cust_id,
-                            report.report_text, report.model_used,
-                        )
-                        st.rerun()
+                _generate_and_save(clear_chat=False)
         else:
             with st.container(border=True):
                 st.markdown(debrief_text)
+            if st.button(
+                "Regenerate debrief",
+                help="Re-run the engineer on this race. Replaces this "
+                     "debrief and clears its chat.",
+            ):
+                _generate_and_save(clear_chat=True)
 
             section_header("Ask the engineer")
             history = store.get_chat(h.subsession_id, h.cust_id)

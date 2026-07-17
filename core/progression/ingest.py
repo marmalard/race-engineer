@@ -11,7 +11,7 @@ from datetime import date
 import logging
 from pathlib import Path
 
-from core.benchmark.iracing_api import IRatingPoint
+from core.benchmark.iracing_api import IRatingPoint, SeasonSchedule
 from core.briefing.curve import MIN_BIN_N, place_on_curve
 from core.briefing.ingest import harvest_field, rank_series_candidates
 from core.profile.pace import build_readiness
@@ -68,13 +68,14 @@ def normalize_sr(points: list[IRatingPoint]) -> list[tuple[str, float]]:
     """SR chart values arrive x100 (351 = 3.51) — scale for display."""
     if not points:
         return []
+    # iRacing SR values are >= 100 for any licensed driver; all <= 10 means already decimal
     scale = 100.0 if max(p.value for p in points) > 10 else 1.0
     return [(p.when, p.value / scale) for p in points]
 
 
 def compute_week_implied_ir(
     api,
-    seasons,
+    seasons: list[SeasonSchedule],
     sessions: list[SessionRow],
     laps: dict[str, list[LapRow]],
     cache_dir: Path = DEFAULT_CACHE_DIR,

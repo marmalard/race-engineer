@@ -1,6 +1,6 @@
 """PURE roll-up of per-combo implied-iR bands (spec §7).
 
-ALWAYS a band, never a point -- bands-not-false-precision is the locked
+ALWAYS a band, never a point — bands-not-false-precision is the locked
 curve rule. This number informs, it never gates.
 """
 

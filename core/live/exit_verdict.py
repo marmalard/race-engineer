@@ -68,7 +68,14 @@ def bucket_for(kind: FaultKind, live_delta: float, last_delta: float) -> str:
     """Bucket the live delta for the coached fault. Precedence (spec):
     fixed -> overcorrected -> better -> unchanged. Overcorrection is
     checked BEFORE better so a sign-flipped delta can never produce
-    'still a touch late' with the wrong direction word."""
+    'still a touch late' with the wrong direction word.
+
+    Both deltas follow debrief sign conventions (negative braking =
+    earlier, positive throttle = later). `last_delta` is the coached
+    fault's delta from the approach cue — always >= threshold in
+    magnitude by construction, so it is never 0. Note "better" is
+    structurally inert when abs(last_delta) < 2x threshold (the fixed
+    band swallows it) — that is by design, not a tuning bug."""
     threshold = _THRESHOLDS[kind]
     if abs(live_delta) < threshold:
         return "fixed"
@@ -82,7 +89,8 @@ def bucket_for(kind: FaultKind, live_delta: float, last_delta: float) -> str:
 
 def verdict_text(kind: FaultKind, bucket: str, live_delta: float) -> str:
     """The spoken one-clause verdict. Exact strings are pinned by tests
-    (like nudges); tune wording there, nowhere else."""
+    (like nudges); tune wording there, nowhere else.
+    `live_delta` disambiguates late/early for BRAKING only."""
     if bucket == "fixed":
         return "That's it."
     if bucket == "overcorrected":

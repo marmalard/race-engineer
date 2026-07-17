@@ -11,7 +11,7 @@ corrupt stdev — the same 10% pace-threshold precedent as the coaching
 analyzer's disrupted-lap filter.
 """
 
-from statistics import stdev
+from statistics import median, stdev
 
 from core.profile.models import (
     CONSISTENCY_MIN_LAPS,
@@ -19,7 +19,11 @@ from core.profile.models import (
     READINESS_MIN_LAPS,
     READINESS_MIN_SESSIONS,
     REPRESENTATIVE_FACTOR,
+    TECHNIQUE_TREND_WINDOW,
+    TTP_FACTOR,
+    TTP_MIN_LAPS,
     ComboReadiness,
+    TimeToPace,
 )
 from core.track.track_db import LapRow, SessionRow
 
@@ -90,3 +94,44 @@ def build_readiness(
         ))
     combos.sort(key=lambda c: -c.valid_laps)
     return combos
+
+
+def build_time_to_pace(
+    sessions: list[SessionRow],
+    laps: dict[str, list[LapRow]],
+) -> TimeToPace:
+    """Median laps until the driver first laps within TTP_FACTOR of the
+    session best. Practice sessions only; sessions shorter than
+    TTP_MIN_LAPS valid laps don't count.
+
+    Known caveat (accepted): ordinals count telemetry-valid laps only —
+    true out-laps are usually normalizer-invalid and drop out, so
+    "lap 3" means the third recorded flying-ish lap.
+    """
+    practice = [s for s in sessions if s.session_type != "Race"]
+    ordinals: list[int] = []   # in session_date order
+    for s in sorted(practice, key=lambda s: s.session_date):
+        valid = sorted(
+            (l for l in laps.get(s.session_id, []) if l.is_valid),
+            key=lambda l: l.lap_number,
+        )
+        if len(valid) < TTP_MIN_LAPS:
+            continue
+        cutoff = min(l.lap_time for l in valid) * TTP_FACTOR
+        for i, lap in enumerate(valid, start=1):
+            if lap.lap_time <= cutoff:
+                ordinals.append(i)
+                break
+    if not ordinals:
+        return TimeToPace()
+    recent = ordinals[-TECHNIQUE_TREND_WINDOW:]
+    earlier = ordinals[:-TECHNIQUE_TREND_WINDOW]
+    return TimeToPace(
+        median_laps=float(median(ordinals)),
+        sample_sessions=len(ordinals),
+        trend_laps=(
+            float(median(recent)) - float(median(earlier))
+            if earlier else None
+        ),
+        enough_data=len(ordinals) >= READINESS_MIN_SESSIONS,
+    )

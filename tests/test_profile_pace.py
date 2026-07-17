@@ -128,3 +128,72 @@ def test_sorted_by_valid_laps_desc():
     laps = {"a": _laps([100.0] * 3), "b": _laps([99.0] * 8)}
     combos = build_readiness(sessions, laps)
     assert [c.track_id for c in combos] == ["219", "525"]
+
+
+# ---------------------------------------------------------------------------
+# TimeToPace — build_time_to_pace
+# ---------------------------------------------------------------------------
+
+from core.profile.models import TTP_MIN_LAPS, TimeToPace  # noqa: E402
+from core.profile.pace import build_time_to_pace  # noqa: E402
+
+
+def _session(sid, stype="practice", date="2026-07-01 10-00-00"):
+    return SessionRow(
+        session_id=sid, track_id="523", track_name="Spa", car="M2",
+        session_type=stype, session_date=date, best_lap_time=110.0,
+        lap_count=5,
+    )
+
+
+class TestTimeToPace:
+    def test_ordinal_of_first_on_pace_lap(self):
+        # best 110.0 -> cutoff 111.1; first lap <= cutoff is #3 (111.0)
+        sessions = [_session("s1")]
+        laps = {"s1": _laps([130.0, 115.0, 111.0, 110.0, 112.0])}
+        t = build_time_to_pace(sessions, laps)
+        assert t.median_laps == 3.0
+        assert t.sample_sessions == 1
+
+    def test_short_sessions_excluded(self):
+        sessions = [_session("s1")]
+        laps = {"s1": _laps([130.0, 110.0])}  # < TTP_MIN_LAPS
+        assert len(laps["s1"]) < TTP_MIN_LAPS
+        t = build_time_to_pace(sessions, laps)
+        assert t.sample_sessions == 0
+        assert t.median_laps is None
+
+    def test_race_sessions_excluded(self):
+        sessions = [_session("r1", stype="Race")]
+        laps = {"r1": _laps([130.0, 115.0, 111.0, 110.0, 112.0])}
+        t = build_time_to_pace(sessions, laps)
+        assert t.sample_sessions == 0
+
+    def test_invalid_laps_ignored_in_ordinal(self):
+        sessions = [_session("s1")]
+        rows = _laps([130.0, 115.0, 111.0, 110.0, 112.0])
+        # An invalid crawl lap before everything must not shift ordinals
+        rows.insert(0, LapRow(lap_number=0, lap_time=300.0, is_valid=False))
+        t = build_time_to_pace(sessions, {"s1": rows})
+        assert t.median_laps == 3.0
+
+    def test_trend_needs_both_pools(self):
+        # 5 qualifying sessions -> all recent, no earlier pool -> None
+        sessions = [_session(f"s{i}", date=f"2026-07-{i:02d} 10-00-00")
+                    for i in range(1, 6)]
+        laps = {f"s{i}": _laps([130.0, 115.0, 111.0, 110.0, 112.0])
+                for i in range(1, 6)}
+        t = build_time_to_pace(sessions, laps)
+        assert t.trend_laps is None
+        assert t.enough_data  # sample 5 >= READINESS_MIN_SESSIONS
+
+    def test_trend_negative_when_reaching_pace_sooner(self):
+        # 7 sessions: early ones reach pace on lap 4, recent on lap 1
+        sessions = [_session(f"s{i}", date=f"2026-07-{i:02d} 10-00-00")
+                    for i in range(1, 8)]
+        slow_warmup = _laps([130.0, 125.0, 120.0, 110.5, 110.0])
+        fast_warmup = _laps([110.5, 110.0, 111.0, 112.0, 111.0])
+        laps = {f"s{i}": (slow_warmup if i <= 2 else fast_warmup)
+                for i in range(1, 8)}
+        t = build_time_to_pace(sessions, laps)
+        assert t.trend_laps is not None and t.trend_laps < 0

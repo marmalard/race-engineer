@@ -282,11 +282,98 @@ class TestBuildWeekPlan:
         assert plan.week_start  # a plan object came back regardless
 
 
+class TestBuildRaceHalf:
+    def test_build_race_half_slot_anchor(self, monkeypatch, tmp_path):
+        """upcoming_slots receives the LATER of now_utc and midnight-UTC
+        of the target week start, so Sunday builds don't list stale slots."""
+        captured = {}
+
+        def _fake_upcoming(descriptors, now_utc, count=4):
+            captured["now_utc"] = now_utc
+            return []
+
+        monkeypatch.setattr(wp_build, "upcoming_slots", _fake_upcoming)
+
+        # Sunday 2026-07-19: target = 2026-07-21 (next Tuesday).
+        # Anchor must be 2026-07-21 00:00 UTC (later than now_utc).
+        # week_delta=1 on Sunday: rank_series_candidates looks for
+        # season.race_week + 1, so season.race_week=5 + delta=1 = week 6.
+        sunday_now = datetime(2026, 7, 19, 12, 0, tzinfo=timezone.utc)
+        sunday_today = date(2026, 7, 19)
+        sunday_season = SeasonSchedule(
+            series_id=300, series_name="S", season_id=300,
+            season_name="S3", race_week=5, max_weeks=12,
+            season_year=2026, season_quarter=3,
+            weeks=[RaceWeek(
+                race_week_num=6, track_id=525, track_name="Spa",
+                config_name="", start_date="2026-07-21",
+                race_time_limit=25, race_lap_limit=None,
+                start_type="Standing", standing_start=True,
+                max_pct_fuel_fill=None, race_time_descriptors=[],
+            )],
+        )
+        sessions = [_practice("s1"), _practice("s2")]
+        laps = {s.session_id: _laps() for s in sessions}
+        build_week_plan(None, [sunday_season], sessions, laps, [],
+                        TechniqueTendencies(), TimeToPace(),
+                        sunday_now, sunday_today, cache_dir=tmp_path)
+        assert captured.get("now_utc") == datetime(2026, 7, 21, 0, 0,
+                                                   tzinfo=timezone.utc)
+
+        # Wednesday 2026-07-16: target = 2026-07-14 (already past).
+        # Anchor must equal now_utc itself (max selects now_utc as later).
+        # week_delta=0 on Wednesday: season.race_week=5 + delta=0 = week 5.
+        wed_now = datetime(2026, 7, 16, 12, 0, tzinfo=timezone.utc)
+        wed_today = date(2026, 7, 16)
+        wed_season = SeasonSchedule(
+            series_id=301, series_name="S", season_id=301,
+            season_name="S3", race_week=5, max_weeks=12,
+            season_year=2026, season_quarter=3,
+            weeks=[RaceWeek(
+                race_week_num=5, track_id=525, track_name="Spa",
+                config_name="", start_date="2026-07-14",
+                race_time_limit=25, race_lap_limit=None,
+                start_type="Standing", standing_start=True,
+                max_pct_fuel_fill=None, race_time_descriptors=[],
+            )],
+        )
+        build_week_plan(None, [wed_season], sessions, laps, [],
+                        TechniqueTendencies(), TimeToPace(),
+                        wed_now, wed_today, cache_dir=tmp_path)
+        assert captured.get("now_utc") == wed_now
+
+    def test_build_race_half_skips_wrong_week(self, tmp_path):
+        """A season whose week starts on the PREVIOUS week is skipped,
+        leaving plan.race=None (today=2026-07-15, target=2026-07-14,
+        week start_date=2026-07-07 is outside [target, target+7d))."""
+        wrong_week_season = SeasonSchedule(
+            series_id=200, series_name="WrongWeek", season_id=200,
+            season_name="S3", race_week=5, max_weeks=12,
+            season_year=2026, season_quarter=3,
+            weeks=[RaceWeek(
+                race_week_num=5, track_id=525, track_name="Spa",
+                config_name="Grand Prix", start_date="2026-07-07",
+                race_time_limit=25, race_lap_limit=None,
+                start_type="Standing", standing_start=True,
+                max_pct_fuel_fill=None, race_time_descriptors=[],
+            )],
+        )
+        sessions = [_practice("s1"), _practice("s2")]
+        laps = {s.session_id: _laps() for s in sessions}
+        plan = build_week_plan(None, [wrong_week_season], sessions, laps, [],
+                               TechniqueTendencies(), TimeToPace(),
+                               NOW, TODAY, cache_dir=tmp_path)
+        assert plan.race is None
+        assert any(
+            "Race Briefing" in w or "practiced" in w
+            for w in plan.warnings
+        )
+
+
 class TestNoAiOnScheduledPath:
     def test_build_module_imports_no_ai(self):
         import sys
         import core.weekplan.build  # noqa: F401 -- ensure imported
-        assert "anthropic" not in sys.modules or True  # see below
         import inspect
         src = inspect.getsource(wp_build)
         assert "anthropic" not in src

@@ -251,3 +251,38 @@ class TestWeekPlanTick:
         monkeypatch.setattr(watch_telemetry, "_weekplan_store",
                             lambda: _Store())
         assert watch_telemetry._week_plan_tick(object(), object()) is None
+
+    def test_refresh_does_not_overwrite_good_plan_with_degraded(
+            self, monkeypatch):
+        from datetime import date, datetime, timezone
+        from core.weekplan.build import target_week_start
+        from core.weekplan.models import RaceHalf, WeekPlan
+        week = target_week_start(date.today()).isoformat()
+        stale = datetime.now(timezone.utc).replace(year=2020).isoformat()
+        good_race = RaceHalf(
+            series_name="S", season_id=1, race_week=1,
+            track_id="525", track_name="Spa", config_name="", car="M2",
+        )
+        existing = WeekPlan(week_start=week, created_at=stale,
+                            updated_at=stale, curve_filled=False,
+                            race=good_race)
+        saved = []
+
+        class _Store:
+            def latest(self):
+                return existing
+            def get(self, w):
+                return existing if w == week else None
+            def save(self, plan):
+                saved.append(plan)
+
+        degraded = WeekPlan(week_start=week, created_at="x",
+                            updated_at="x", race=None)
+        monkeypatch.setattr(watch_telemetry, "_weekplan_store",
+                            lambda: _Store())
+        monkeypatch.setattr(watch_telemetry, "_build_plan_now",
+                            lambda api, track_db: degraded)
+        monkeypatch.setattr(watch_telemetry, "write_marker", lambda ws: None)
+        result = watch_telemetry._week_plan_tick(object(), object())
+        assert saved == []
+        assert result is None

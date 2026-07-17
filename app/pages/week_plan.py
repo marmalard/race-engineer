@@ -75,13 +75,14 @@ def render_week_plan_page() -> None:
     from core.coaching.synthesizer import Synthesizer
 
     plan_json = json.dumps(asdict(plan), default=str)
+    nar_key = f"weekplan_narrative_{plan.week_start}_{plan.updated_at}"
     if st.button("Engineer's delivery (AI)"):
         synth = Synthesizer(api_key=os.environ["ANTHROPIC_API_KEY"])
         with st.spinner("Your engineer is preparing the delivery..."):
-            st.session_state["weekplan_narrative"] = (
+            st.session_state[nar_key] = (
                 synth.generate_week_plan_narrative(plan_json)
             )
-    narrative = st.session_state.get("weekplan_narrative")
+    narrative = st.session_state.get(nar_key)
     if narrative:
         st.markdown(narrative)
         st.divider()

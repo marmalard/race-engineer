@@ -3,7 +3,7 @@ the build itself. PURE except build_week_plan's api calls; never raises
 to the caller -- every failed sub-build degrades to a warning."""
 
 from collections import Counter
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time as dtime, timedelta, timezone
 from pathlib import Path
 
 from core.briefing.curve import MIN_BIN_N, place_on_curve
@@ -110,6 +110,7 @@ def _build_race_half(
     delta: int,
     now_utc: datetime,
     cache_dir: Path,
+    target: date | None = None,
 ) -> tuple[RaceHalf | None, bool, list[str]]:
     warnings: list[str] = []
     candidates = [
@@ -122,23 +123,49 @@ def _build_race_half(
             "No target-week series at a track you've practiced — the "
             "Race Briefing page lists the full calendar."
         ]
-    cand = candidates[0]
-    season = next(s for s in seasons if s.season_id == cand.season_id)
-    week = next(w for w in season.weeks
-                if w.race_week_num == cand.race_week)
-
-    car = _most_practiced_car(sessions, str(cand.track_id))
-    if car is None:
-        car = _most_practiced_car(sessions, None) or ""
-        warnings.append(
-            "No practice at this track yet — recommending your usual car."
+    cand = None
+    season = None
+    week = None
+    for _cand in candidates:
+        _season = next(
+            (s for s in seasons if s.season_id == _cand.season_id), None
         )
+        if _season is None:
+            continue
+        _week = next(
+            (w for w in _season.weeks
+             if w.race_week_num == _cand.race_week), None
+        )
+        if _week is None:
+            continue
+        if target is not None and _week.start_date:
+            try:
+                wk_start = date.fromisoformat(_week.start_date)
+                if not (target <= wk_start < target + timedelta(days=7)):
+                    continue
+            except ValueError:
+                pass  # fail-open on unparseable start_date
+        cand = _cand
+        season = _season
+        week = _week
+        break
+    if cand is None or season is None or week is None:
+        return None, False, [
+            "No target-week series at a track you've practiced — the "
+            "Race Briefing page lists the full calendar."
+        ]
+
+    car = _most_practiced_car(sessions, str(cand.track_id)) or ""
 
     window = infer_window([s.session_date for s in sessions])
+    slots_anchor = max(
+        now_utc,
+        datetime.combine(target, dtime(0, 0), tzinfo=timezone.utc),
+    ) if target is not None else now_utc
     slots = [
         PlanSlot(start_utc=dt.isoformat(),
                  fits_window=slot_fits_window(dt, window))
-        for dt in upcoming_slots(week.race_time_descriptors, now_utc,
+        for dt in upcoming_slots(week.race_time_descriptors, slots_anchor,
                                  count=4)
     ]
 
@@ -177,8 +204,8 @@ def _build_race_half(
                 half.sof_median = stats.sof_median
                 half.splits_median = stats.splits_median
         # empty pre-flip curve is EXPECTED: unfilled, not a warning
-    except Exception as exc:  # noqa: BLE001 -- degrade, never raise
-        warnings.append(f"Field harvest failed ({exc}) — verdict pending.")
+    except Exception:  # noqa: BLE001 -- degrade, never raise
+        warnings.append("Field data unavailable right now — verdict pending.")
     return half, curve_filled, warnings
 
 
@@ -254,7 +281,7 @@ def build_week_plan(
     try:
         plan.race, plan.curve_filled, race_warnings = _build_race_half(
             api, seasons, sessions, laps, week_delta(today), now_utc,
-            cache_dir,
+            cache_dir, target=target_week_start(today),
         )
         plan.warnings.extend(race_warnings)
     except Exception as exc:  # noqa: BLE001

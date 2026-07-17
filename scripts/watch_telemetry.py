@@ -156,19 +156,19 @@ def _week_plan_tick(api, track_db) -> "str | None":
     if api is None:
         return None
     store = _weekplan_store()
-    latest = store.latest()
     today = date.today()
-    generate = should_generate(
-        today, latest.week_start if latest else None)
-    if generate:
+    existing_target = store.get(target_week_start(today).isoformat())
+    if existing_target is None:
         plan = _build_plan_now(api, track_db)
         store.save(plan)
         write_marker(plan.week_start)
         return f"WEEK PLAN generated for {plan.week_start}"
-    current = store.get(target_week_start(today).isoformat())
-    if current is not None and should_refresh(
-            current, datetime.now(timezone.utc), today):
+    if should_refresh(existing_target, datetime.now(timezone.utc), today):
         plan = _build_plan_now(api, track_db)
+        # A degraded rebuild (lost race half) must not gut a good plan —
+        # keep the stored one; the next hourly tick retries.
+        if plan.race is None and existing_target.race is not None:
+            return None
         store.save(plan)
         return f"WEEK PLAN refreshed for {plan.week_start}"
     return None

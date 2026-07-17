@@ -108,6 +108,20 @@ def render_start_page() -> None:
                 _open_stored_race(lead)
                 st.switch_page(page_for("debrief"))
 
+    # Week-plan teaser — the push's second touchpoint.
+    try:
+        from core.weekplan.render import headline as _wp_headline
+        from app.pages.week_plan import _current_week_plan
+        from core.weekplan.store import WeekPlanStore
+
+        wp = _current_week_plan(WeekPlanStore())
+    except Exception:  # noqa: BLE001 — landing page must always render
+        wp = None
+    if wp is not None:
+        with st.container(border=True):
+            st.markdown(f"**{_wp_headline(wp)}**")
+            st.page_link(page_for("week-plan"), label="Open the week plan")
+
     # --- Entry paths (fallback for empty state + the guest path) --------
     section_header("Where to next")
     col1, col2 = st.columns(2)

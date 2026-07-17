@@ -19,7 +19,8 @@ class TestNavSpec:
     def test_race_group_pages_exact(self):
         race = dict(NAV_SPEC)["Race"]
         assert [p.title for p in race] == [
-            "Start", "Race Debrief", "Race Briefing", "Driver Profile",
+            "Start", "Week Plan", "Race Debrief", "Race Briefing",
+            "Driver Profile",
         ]
 
     def test_practice_group_pages_exact(self):

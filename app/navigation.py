@@ -28,6 +28,8 @@ NAV_SPEC: list[tuple[str, list[PageSpec]]] = [
         [
             PageSpec("Start", "\U0001f3c1", "start",
                      "app.pages.start", "render_start_page", default=True),
+            PageSpec("Week Plan", "\U0001f4c5", "week-plan",
+                     "app.pages.week_plan", "render_week_plan_page"),
             PageSpec("Race Debrief", "\U0001f399", "debrief",
                      "app.pages.race_debrief", "render_race_debrief_page"),
             PageSpec("Race Briefing", "\U0001f4cb", "briefing",

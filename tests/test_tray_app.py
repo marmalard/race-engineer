@@ -230,6 +230,50 @@ class TestCheckNow:
         assert tray_app._check_now() is None
 
 
+class TestWeekPlanToast:
+    class _FakeIcon:
+        def __init__(self):
+            self.notifications = []
+
+        def notify(self, message, title=None):
+            self.notifications.append((message, title))
+
+    def test_marker_fires_one_toast_and_consumes(self, monkeypatch,
+                                                 tmp_path):
+        from core.weekplan.notify import write_marker
+        marker = tmp_path / "weekplan_ready.json"
+        write_marker("2026-07-21", marker_path=marker)
+        monkeypatch.setattr(tray_app, "_WEEKPLAN_MARKER", marker)
+        icon = self._FakeIcon()
+        tray_app._maybe_toast_week_plan(icon)
+        assert len(icon.notifications) == 1
+        tray_app._maybe_toast_week_plan(icon)          # consumed
+        assert len(icon.notifications) == 1
+
+    def test_no_marker_no_toast(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(tray_app, "_WEEKPLAN_MARKER",
+                            tmp_path / "absent.json")
+        icon = self._FakeIcon()
+        tray_app._maybe_toast_week_plan(icon)
+        assert icon.notifications == []
+
+    def test_notify_failure_swallowed(self, monkeypatch, tmp_path):
+        from core.weekplan.notify import write_marker
+
+        class _Boom:
+            def notify(self, message, title=None):
+                raise RuntimeError("no shell")
+
+        marker = tmp_path / "weekplan_ready.json"
+        write_marker("2026-07-21", marker_path=marker)
+        monkeypatch.setattr(tray_app, "_WEEKPLAN_MARKER", marker)
+        tray_app._maybe_toast_week_plan(_Boom())  # must not raise
+
+    def test_marker_path_anchored_to_root(self):
+        from core.weekplan.notify import MARKER_RELPATH
+        assert tray_app._WEEKPLAN_MARKER == tray_app._ROOT / MARKER_RELPATH
+
+
 class TestRunUpdateFlow:
     def _info(self):
         from core.update.releases import UpdateInfo

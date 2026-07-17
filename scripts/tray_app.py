@@ -51,8 +51,15 @@ from core.update.releases import (  # noqa: E402
     download_zip,
 )
 from core.update.version import get_version  # noqa: E402
+from core.weekplan.notify import (  # noqa: E402
+    MARKER_RELPATH,
+    TOAST_MESSAGE,
+    TOAST_TITLE,
+    consume_marker,
+)
 
 _RUN_DIR = _ROOT / "data" / "run"
+_WEEKPLAN_MARKER = _ROOT / MARKER_RELPATH
 VENV_PY = _ROOT / ".venv" / "Scripts" / "python.exe"
 
 # Round-2 CLI: bare command == voice on, corner prompts ON. Coupling-
@@ -211,7 +218,19 @@ def watchdog_tick(intended: bool, proc, log_file: Path, now_iso: str) -> bool:
     return True
 
 
-def _watchdog_loop() -> None:
+def _maybe_toast_week_plan(icon) -> None:
+    """One toast when the watcher marks a fresh week plan. Failures are
+    swallowed -- a broken notification must never hurt the watchdog."""
+    marker = consume_marker(_WEEKPLAN_MARKER)
+    if marker is None or icon is None:
+        return
+    try:
+        icon.notify(TOAST_MESSAGE, TOAST_TITLE)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _watchdog_loop(icon=None) -> None:
     while True:
         time.sleep(WATCHDOG_INTERVAL_S)
         try:
@@ -222,6 +241,7 @@ def _watchdog_loop() -> None:
                 proc.log_file,
                 datetime.now().isoformat(timespec="seconds"),
             )
+            _maybe_toast_week_plan(icon)
         except Exception:  # noqa: BLE001 -- the watchdog itself never dies
             pass
 
@@ -421,7 +441,8 @@ def main(smoke: bool = False) -> int:
     if smoke:
         return 0
     _start_rig()
-    threading.Thread(target=_watchdog_loop, daemon=True).start()
+    threading.Thread(target=_watchdog_loop, args=(icon,),
+                     daemon=True).start()
     threading.Thread(target=_update_check_loop, daemon=True).start()
     icon.run()
     return 0

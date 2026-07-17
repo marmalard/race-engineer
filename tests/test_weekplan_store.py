@@ -42,8 +42,10 @@ class TestWeekPlanStore:
 
     def test_resave_preserves_created_at(self, store):
         store.save(_plan())
-        store.save(_plan(created="2026-07-20T10:00:00+00:00",
-                         updated="2026-07-20T10:00:00+00:00"))
+        p2 = _plan(created="2026-07-20T10:00:00+00:00",
+                   updated="2026-07-20T10:00:00+00:00")
+        store.save(p2)
+        assert p2.created_at == "2026-07-20T10:00:00+00:00"  # not mutated
         out = store.get("2026-07-21")
         assert out.created_at == "2026-07-19T09:00:00+00:00"
         assert out.updated_at == "2026-07-20T10:00:00+00:00"

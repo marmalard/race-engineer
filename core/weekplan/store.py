@@ -74,10 +74,12 @@ class WeekPlanStore:
         return conn
 
     def save(self, plan: WeekPlan) -> None:
-        """INSERT OR REPLACE; an existing week keeps its created_at."""
+        """INSERT OR REPLACE; an existing week keeps its created_at.
+        The passed plan object is never mutated."""
         existing = self.get(plan.week_start)
-        if existing is not None:
-            plan.created_at = existing.created_at
+        created_at = existing.created_at if existing else plan.created_at
+        payload = asdict(plan)
+        payload["created_at"] = created_at
         with self._conn() as conn:
             conn.execute(
                 """
@@ -85,8 +87,8 @@ class WeekPlanStore:
                     (week_start, plan_json, created_at, updated_at)
                 VALUES (?, ?, ?, ?)
                 """,
-                (plan.week_start, json.dumps(asdict(plan)),
-                 plan.created_at, plan.updated_at),
+                (plan.week_start, json.dumps(payload),
+                 created_at, plan.updated_at),
             )
 
     def get(self, week_start: str) -> WeekPlan | None:

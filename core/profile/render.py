@@ -148,7 +148,7 @@ def verdict_time_to_pace(t: TimeToPace) -> str:
     if t.median_laps is None:
         return ""
     line = (
-        f"You need ~{t.median_laps:.0f} laps to reach pace "
+        f"You need ~{_plural(round(t.median_laps), 'lap')} to reach pace "
         f"({_plural(t.sample_sessions, 'session')}) — races give "
         "you zero warm-up."
     )

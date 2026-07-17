@@ -254,6 +254,14 @@ class TestVerdictTimeToPace:
                        trend_laps=-1.5, enough_data=True)
         assert "Reaching pace sooner lately (-2 laps)." in verdict_time_to_pace(t)
 
+    def test_singular_lap(self):
+        t = TimeToPace(median_laps=1.0, sample_sessions=6,
+                       trend_laps=None, enough_data=True)
+        assert verdict_time_to_pace(t) == (
+            "You need ~1 lap to reach pace (6 sessions) — races give "
+            "you zero warm-up."
+        )
+
     def test_empty(self):
         assert verdict_time_to_pace(TimeToPace()) == ""
 

@@ -137,9 +137,8 @@ def render_driver_profile_page() -> None:
             st.caption(f"Across {ttp.sample_sessions} practice sessions.")
         else:
             st.caption(
-                f"Collecting data — {ttp.sample_sessions} qualifying "
-                "sessions so far. Practice sessions with 5+ valid laps "
-                "count once history accrues."
+                f"Collecting data — {ttp.sample_sessions} eligible sessions so far. "
+                "Practice sessions with 5+ valid laps count once history accrues."
             )
 
     st.subheader("Practice readiness")

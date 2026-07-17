@@ -74,3 +74,108 @@ class TestCrossed:
         assert crossed(480.0, 510.0, 500.0)
         assert not crossed(510.0, 520.0, 500.0)
         assert crossed(6900.0, 20.0, 6950.0)  # start/finish wrap
+
+
+from core.coaching.debrief import RegionDiagnosis
+from core.live.exit_verdict import ArmedVerdict, VerdictResult, VerdictWatcher
+from core.telemetry.loss_regions import LossRegion
+
+TRACK_LEN = 7000.0
+
+
+def _armed(span=(1000.0, 1100.0), braking_delta=-15.0, ref_onset=980.0,
+           faults=(FaultKind.BRAKING,)) -> ArmedVerdict:
+    diag = RegionDiagnosis(
+        region=LossRegion(distance_start=span[0], distance_end=span[1],
+                          time_lost=0.5),
+        label="La Source",
+        braking_delta_m=braking_delta,
+        min_speed_delta_ms=0.0,
+        throttle_delta_m=None,
+        driver_min_speed_ms=20.0,
+        reference_min_speed_ms=20.0,
+        reference_brake_onset_m=ref_onset,
+    )
+    return ArmedVerdict(diagnosis=diag, faults=list(faults))
+
+
+def _drive(watcher, start, end, step=10.0, speed=40.0, brake=0.0,
+           throttle=0.0):
+    """Feed a straight run of ticks; return the first VerdictResult."""
+    d = start
+    result = None
+    while d <= end:
+        r = watcher.feed(d, speed, brake, throttle)
+        result = result or r
+        d += step
+    return result
+
+
+class TestVerdictWatcher:
+    def test_braking_verdict_fires_past_exit(self):
+        w = VerdictWatcher()
+        w.set_plan([_armed()], TRACK_LEN)
+        _drive(w, 700.0, 985.0)                      # no brake yet
+        w.feed(990.0, 30.0, 0.5, 0.0)                # brake onset at 990
+        _drive(w, 1000.0, 1190.0, speed=25.0)        # through the corner
+        r = w.feed(1210.0, 30.0, 0.0, 1.0)           # crosses 1100+100
+        assert isinstance(r, VerdictResult)
+        assert r.label == "La Source"
+        assert r.kind is FaultKind.BRAKING
+        # onset 990 vs ref 980 -> +10 late; last lap -15 early -> flip
+        assert r.bucket == "overcorrected"
+        assert r.text == "Too far — back it off."
+
+    def test_fixed_when_onset_matches_reference(self):
+        w = VerdictWatcher()
+        w.set_plan([_armed()], TRACK_LEN)
+        _drive(w, 700.0, 975.0)
+        w.feed(983.0, 30.0, 0.5, 0.0)                # 3m late: under 8m
+        _drive(w, 990.0, 1190.0, speed=25.0)
+        r = w.feed(1210.0, 30.0, 0.0, 1.0)
+        assert r.bucket == "fixed"
+        assert r.text == "That's it."
+
+    def test_no_brake_observed_is_silent(self):
+        w = VerdictWatcher()
+        w.set_plan([_armed()], TRACK_LEN)
+        r = _drive(w, 700.0, 1250.0)                 # never brakes
+        assert r is None                             # insufficient data
+
+    def test_fires_once_per_lap_and_rearm(self):
+        w = VerdictWatcher()
+        w.set_plan([_armed()], TRACK_LEN)
+        _drive(w, 700.0, 975.0)
+        w.feed(983.0, 30.0, 0.5, 0.0)
+        _drive(w, 990.0, 1190.0)
+        assert w.feed(1210.0, 30.0, 0.0, 1.0) is not None
+        assert w.feed(1220.0, 30.0, 0.0, 1.0) is None   # fired flag holds
+        w.rearm()
+        _drive(w, 700.0, 975.0)
+        w.feed(983.0, 30.0, 0.5, 0.0)
+        _drive(w, 990.0, 1190.0)
+        assert w.feed(1210.0, 30.0, 0.0, 1.0) is not None
+
+    def test_reset_position_prevents_false_wrap_fire(self):
+        w = VerdictWatcher()
+        w.set_plan([_armed(span=(5400.0, 5500.0), ref_onset=5380.0)],
+                   TRACK_LEN)
+        w.feed(5300.0, 40.0, 0.5, 0.0)
+        w.reset_position()                           # towed to pits
+        assert w.feed(300.0, 20.0, 0.0, 0.0) is None  # primes, no fire
+        assert w.feed(400.0, 20.0, 0.0, 0.0) is None
+
+    def test_lift_verdict_uses_observed_min_speed(self):
+        armed = _armed(faults=(FaultKind.LIFT,))
+        armed.diagnosis.min_speed_delta_ms = -4.0    # last lap: 4 m/s slow
+        w = VerdictWatcher()
+        w.set_plan([armed], TRACK_LEN)
+        _drive(w, 700.0, 990.0, speed=40.0)
+        _drive(w, 1000.0, 1090.0, speed=19.0)        # min 19 vs ref 20:
+        r = _drive(w, 1100.0, 1250.0, speed=30.0)    # 1 m/s slow -> fixed
+        assert r is not None and r.bucket == "fixed"
+
+    def test_empty_plan_is_silent(self):
+        w = VerdictWatcher()
+        w.set_plan([], TRACK_LEN)
+        assert _drive(w, 0.0, 500.0) is None

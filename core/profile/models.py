@@ -17,6 +17,11 @@ REPRESENTATIVE_FACTOR = 1.10  # a lap counts as clean only within 110% of the
                                # combo best — same 10% pace-threshold precedent
                                # as the coaching analyzer's disrupted-lap filter
 
+TECHNIQUE_MIN_SESSIONS = 5   # diagnosed sessions before technique speaks
+TECHNIQUE_TREND_WINDOW = 5   # recent sessions vs everything before
+TTP_FACTOR = 1.01            # time-to-pace: within 101% of session best
+TTP_MIN_LAPS = 5             # sessions with fewer valid laps don't count
+
 
 @dataclass
 class StartsTendency:
@@ -93,6 +98,40 @@ class ComboReadiness:
 
 
 @dataclass
+class FaultAggregate:
+    """Cross-session aggregate for one FaultKind."""
+
+    kind: str                        # FaultKind.value
+    occurrences: int                 # regions where this fault crossed threshold
+    combos: int                      # distinct (track_id, car) it appears in
+    mean_time_lost_s: float
+    trend_time_lost_s: float | None  # recent mean minus earlier mean
+                                     # (negative = shrinking = improving);
+                                     # None until both pools are non-empty
+
+
+@dataclass
+class TechniqueTendencies:
+    """What the persisted loss-region corpus says about technique."""
+
+    dominant: str | None = None
+    faults: list[FaultAggregate] = field(default_factory=list)
+    recurring_corners: list[tuple[str, int]] = field(default_factory=list)
+    sessions_diagnosed: int = 0
+    enough_data: bool = False
+
+
+@dataclass
+class TimeToPace:
+    """Warm-up habit: how many laps until the driver is on pace."""
+
+    median_laps: float | None = None
+    sample_sessions: int = 0
+    trend_laps: float | None = None  # negative = reaching pace sooner
+    enough_data: bool = False
+
+
+@dataclass
 class DriverProfile:
     cust_id: int = 0
     driver_name: str = ""
@@ -100,3 +139,5 @@ class DriverProfile:
     combos_tracked: int = 0
     racecraft: RacecraftTendencies = field(default_factory=RacecraftTendencies)
     readiness: list[ComboReadiness] = field(default_factory=list)
+    technique: TechniqueTendencies = field(default_factory=TechniqueTendencies)
+    time_to_pace: TimeToPace = field(default_factory=TimeToPace)

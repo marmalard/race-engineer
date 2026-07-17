@@ -205,7 +205,7 @@ def render_progression_page() -> None:
     if not fault_series:
         st.caption(
             f"Technique trends unlock as diagnosed sessions accrue "
-            f"(0 of {TECHNIQUE_MIN_SESSIONS})."
+            f"({n_sessions} of {TECHNIQUE_MIN_SESSIONS})."
         )
     else:
         fig = go.Figure()
@@ -229,6 +229,8 @@ def render_progression_page() -> None:
 
     # ---- 6. Pace-implied iRating -----------------------------------------
     st.subheader("Pace-implied iRating")
+    for w in st.session_state.pop("recompute_warnings", []):
+        st.caption(f"Note: {w}")
     ir_store = ImpliedIRStore()
     latest = ir_store.latest_week()
     if latest is not None:
@@ -285,6 +287,5 @@ def render_progression_page() -> None:
                 api, seasons, sessions, laps)
             ir_store.save_week(
                 iracing_week_start(date.today()).isoformat(), rows)
-        for w in warnings:
-            st.caption(f"Note: {w}")
+        st.session_state["recompute_warnings"] = warnings
         st.rerun()

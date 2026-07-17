@@ -34,17 +34,12 @@ def build_streak(races: list[tuple[str, str]], today: date) -> StreakSummary:
     current week; an empty current week never breaks the streak (it is
     still in progress) — counting starts from the previous week instead.
     """
-    weeks: set[date] = set()
-    for session_date, created_at in races:
-        d = parse_race_date(session_date, created_at)
-        if d is not None:
-            weeks.add(iracing_week_start(d))
+    dated = [parse_race_date(sd, ca) for sd, ca in races]
+    weeks = {iracing_week_start(d) for d in dated if d is not None}
 
     current = iracing_week_start(today)
     races_this_week = sum(
-        1 for sd, ca in races
-        if (d := parse_race_date(sd, ca)) is not None
-        and iracing_week_start(d) == current
+        1 for d in dated if d is not None and iracing_week_start(d) == current
     )
 
     cursor = current if current in weeks else current - timedelta(days=7)

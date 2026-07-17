@@ -27,6 +27,9 @@ class TestParseRaceDate:
     def test_both_unparseable_returns_none(self):
         assert parse_race_date("", "garbage") is None
 
+    def test_garbage_session_date_falls_back_to_created_at(self):
+        assert parse_race_date("garbage", "2026-07-13T09:00:00+00:00") == date(2026, 7, 13)
+
 
 class TestBuildStreak:
     # today = Fri 2026-07-17; current week starts Tue 2026-07-14

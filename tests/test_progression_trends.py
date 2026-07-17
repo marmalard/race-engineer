@@ -2,7 +2,7 @@
 
 from core.benchmark.reference_store import ReferenceLapMeta
 from core.live.nudges import fault_kinds_from_diagnosis
-from core.profile.technique import _diagnosis_from_row
+from core.profile.technique import diagnosis_from_row as _diagnosis_from_row
 from core.progression.trends import combo_pace_series, fault_trend_series, pb_timeline
 from core.track.track_db import DiagnosisRow, SessionRow
 

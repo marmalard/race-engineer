@@ -9,7 +9,7 @@ from collections import defaultdict
 
 from core.benchmark.reference_store import ReferenceLapMeta
 from core.live.nudges import fault_kinds_from_diagnosis
-from core.profile.technique import _diagnosis_from_row
+from core.profile.technique import diagnosis_from_row
 from core.track.track_db import DiagnosisRow, SessionRow
 
 
@@ -41,7 +41,7 @@ def fault_trend_series(
         lambda: defaultdict(float)
     )
     for r in rows:
-        for kind in fault_kinds_from_diagnosis(_diagnosis_from_row(r)):
+        for kind in fault_kinds_from_diagnosis(diagnosis_from_row(r)):
             per_kind[kind.value][(r.session_date, r.session_id)] += r.time_lost_s
     return {
         k: [(d, round(t, 6)) for (d, _sid), t in sorted(buckets.items())]

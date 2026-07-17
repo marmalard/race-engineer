@@ -22,7 +22,7 @@ from core.telemetry.loss_regions import LossRegion
 from core.track.track_db import DiagnosisRow
 
 
-def _diagnosis_from_row(row: DiagnosisRow) -> RegionDiagnosis:
+def diagnosis_from_row(row: DiagnosisRow) -> RegionDiagnosis:
     """Rebuild the analysis dataclass from a stored row (deltas mapped 1:1;
     the live-prompt reference absolutes stay None — tendencies don't use
     them, and they were never persisted). If fault_kinds_from_diagnosis ever
@@ -43,6 +43,9 @@ def _diagnosis_from_row(row: DiagnosisRow) -> RegionDiagnosis:
         brake_release_delta_m=row.brake_release_delta_m,
         exit_speed_delta_ms=row.exit_speed_delta_ms,
     )
+
+
+_diagnosis_from_row = diagnosis_from_row  # backward-compat alias
 
 
 def build_technique(rows: list[DiagnosisRow]) -> TechniqueTendencies:
@@ -69,7 +72,7 @@ def build_technique(rows: list[DiagnosisRow]) -> TechniqueTendencies:
         # a corner identity — never a "recurring corner".
         if not r.label.startswith("~"):
             labels[r.label] += 1
-        for kind in fault_kinds_from_diagnosis(_diagnosis_from_row(r)):
+        for kind in fault_kinds_from_diagnosis(diagnosis_from_row(r)):
             k = kind.value
             occurrences[k] += 1
             combos[k].add((r.track_id, r.car))

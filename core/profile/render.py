@@ -27,13 +27,14 @@ FADE_BAND_S = 0.15          # |fade| below this = not worth mentioning
 TREND_BAND_S = 0.05          # |technique trend| below this = not worth saying
 TTP_TREND_BAND_LAPS = 1.0    # |time-to-pace trend| below this = flat
 
-_FAULT_LABEL = {
+FAULT_LABELS = {
     "lift": "Apex speed",
     "braking": "Brake point",
     "release": "Brake release",
     "exit_speed": "Corner exit speed",
     "throttle": "Throttle pickup",
 }
+_FAULT_LABEL = FAULT_LABELS  # internal alias, existing call sites unchanged
 
 
 def _signed(x: float) -> str:

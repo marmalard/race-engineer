@@ -28,7 +28,7 @@ TREND_BAND_S = 0.05          # |technique trend| below this = not worth saying
 TTP_TREND_BAND_LAPS = 1.0    # |time-to-pace trend| below this = flat
 
 _FAULT_LABEL = {
-    "lift": "Carrying apex speed",
+    "lift": "Apex speed",
     "braking": "Brake point",
     "release": "Brake release",
     "exit_speed": "Corner exit speed",
@@ -257,6 +257,11 @@ def profile_markdown(p: DriverProfile) -> str:
         )
     if p.time_to_pace.enough_data:
         lines.append(f"- **Warm-up** — {verdict_time_to_pace(p.time_to_pace)}")
+    else:
+        lines.append(
+            f"- **Warm-up** — collecting data "
+            f"({_plural(p.time_to_pace.sample_sessions, 'session')})."
+        )
     lines += ["", "## Practice readiness"]
     if not p.readiness:
         lines.append("_No practice history yet — sessions accrue "

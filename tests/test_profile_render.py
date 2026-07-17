@@ -280,3 +280,29 @@ def test_markdown_has_technique_section():
     md = profile_markdown(DriverProfile())
     assert "## Technique" in md
     assert "collecting data (0 of 5 diagnosed sessions)" in md
+
+
+def test_lift_label_names_the_fault_not_the_skill():
+    t = TechniqueTendencies(
+        dominant="lift",
+        faults=[FaultAggregate(kind="lift", occurrences=6, combos=2,
+                               mean_time_lost_s=0.6,
+                               trend_time_lost_s=None)],
+        recurring_corners=[],
+        sessions_diagnosed=6,
+        enough_data=True,
+    )
+    assert verdict_technique(t) == (
+        "Apex speed is your recurring loss — 6 regions across 2 combos, avg 0.6s each."
+    )
+
+
+def test_verdict_time_to_pace_worsening():
+    t = TimeToPace(median_laps=5.0, sample_sessions=10,
+                   trend_laps=2.0, enough_data=True)
+    assert "Taking longer lately (+2 laps)." in verdict_time_to_pace(t)
+
+
+def test_profile_markdown_warmup_collecting_state():
+    md = profile_markdown(DriverProfile())
+    assert "**Warm-up** — collecting data (0 sessions)" in md

@@ -17,7 +17,7 @@ from core.telemetry.ibt_parser import IBTParser
 from core.telemetry.normalizer import Normalizer
 from core.track.lovely_seeder import seed_track_from_lovely
 from core.track.models import Track, TrackType
-from core.track.track_db import TrackDB
+from core.track.track_db import DiagnosisContext, TrackDB
 from core.watcher.scanner import covers_full_lap, is_plausible_lap, should_promote
 
 
@@ -32,6 +32,7 @@ class SessionReport:
     valid_laps: int = 0
     best_lap_time: float | None = None
     promoted: bool = False
+    diagnoses_recorded: int = 0
     best_lap_dirty: bool = False
     dirty_note: str | None = None
     debrief_text: str | None = None
@@ -74,6 +75,55 @@ def _load_corners(
     return corners
 
 
+@dataclass
+class ParsedBestLap:
+    """parse -> normalize -> plausibility, shared by watcher and back-fill.
+
+    The plausibility/coverage gates are defined ONCE here; see
+    test_short_coverage_lap_not_promoted for why they exist.
+
+    Defense in depth before best-selection and promotion: a
+    normalizer-valid lap can still be physically impossible (towed /
+    aborted / partial laps whose recorded time covers only a fraction
+    of the track — see is_plausible_lap). Never let one become the
+    session best or a promoted PB; the ReferenceStore is the live
+    coach's ground truth.
+    """
+
+    session: object            # IBT session metadata (track/car/driver)
+    track_length_m: float
+    lap_dfs: list
+    valid: list                # normalizer-valid NormalizedLaps
+    plausible: list            # valid + plausible time + full coverage
+    best: object | None        # fastest plausible NormalizedLap
+
+
+def parse_best_lap(path: Path) -> ParsedBestLap:
+    """Parse an IBT and select its best plausible lap. Raises on parse
+    failure — callers own their error policy."""
+    parser = IBTParser()
+    ibt = parser.parse(path)
+    session = ibt.session
+    track_length_m = session.track_length_km * 1000.0
+    lap_dfs = parser.get_laps(ibt)
+    lap_numbers = [int(df["Lap"].iloc[0]) for df in lap_dfs]
+    laps = Normalizer().normalize_session(lap_dfs, lap_numbers, track_length_m)
+    valid = [l for l in laps if l.is_valid]
+    plausible = [
+        l for l in valid
+        if is_plausible_lap(l.lap_time, track_length_m)
+        and covers_full_lap(
+            float(l.distance[-1]) if len(l.distance) > 0 else 0.0,
+            track_length_m,
+        )
+    ]
+    best = min(plausible, key=lambda l: l.lap_time) if plausible else None
+    return ParsedBestLap(
+        session=session, track_length_m=track_length_m, lap_dfs=lap_dfs,
+        valid=valid, plausible=plausible, best=best,
+    )
+
+
 def process_ibt(
     path: Path,
     track_db: TrackDB,
@@ -88,38 +138,19 @@ def process_ibt(
     """
     report = SessionReport(path=path)
     try:
-        parser = IBTParser()
-        ibt = parser.parse(path)
-        session = ibt.session
+        parsed = parse_best_lap(path)
+        session = parsed.session
         track_id = str(session.track_id)
-        track_length_m = session.track_length_km * 1000.0
+        track_length_m = parsed.track_length_m
         report.track = session.track_name
         report.car = session.car_name
 
-        lap_dfs = parser.get_laps(ibt)
-        lap_numbers = [int(df["Lap"].iloc[0]) for df in lap_dfs]
-        laps = Normalizer().normalize_session(
-            lap_dfs, lap_numbers, track_length_m
-        )
+        lap_dfs = parsed.lap_dfs
         report.laps_found = len(lap_dfs)
-        valid = [l for l in laps if l.is_valid]
+        valid = parsed.valid
         report.valid_laps = len(valid)
-
-        # Defense in depth before best-selection and promotion: a
-        # normalizer-valid lap can still be physically impossible (towed /
-        # aborted / partial laps whose recorded time covers only a fraction
-        # of the track — see is_plausible_lap). Never let one become the
-        # session best or a promoted PB; the ReferenceStore is the live
-        # coach's ground truth.
-        plausible = [
-            l for l in valid
-            if is_plausible_lap(l.lap_time, track_length_m)
-            and covers_full_lap(
-                float(l.distance[-1]) if len(l.distance) > 0 else 0.0,
-                track_length_m,
-            )
-        ]
-        best = min(plausible, key=lambda l: l.lap_time) if plausible else None
+        plausible = parsed.plausible
+        best = parsed.best
         report.best_lap_time = best.lap_time if best else None
 
         # Cleanliness: any mid-lap incident-count rise makes a lap's TIME
@@ -239,6 +270,18 @@ def process_ibt(
                 track_length_m,
             )
             result = build_debrief(best, ref.lap, corners)
+            track_db.record_region_diagnoses(
+                session_id,
+                DiagnosisContext(
+                    driver_lap_number=best.lap_number,
+                    driver_lap_time=best.lap_time,
+                    reference_source=ref.source,
+                    reference_lap_time=ref.meta.lap_time,
+                    total_time_delta_s=result.total_time_delta,
+                ),
+                result.diagnoses,
+            )
+            report.diagnoses_recorded = len(result.diagnoses)
             report.debrief_text = format_lap_block(
                 best.lap_number, best.lap_time,
                 result.total_time_delta, result.diagnoses, top_n=3,

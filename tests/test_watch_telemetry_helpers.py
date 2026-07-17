@@ -151,3 +151,20 @@ def test_process_candidate_reroutes_pre_race_chunk(monkeypatch):
     )
     assert calls["lap"] == (Path("chunk.ibt"), "Lone Qualify")
     assert "Lone Qualify" in block
+
+
+def test_format_report_mentions_diagnoses_recorded():
+    from core.watcher.processor import SessionReport
+
+    r = SessionReport(path=Path("x.ibt"), track="Spa", car="M2",
+                      laps_found=5, valid_laps=4, best_lap_time=150.0,
+                      diagnoses_recorded=3)
+    assert "3 region diagnoses recorded" in watch_telemetry._format_report(r)
+
+
+def test_format_report_silent_when_no_diagnoses():
+    from core.watcher.processor import SessionReport
+
+    r = SessionReport(path=Path("x.ibt"), track="Spa", car="M2",
+                      laps_found=5, valid_laps=4, best_lap_time=150.0)
+    assert "diagnoses" not in watch_telemetry._format_report(r)

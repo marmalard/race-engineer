@@ -245,3 +245,49 @@ def test_debrief_against_preseeded_faster_reference(sample_ibt_path, dbs):
     # all dirty so only g61 remains (dirty best is still debriefed, not promoted)
     sources = {m.source for m in ref_store.list_all()}
     assert "g61" in sources  # pre-seeded reference untouched
+
+
+def test_no_reference_records_no_diagnoses(sample_ibt_path, dbs):
+    track_db, ref_store = dbs
+    report = process_ibt(sample_ibt_path, track_db, ref_store)
+    assert report.error is None
+    assert report.diagnoses_recorded == 0
+    assert track_db.list_region_diagnoses() == []
+
+
+def test_process_persists_diagnoses_when_reference_exists(sample_ibt_path, dbs):
+    """With a faster stored reference, the debrief runs and its region
+    diagnoses land in tracks.db with the comparison context."""
+    import dataclasses
+
+    from core.watcher.processor import parse_best_lap
+
+    track_db, ref_store = dbs
+    parsed = parse_best_lap(sample_ibt_path)
+    assert parsed.best is not None
+    # Uniformly 5% faster copy of the fixture's own best lap: identical
+    # speed trace (alignment offset 0) but every metre costs less time,
+    # so the driver "loses" everywhere -> loss regions exist.
+    factor = 0.95
+    faster = dataclasses.replace(
+        parsed.best,
+        lap_time=parsed.best.lap_time * factor,
+        elapsed_time=parsed.best.elapsed_time * factor,
+    )
+    ref_store.save(
+        str(parsed.session.track_id), parsed.session.car_name, faster,
+        source="personal_best", driver_name="Ref Driver",
+    )
+
+    report = process_ibt(sample_ibt_path, track_db, ref_store)
+    assert report.error is None
+    assert report.debrief_text is not None
+    assert report.diagnoses_recorded >= 1
+    rows = track_db.list_region_diagnoses()
+    assert len(rows) == report.diagnoses_recorded
+    r0 = rows[0]
+    assert r0.region_rank == 1
+    assert r0.reference_source == "personal_best"
+    assert r0.driver_lap_time == pytest.approx(parsed.best.lap_time)
+    assert r0.reference_lap_time == pytest.approx(faster.lap_time)
+    assert r0.time_lost_s > 0

@@ -84,6 +84,8 @@ def _format_report(r: SessionReport) -> str:
     ]
     if r.promoted:
         lines.append("  PB promoted to ReferenceStore")
+    if r.diagnoses_recorded:
+        lines.append(f"  {r.diagnoses_recorded} region diagnoses recorded")
     if r.dirty_note:
         lines.append(f"  NOTE: {r.dirty_note}")
     if r.debrief_text:

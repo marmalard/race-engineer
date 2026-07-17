@@ -194,3 +194,6 @@ Drive a practice session and confirm: verdict timing lands after exit
 but before the next braking zone; buckets match felt reality; race
 persistence gate stays quiet in traffic. Tune `VERDICT_POINT_M`,
 `IMPROVED_FRACTION`, `RACE_STREAK_MIN` from session logs.
+Note: if the SessionNum channel is absent, session_type stays "" and
+races gate as practice (fail-open, more cues) — a "gate never engaged"
+field report is this, not a logic bug.

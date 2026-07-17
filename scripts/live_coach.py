@@ -334,7 +334,8 @@ def main() -> None:
             # tick. WeekendInfo.EventType is NOT trustworthy here: it reads
             # "Race" for practice sessions on a race server.
             snum = sample.get("SessionNum")
-            if snum is not None and int(snum) != session_num:
+            if (isinstance(snum, (int, float)) and not isinstance(snum, bool)
+                    and int(snum) != session_num):
                 session_num = int(snum)
                 try:
                     session_type = current_session_type(
@@ -497,6 +498,11 @@ def main() -> None:
                             # Exactly once per completed comparison lap, with
                             # the FULL fault set — absent keys reset streaks
                             # (FaultStreakTracker.update contract).
+                            # Streaks count COACHED laps, not calendar laps:
+                            # invalid/baseline/dirty-baseline laps produce no
+                            # diagnoses and don't reset streaks. A fault can
+                            # therefore reach the race gate across an invalid-
+                            # lap gap — accepted v1 semantics.
                             streaks.update({
                                 (d.label, kinds[0])
                                 for d in result.diagnoses

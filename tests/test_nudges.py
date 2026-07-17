@@ -1,7 +1,15 @@
 """Tests for turning a RegionDiagnosis into a terse coaching nudge."""
 
 from core.coaching.debrief import RegionDiagnosis
-from core.live.nudges import Nudge, format_lap_block, format_lap_speech, nudge_from_diagnosis
+from core.live.nudges import (
+    FaultKind,
+    Nudge,
+    approach_cue_from_diagnosis,
+    fault_kinds_from_diagnosis,
+    format_lap_block,
+    format_lap_speech,
+    nudge_from_diagnosis,
+)
 from core.telemetry.loss_regions import LossRegion
 
 
@@ -382,3 +390,30 @@ def test_dirty_baseline_speech():
         "That lap had contact — I won't use it as the baseline. "
         "Give me a clean one."
     )
+
+
+class TestFaultKinds:
+    def test_ladder_order_all_faults(self):
+        # A diagnosis with every fault crossing threshold ranks by the
+        # salience ladder: lift > braking > release > exit > throttle.
+        d = _diag(min_speed=-3.0, braking=-15.0,
+                  release=-12.0, exit_speed=-3.0,
+                  throttle=25.0)
+        assert fault_kinds_from_diagnosis(d) == [
+            FaultKind.LIFT, FaultKind.BRAKING, FaultKind.RELEASE,
+            FaultKind.EXIT_SPEED, FaultKind.THROTTLE,
+        ]
+
+    def test_below_threshold_faults_excluded(self):
+        d = _diag(min_speed=-1.0, braking=-15.0)
+        assert fault_kinds_from_diagnosis(d) == [FaultKind.BRAKING]
+
+    def test_clean_diagnosis_is_empty(self):
+        assert fault_kinds_from_diagnosis(_diag()) == []
+
+    def test_cue_agrees_with_kinds(self):
+        # The cue speaks iff kinds is non-empty — one ranking function.
+        d = _diag(braking=-15.0)
+        assert fault_kinds_from_diagnosis(d) != []
+        assert approach_cue_from_diagnosis(d) is not None
+        assert approach_cue_from_diagnosis(_diag()) is None

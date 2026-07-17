@@ -9,6 +9,7 @@ spike so only meaningful deltas speak.
 """
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import TYPE_CHECKING
 
 from core.coaching.debrief import RegionDiagnosis
@@ -38,6 +39,38 @@ CAR_LENGTH_M = 4.5
 APPROACH_CUE_MAX_FAULTS = 2
 COARSE_A_BIT_MAX_LENGTHS = 2.5
 COARSE_COUPLE_MAX_LENGTHS = 5.0
+
+
+class FaultKind(Enum):
+    """One coached fault dimension — the shared vocabulary of the
+    approach cue and the exit verdict (they derive from the same
+    ranking so they can never disagree)."""
+
+    LIFT = "lift"
+    BRAKING = "braking"
+    RELEASE = "release"
+    EXIT_SPEED = "exit_speed"
+    THROTTLE = "throttle"
+
+
+def fault_kinds_from_diagnosis(diag: "RegionDiagnosis") -> "list[FaultKind]":
+    """Faults crossing threshold, ordered by the salience ladder:
+    lift > braking > release > exit speed > throttle."""
+    kinds: list[FaultKind] = []
+    if diag.min_speed_delta_ms <= -MIN_SPEED_THRESHOLD_MS:
+        kinds.append(FaultKind.LIFT)
+    if (diag.braking_delta_m is not None
+            and abs(diag.braking_delta_m) >= BRAKING_THRESHOLD_M):
+        kinds.append(FaultKind.BRAKING)
+    if (diag.brake_release_delta_m is not None
+            and diag.brake_release_delta_m <= -RELEASE_THRESHOLD_M):
+        kinds.append(FaultKind.RELEASE)
+    if diag.exit_speed_delta_ms <= -EXIT_SPEED_THRESHOLD_MS:
+        kinds.append(FaultKind.EXIT_SPEED)
+    if (diag.throttle_delta_m is not None
+            and diag.throttle_delta_m >= THROTTLE_THRESHOLD_M):
+        kinds.append(FaultKind.THROTTLE)
+    return kinds
 
 
 @dataclass
@@ -172,41 +205,33 @@ def _coarse_length_phrase(meters: float) -> str:
     return "a lot"
 
 
+def _cue_phrase(kind: FaultKind, diag: RegionDiagnosis) -> str:
+    """The spoken phrase fragment for a single fault kind in an approach cue."""
+    if kind is FaultKind.LIFT:
+        if diag.reference_min_speed_ms >= FLAT_CORNER_MIN_SPEED_MS:
+            return "carry it flat, don't lift"
+        return "carry more apex speed"
+    if kind is FaultKind.BRAKING:
+        coarse = _coarse_length_phrase(diag.braking_delta_m)
+        return (f"brake {coarse} later" if diag.braking_delta_m < 0
+                else f"brake {coarse} earlier")
+    if kind is FaultKind.RELEASE:
+        return "carry the brakes deeper"
+    if kind is FaultKind.EXIT_SPEED:
+        return "prioritize the exit"
+    return "get to throttle earlier on exit"
+
+
 def approach_cue_from_diagnosis(diag: RegionDiagnosis) -> "str | None":
     """One combined approach cue for a corner, or None if nothing crosses
     threshold. Spoken ~300m before the corner, so it names no corner ('here')
     and joins the top APPROACH_CUE_MAX_FAULTS faults by the salience ladder:
     lift > braking > release > exit > throttle."""
-    faults: list[str] = []
-
-    if diag.min_speed_delta_ms <= -MIN_SPEED_THRESHOLD_MS:
-        if diag.reference_min_speed_ms >= FLAT_CORNER_MIN_SPEED_MS:
-            faults.append("carry it flat, don't lift")
-        else:
-            faults.append("carry more apex speed")
-
-    if diag.braking_delta_m is not None and abs(diag.braking_delta_m) >= BRAKING_THRESHOLD_M:
-        coarse = _coarse_length_phrase(diag.braking_delta_m)
-        faults.append(
-            f"brake {coarse} later" if diag.braking_delta_m < 0
-            else f"brake {coarse} earlier"
-        )
-
-    if (
-        diag.brake_release_delta_m is not None
-        and diag.brake_release_delta_m <= -RELEASE_THRESHOLD_M
-    ):
-        faults.append("carry the brakes deeper")
-
-    if diag.exit_speed_delta_ms <= -EXIT_SPEED_THRESHOLD_MS:
-        faults.append("prioritize the exit")
-
-    if diag.throttle_delta_m is not None and diag.throttle_delta_m >= THROTTLE_THRESHOLD_M:
-        faults.append("get to throttle earlier on exit")
-
-    if not faults:
+    kinds = fault_kinds_from_diagnosis(diag)
+    if not kinds:
         return None
-    return "Coming up — " + ", ".join(faults[:APPROACH_CUE_MAX_FAULTS]) + "."
+    phrases = [_cue_phrase(k, diag) for k in kinds[:APPROACH_CUE_MAX_FAULTS]]
+    return "Coming up — " + ", ".join(phrases) + "."
 
 
 def _fmt_lap_time(seconds: float) -> str:

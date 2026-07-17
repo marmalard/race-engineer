@@ -16,7 +16,6 @@ from app.pages.briefing import _get_api, _load_seasons_cached
 from app.pages.driver_profile import _resolve_cust_id
 from core.benchmark.reference_store import ReferenceStore
 from core.briefing.render import fmt_lap
-from core.profile.models import TECHNIQUE_MIN_SESSIONS
 from core.profile.pace import build_readiness
 from core.profile.render import FAULT_LABELS
 from core.progression.implied_ir import aggregate_implied_ir
@@ -76,6 +75,8 @@ def render_progression_page() -> None:
         races = store.list_races()
     except Exception:
         races = []
+    # build_streak buckets by UTC race date but today is local — a late-Monday
+    # race can straddle the Tuesday flip (cosmetic, self-consistent).
     streak = build_streak(
         [(r.session_date, r.created_at) for r in races], date.today()
     )
@@ -204,8 +205,8 @@ def render_progression_page() -> None:
     n_sessions = len({r.session_id for r in diag_rows})
     if not fault_series:
         st.caption(
-            f"Technique trends unlock as diagnosed sessions accrue "
-            f"({n_sessions} of {TECHNIQUE_MIN_SESSIONS})."
+            f"Technique trends build as diagnosed sessions accrue "
+            f"({n_sessions} so far)."
         )
     else:
         fig = go.Figure()
@@ -285,7 +286,9 @@ def render_progression_page() -> None:
                 sessions, laps = [], {}
             rows, warnings = compute_week_implied_ir(
                 api, seasons, sessions, laps)
-            ir_store.save_week(
-                iracing_week_start(date.today()).isoformat(), rows)
+            # Guard: a failed/empty recompute leaves the previous snapshot alone.
+            if rows:
+                ir_store.save_week(
+                    iracing_week_start(date.today()).isoformat(), rows)
         st.session_state["recompute_warnings"] = warnings
         st.rerun()

@@ -38,7 +38,10 @@ PRESCRIPTIONS: tuple[Prescription, ...] = (
             "forces throttle discipline through Eau Rouge and Pouhon — "
             "early throttle here is a spin, not a tenth"
         ),
-        transfer_line="unlocks every high-speed commitment corner",
+        transfer_line=(
+            "unlocks every high-speed commitment corner — Eau Rouge courage "
+            "shows up as Carousel commitment in the F4"
+        ),
     ),
     Prescription(
         fault="braking",
@@ -65,30 +68,6 @@ PRESCRIPTIONS: tuple[Prescription, ...] = (
         ),
     ),
     Prescription(
-        fault="lift",
-        combo="Formula 4 at Road America",
-        skill_line=(
-            "a momentum car on a flowing track — carrying apex speed "
-            "through the Carousel IS the lap time"
-        ),
-        transfer_line=(
-            "apex-speed trust built here shows up in every momentum "
-            "corner, tin-tops included"
-        ),
-    ),
-    Prescription(
-        fault="exit_speed",
-        combo="Formula 4 at Road America",
-        skill_line=(
-            "long straights amplify every exit — the stopwatch teaches "
-            "exit-first priority by itself"
-        ),
-        transfer_line=(
-            "exit-first thinking pays on every straight-after-corner on "
-            "the calendar"
-        ),
-    ),
-    Prescription(
         fault="braking",
         combo="Porsche 992 Cup at Bathurst",
         skill_line=(
@@ -107,6 +86,9 @@ PRESCRIPTIONS: tuple[Prescription, ...] = (
             "teaches progressive throttle out of Canada Corner and Turn 5 "
             "— patience converts directly to drive off the corner"
         ),
-        transfer_line="throttle patience is the cheapest lap time in any RWD car",
+        transfer_line=(
+            "throttle patience is the cheapest lap time in any RWD car, "
+            "and it converts straight to F4 corner exits"
+        ),
     ),
 )

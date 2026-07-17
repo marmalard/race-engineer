@@ -2,7 +2,9 @@
 
 import sqlite3
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from core.track.models import (
     Corner,
@@ -11,6 +13,9 @@ from core.track.models import (
     TrackCharacter,
     TrackType,
 )
+
+if TYPE_CHECKING:  # duck-typed at runtime — keeps track_db below core.coaching
+    from core.coaching.debrief import RegionDiagnosis
 
 
 @dataclass
@@ -25,6 +30,7 @@ class SessionRow:
     session_date: str
     best_lap_time: float | None
     lap_count: int
+    ibt_file_path: str = ""
 
 
 @dataclass
@@ -34,6 +40,46 @@ class LapRow:
     lap_number: int
     lap_time: float
     is_valid: bool
+
+
+@dataclass
+class DiagnosisContext:
+    """What was compared, recorded alongside every region row."""
+
+    driver_lap_number: int
+    driver_lap_time: float
+    reference_source: str        # 'personal_best' | 'g61'
+    reference_lap_time: float
+    total_time_delta_s: float
+
+
+@dataclass
+class DiagnosisRow:
+    """One region_diagnoses row joined with its session context."""
+
+    session_id: str
+    track_id: str
+    track_name: str
+    car: str
+    session_type: str
+    session_date: str
+    region_rank: int
+    label: str
+    distance_start_m: float
+    distance_end_m: float
+    time_lost_s: float
+    braking_delta_m: float | None
+    min_speed_delta_ms: float
+    throttle_delta_m: float | None
+    brake_release_delta_m: float | None
+    exit_speed_delta_ms: float
+    driver_min_speed_ms: float
+    reference_min_speed_ms: float
+    driver_lap_number: int
+    driver_lap_time: float
+    reference_source: str
+    reference_lap_time: float
+    total_time_delta_s: float
 
 
 class TrackDB:
@@ -97,6 +143,32 @@ class TrackDB:
                     is_valid BOOLEAN,
                     sector_times TEXT
                 );
+
+                CREATE TABLE IF NOT EXISTS region_diagnoses (
+                    diagnosis_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL REFERENCES sessions(session_id),
+                    region_rank INTEGER NOT NULL,
+                    label TEXT NOT NULL,
+                    distance_start_m REAL NOT NULL,
+                    distance_end_m REAL NOT NULL,
+                    time_lost_s REAL NOT NULL,
+                    braking_delta_m REAL,
+                    min_speed_delta_ms REAL NOT NULL,
+                    throttle_delta_m REAL,
+                    brake_release_delta_m REAL,
+                    exit_speed_delta_ms REAL NOT NULL,
+                    driver_min_speed_ms REAL NOT NULL,
+                    reference_min_speed_ms REAL NOT NULL,
+                    driver_lap_number INTEGER NOT NULL,
+                    driver_lap_time REAL NOT NULL,
+                    reference_source TEXT NOT NULL,
+                    reference_lap_time REAL NOT NULL,
+                    total_time_delta_s REAL NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_region_diagnoses_session
+                    ON region_diagnoses(session_id);
                 """
             )
             conn.commit()
@@ -341,7 +413,7 @@ class TrackDB:
                 SELECT s.session_id, s.track_id,
                        COALESCE(t.name, s.track_id) AS track_name,
                        s.car, s.session_type, s.session_date,
-                       s.best_lap_time, s.lap_count
+                       s.best_lap_time, s.lap_count, s.ibt_file_path
                 FROM sessions s
                 LEFT JOIN tracks t ON t.track_id = s.track_id
                 ORDER BY s.session_date
@@ -357,6 +429,7 @@ class TrackDB:
                     session_date=str(r["session_date"] or ""),
                     best_lap_time=r["best_lap_time"],
                     lap_count=r["lap_count"] or 0,
+                    ibt_file_path=r["ibt_file_path"] or "",
                 )
                 for r in rows
             ]
@@ -374,6 +447,104 @@ class TrackDB:
             ).fetchall()
             return [
                 LapRow(lap_number=r["lap_number"], lap_time=r["lap_time"], is_valid=bool(r["is_valid"]))
+                for r in rows
+            ]
+        finally:
+            conn.close()
+
+    def record_region_diagnoses(
+        self,
+        session_id: str,
+        context: "DiagnosisContext",
+        diagnoses: "list[RegionDiagnosis]",
+    ) -> None:
+        """Replace the diagnosis rows for a session (idempotent on rerun).
+
+        Takes RegionDiagnosis objects duck-typed (attribute access only) —
+        no runtime import of core.coaching. Empty list clears the rows.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        conn = self._get_conn()
+        try:
+            conn.execute(
+                "DELETE FROM region_diagnoses WHERE session_id = ?",
+                (session_id,),
+            )
+            conn.executemany(
+                """
+                INSERT INTO region_diagnoses (
+                    session_id, region_rank, label,
+                    distance_start_m, distance_end_m, time_lost_s,
+                    braking_delta_m, min_speed_delta_ms, throttle_delta_m,
+                    brake_release_delta_m, exit_speed_delta_ms,
+                    driver_min_speed_ms, reference_min_speed_ms,
+                    driver_lap_number, driver_lap_time,
+                    reference_source, reference_lap_time,
+                    total_time_delta_s, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        session_id, rank, d.label,
+                        d.region.distance_start, d.region.distance_end,
+                        d.region.time_lost,
+                        d.braking_delta_m, d.min_speed_delta_ms,
+                        d.throttle_delta_m, d.brake_release_delta_m,
+                        d.exit_speed_delta_ms,
+                        d.driver_min_speed_ms, d.reference_min_speed_ms,
+                        context.driver_lap_number, context.driver_lap_time,
+                        context.reference_source, context.reference_lap_time,
+                        context.total_time_delta_s, now,
+                    )
+                    for rank, d in enumerate(diagnoses, start=1)
+                ],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def list_region_diagnoses(self) -> list["DiagnosisRow"]:
+        """All diagnosis rows joined with session context, ordered by
+        session_date then region_rank."""
+        conn = self._get_conn()
+        try:
+            rows = conn.execute(
+                """
+                SELECT d.*, s.track_id AS s_track_id,
+                       COALESCE(t.name, s.track_id) AS track_name,
+                       s.car, s.session_type, s.session_date
+                FROM region_diagnoses d
+                JOIN sessions s ON s.session_id = d.session_id
+                LEFT JOIN tracks t ON t.track_id = s.track_id
+                ORDER BY s.session_date, d.region_rank
+                """
+            ).fetchall()
+            return [
+                DiagnosisRow(
+                    session_id=r["session_id"],
+                    track_id=r["s_track_id"] or "",
+                    track_name=r["track_name"] or "",
+                    car=r["car"] or "",
+                    session_type=r["session_type"] or "",
+                    session_date=r["session_date"] or "",
+                    region_rank=r["region_rank"],
+                    label=r["label"],
+                    distance_start_m=r["distance_start_m"],
+                    distance_end_m=r["distance_end_m"],
+                    time_lost_s=r["time_lost_s"],
+                    braking_delta_m=r["braking_delta_m"],
+                    min_speed_delta_ms=r["min_speed_delta_ms"],
+                    throttle_delta_m=r["throttle_delta_m"],
+                    brake_release_delta_m=r["brake_release_delta_m"],
+                    exit_speed_delta_ms=r["exit_speed_delta_ms"],
+                    driver_min_speed_ms=r["driver_min_speed_ms"],
+                    reference_min_speed_ms=r["reference_min_speed_ms"],
+                    driver_lap_number=r["driver_lap_number"],
+                    driver_lap_time=r["driver_lap_time"],
+                    reference_source=r["reference_source"],
+                    reference_lap_time=r["reference_lap_time"],
+                    total_time_delta_s=r["total_time_delta_s"],
+                )
                 for r in rows
             ]
         finally:

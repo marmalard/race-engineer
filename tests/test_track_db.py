@@ -368,3 +368,124 @@ def test_list_session_history_and_laps_roundtrip(tmp_path):
     ]
     assert isinstance(laps[0], LapRow)
     assert db.get_session_laps("nope") == []
+
+
+# ---------------------------------------------------------------------------
+# Region diagnoses
+# ---------------------------------------------------------------------------
+
+from core.coaching.debrief import RegionDiagnosis
+from core.telemetry.loss_regions import LossRegion
+from core.track.track_db import DiagnosisContext, DiagnosisRow
+
+
+def _diag(label="Eau Rouge", time_lost=1.2, braking=-12.0, release=None):
+    """A RegionDiagnosis as build_debrief produces it (absolutes default None)."""
+    return RegionDiagnosis(
+        region=LossRegion(distance_start=100.0, distance_end=250.0,
+                          time_lost=time_lost),
+        label=label,
+        braking_delta_m=braking,
+        min_speed_delta_ms=-2.5,
+        throttle_delta_m=15.0,
+        driver_min_speed_ms=30.0,
+        reference_min_speed_ms=32.5,
+        brake_release_delta_m=release,
+        exit_speed_delta_ms=-1.0,
+    )
+
+
+def _ctx():
+    return DiagnosisContext(
+        driver_lap_number=3,
+        driver_lap_time=150.5,
+        reference_source="personal_best",
+        reference_lap_time=148.2,
+        total_time_delta_s=2.3,
+    )
+
+
+def _record_session(db, session_id="sess1", track_id="523",
+                    session_type="practice", date="2026-07-01 10-00-00"):
+    db.record_session(
+        session_id=session_id, track_id=track_id, car="BMW M2",
+        session_type=session_type, session_date=date,
+        best_lap_time=150.5, lap_count=8, ibt_file_path=f"C:/t/{session_id}.ibt",
+    )
+
+
+class TestRegionDiagnoses:
+    def test_round_trip_all_fields(self, tmp_path):
+        db = TrackDB(tmp_path / "t.db")
+        _record_session(db)
+        db.record_region_diagnoses(
+            "sess1", _ctx(), [_diag(), _diag(label="Pouhon", time_lost=0.4,
+                                          braking=None, release=-8.0)],
+        )
+        rows = db.list_region_diagnoses()
+        assert len(rows) == 2
+        r = rows[0]
+        assert isinstance(r, DiagnosisRow)
+        assert r.session_id == "sess1"
+        assert r.region_rank == 1
+        assert r.label == "Eau Rouge"
+        assert r.distance_start_m == 100.0
+        assert r.distance_end_m == 250.0
+        assert r.time_lost_s == 1.2
+        assert r.braking_delta_m == -12.0
+        assert r.min_speed_delta_ms == -2.5
+        assert r.throttle_delta_m == 15.0
+        assert r.brake_release_delta_m is None
+        assert r.exit_speed_delta_ms == -1.0
+        assert r.driver_min_speed_ms == 30.0
+        assert r.reference_min_speed_ms == 32.5
+        assert r.driver_lap_number == 3
+        assert r.driver_lap_time == 150.5
+        assert r.reference_source == "personal_best"
+        assert r.reference_lap_time == 148.2
+        assert r.total_time_delta_s == 2.3
+        # NULL round-trip on the second row
+        assert rows[1].braking_delta_m is None
+        assert rows[1].brake_release_delta_m == -8.0
+        assert rows[1].region_rank == 2
+
+    def test_session_context_joined(self, tmp_path):
+        db = TrackDB(tmp_path / "t.db")
+        _record_session(db)
+        db.record_region_diagnoses("sess1", _ctx(), [_diag()])
+        r = db.list_region_diagnoses()[0]
+        assert r.track_id == "523"
+        assert r.car == "BMW M2"
+        assert r.session_type == "practice"
+        assert r.session_date == "2026-07-01 10-00-00"
+
+    def test_rerun_is_idempotent(self, tmp_path):
+        db = TrackDB(tmp_path / "t.db")
+        _record_session(db)
+        db.record_region_diagnoses("sess1", _ctx(), [_diag(), _diag()])
+        db.record_region_diagnoses("sess1", _ctx(), [_diag()])
+        assert len(db.list_region_diagnoses()) == 1
+
+    def test_empty_list_clears(self, tmp_path):
+        db = TrackDB(tmp_path / "t.db")
+        _record_session(db)
+        db.record_region_diagnoses("sess1", _ctx(), [_diag()])
+        db.record_region_diagnoses("sess1", _ctx(), [])
+        assert db.list_region_diagnoses() == []
+
+    def test_ordered_by_date_then_rank(self, tmp_path):
+        db = TrackDB(tmp_path / "t.db")
+        _record_session(db, "b", date="2026-07-02 10-00-00")
+        _record_session(db, "a", date="2026-07-01 10-00-00")
+        db.record_region_diagnoses("b", _ctx(), [_diag(label="B1")])
+        db.record_region_diagnoses("a", _ctx(), [_diag(label="A1"),
+                                                 _diag(label="A2")])
+        labels = [r.label for r in db.list_region_diagnoses()]
+        assert labels == ["A1", "A2", "B1"]
+
+
+def test_session_row_carries_ibt_file_path(tmp_path):
+    db = TrackDB(tmp_path / "t.db")
+    _record_session(db)
+    row = db.list_session_history()[0]
+    assert row.ibt_file_path == "C:/t/sess1.ibt"

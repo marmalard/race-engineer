@@ -1,8 +1,10 @@
 """Builder integration: temp stores -> DriverProfile (the only I/O path)."""
 
+from core.coaching.debrief import RegionDiagnosis
 from core.profile.builder import load_profile
 from core.race.race_store import RaceStore
-from core.track.track_db import TrackDB
+from core.telemetry.loss_regions import LossRegion
+from core.track.track_db import DiagnosisContext, TrackDB
 
 # Reuse the synthetic narrative helpers from the racecraft tests.
 from tests.test_profile_racecraft import _attr, _lap1, _narr
@@ -65,12 +67,6 @@ def test_load_profile_track_db_failure_still_returns_racecraft(tmp_path):
     assert profile.readiness == []            # pace layer degraded
 
 
-from core.coaching.debrief import RegionDiagnosis
-from core.race.race_store import RaceStore
-from core.telemetry.loss_regions import LossRegion
-from core.track.track_db import DiagnosisContext, TrackDB
-
-
 def _seed_diagnosed_sessions(track_db, n):
     for i in range(1, n + 1):
         track_db.record_session(
@@ -95,8 +91,6 @@ def _seed_diagnosed_sessions(track_db, n):
 
 
 def test_profile_includes_technique_and_ttp(tmp_path):
-    from core.profile.builder import load_profile
-
     track_db = TrackDB(tmp_path / "t.db")
     store = RaceStore(tmp_path / "r.db")
     _seed_diagnosed_sessions(track_db, 6)
@@ -109,8 +103,6 @@ def test_profile_includes_technique_and_ttp(tmp_path):
 
 
 def test_diagnosis_load_failure_degrades_to_empty(tmp_path, monkeypatch):
-    from core.profile.builder import load_profile
-
     track_db = TrackDB(tmp_path / "t.db")
     store = RaceStore(tmp_path / "r.db")
 

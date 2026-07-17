@@ -178,7 +178,7 @@ class TestTimeToPace:
         assert t.median_laps == 3.0
 
     def test_trend_needs_both_pools(self):
-        # 5 qualifying sessions -> all recent, no earlier pool -> None
+        # 5 practice sessions -> all recent, no earlier pool -> None
         sessions = [_session(f"s{i}", date=f"2026-07-{i:02d} 10-00-00")
                     for i in range(1, 6)]
         laps = {f"s{i}": _laps([130.0, 115.0, 111.0, 110.0, 112.0])

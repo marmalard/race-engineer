@@ -130,11 +130,17 @@ def render_driver_profile_page() -> None:
                 "watcher once a reference lap exists for the combo."
             )
     ttp = profile.time_to_pace
-    if ttp.enough_data:
-        with st.container(border=True):
-            st.markdown("**Warm-up**")
+    with st.container(border=True):
+        st.markdown("**Warm-up**")
+        if ttp.enough_data:
             st.write(verdict_time_to_pace(ttp))
             st.caption(f"Across {ttp.sample_sessions} practice sessions.")
+        else:
+            st.caption(
+                f"Collecting data — {ttp.sample_sessions} qualifying "
+                "sessions so far. Practice sessions with 5+ valid laps "
+                "count once history accrues."
+            )
 
     st.subheader("Practice readiness")
     if not profile.readiness:

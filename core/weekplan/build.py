@@ -120,7 +120,7 @@ def _build_race_half(
     ]
     if not candidates:
         return None, False, [
-            "No target-week series at a track you've practiced -- the "
+            "No target-week series at a track you've practiced — the "
             "Race Briefing page lists the full calendar."
         ]
     cand = candidates[0]
@@ -132,7 +132,7 @@ def _build_race_half(
     if car is None:
         car = _most_practiced_car(sessions, None) or ""
         warnings.append(
-            "No practice at this track yet -- recommending your usual car."
+            "No practice at this track yet — recommending your usual car."
         )
 
     window = infer_window([s.session_date for s in sessions])
@@ -179,7 +179,7 @@ def _build_race_half(
                 half.splits_median = stats.splits_median
         # empty pre-flip curve is EXPECTED: unfilled, not a warning
     except Exception as exc:  # noqa: BLE001 -- degrade, never raise
-        warnings.append(f"Field harvest failed ({exc}) -- verdict pending.")
+        warnings.append(f"Field harvest failed ({exc}) — verdict pending.")
     return half, curve_filled, warnings
 
 
@@ -188,7 +188,7 @@ def _ttp_line(time_to_pace: TimeToPace) -> str:
         return ""
     return (
         f"You need ~{round(time_to_pace.median_laps)} laps to reach pace "
-        f"-- races give you zero. Arrive early."
+        f"— races give you zero. Arrive early."
     )
 
 

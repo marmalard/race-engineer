@@ -7,6 +7,7 @@ can never disagree with the radio.
 """
 
 from collections import Counter, defaultdict
+from statistics import mean
 
 from core.coaching.debrief import RegionDiagnosis
 from core.live.nudges import fault_kinds_from_diagnosis
@@ -24,7 +25,9 @@ from core.track.track_db import DiagnosisRow
 def _diagnosis_from_row(row: DiagnosisRow) -> RegionDiagnosis:
     """Rebuild the analysis dataclass from a stored row (deltas mapped 1:1;
     the live-prompt reference absolutes stay None — tendencies don't use
-    them, and they were never persisted)."""
+    them, and they were never persisted). If fault_kinds_from_diagnosis ever
+    reads a reference-absolute field, that field must be added to DiagnosisRow
+    and this adapter."""
     return RegionDiagnosis(
         region=LossRegion(
             distance_start=row.distance_start_m,
@@ -40,10 +43,6 @@ def _diagnosis_from_row(row: DiagnosisRow) -> RegionDiagnosis:
         brake_release_delta_m=row.brake_release_delta_m,
         exit_speed_delta_ms=row.exit_speed_delta_ms,
     )
-
-
-def _mean(xs: list[float]) -> float:
-    return sum(xs) / len(xs)
 
 
 def build_technique(rows: list[DiagnosisRow]) -> TechniqueTendencies:
@@ -85,17 +84,20 @@ def build_technique(rows: list[DiagnosisRow]) -> TechniqueTendencies:
             kind=k,
             occurrences=n,
             combos=len(combos[k]),
-            mean_time_lost_s=_mean(losses[k]),
+            mean_time_lost_s=mean(losses[k]),
             trend_time_lost_s=(
-                _mean(recent_losses[k]) - _mean(earlier_losses[k])
+                mean(recent_losses[k]) - mean(earlier_losses[k])
                 if recent_losses[k] and earlier_losses[k] else None
             ),
         )
         for k, n in occurrences.items()
     ]
     faults.sort(key=lambda f: (-f.occurrences, -f.mean_time_lost_s))
-    recurring = [(label, c) for label, c in labels.most_common()
-                 if c >= RECURRING_CORNER_MIN]
+    recurring = [
+        (label, c)
+        for label, c in sorted(labels.items(), key=lambda x: (-x[1], x[0]))
+        if c >= RECURRING_CORNER_MIN
+    ]
     n_sessions = len(ordered)
     return TechniqueTendencies(
         dominant=faults[0].kind if faults else None,

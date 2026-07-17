@@ -104,7 +104,9 @@ class FaultAggregate:
     kind: str                        # FaultKind.value
     occurrences: int                 # regions where this fault crossed threshold
     combos: int                      # distinct (track_id, car) it appears in
-    mean_time_lost_s: float
+    mean_time_lost_s: float          # Not additive across faults: a region firing
+                                     # multiple faults contributes its time_lost to
+                                     # each aggregate — never sum across FaultAggregates.
     trend_time_lost_s: float | None  # recent mean minus earlier mean
                                      # (negative = shrinking = improving);
                                      # None until both pools are non-empty

@@ -309,3 +309,125 @@ def test_race_chat_reply_first_message_is_always_user():
     )
     assert len(sent) <= 20
     assert sent[-1]["content"] == "final"
+
+
+# ---------------------------------------------------------------------------
+# Task 9 (week plan): week-plan prompts + synthesizer methods
+# ---------------------------------------------------------------------------
+
+from core.coaching.prompts.week_plan import (  # noqa: E402
+    WEEKPLAN_SYSTEM_PROMPT,
+    build_week_plan_chat_system,
+    build_week_plan_prompt,
+)
+
+
+class TestWeekPlanPrompts:
+    def test_system_prompt_never_gates(self):
+        low = WEEKPLAN_SYSTEM_PROMPT.lower()
+        # The rule is stated: prompt tells the model the sentence is banned
+        assert "never" in low and "not ready" in low
+
+    def test_chat_system_grounds_in_plan_and_narrative(self):
+        out = build_week_plan_chat_system('{"week_start": "x"}', "narr")
+        assert '{"week_start": "x"}' in out and "narr" in out
+
+    def test_build_week_plan_prompt_contains_plan_json(self):
+        prompt = build_week_plan_prompt('{"week_start": "2026-07-21"}')
+        assert '{"week_start": "2026-07-21"}' in prompt
+
+    def test_build_week_plan_prompt_threads_profile_block(self):
+        prompt = build_week_plan_prompt('{}', profile_block="Your tendency: brake late.")
+        assert "Your tendency: brake late." in prompt
+
+    def test_build_week_plan_prompt_no_profile_block_still_valid(self):
+        prompt = build_week_plan_prompt('{"week_start": "2026-07-21"}', profile_block="")
+        # No profile block — the empty-profile branch should not inject any placeholder
+        assert "profile_block" not in prompt
+
+
+class TestWeekPlanNarrative:
+    def test_generate_week_plan_narrative_uses_weekplan_system_prompt(self):
+        synth, fake = _synthesizer_with_fake("Here is your week.")
+        result = synth.generate_week_plan_narrative('{"week_start": "2026-07-21"}')
+        assert result == "Here is your week."
+        call = fake.calls[0]
+        # 1) system must be WEEKPLAN_SYSTEM_PROMPT exactly
+        assert call["system"] == WEEKPLAN_SYSTEM_PROMPT
+
+    def test_generate_week_plan_narrative_embeds_plan_json_in_user_message(self):
+        synth, fake = _synthesizer_with_fake("Ready.")
+        plan_json = '{"week_start": "2026-07-21", "curve_filled": false}'
+        synth.generate_week_plan_narrative(plan_json)
+        call = fake.calls[0]
+        # 2) the user message must contain the plan JSON
+        user_content = call["messages"][0]["content"]
+        assert plan_json in user_content
+
+    def test_generate_week_plan_narrative_threads_profile_block(self):
+        synth, fake = _synthesizer_with_fake("Narrative.")
+        synth.generate_week_plan_narrative(
+            '{"week_start": "x"}',
+            profile_block="4 races — incidents are high.",
+        )
+        call = fake.calls[0]
+        # 3) profile_block threaded through when provided
+        user_content = call["messages"][0]["content"]
+        assert "4 races — incidents are high." in user_content
+
+    def test_generate_week_plan_narrative_max_tokens_800(self):
+        synth, fake = _synthesizer_with_fake("Ok.")
+        synth.generate_week_plan_narrative('{}')
+        assert fake.calls[0]["max_tokens"] == 800
+
+    def test_generate_week_plan_narrative_no_tools(self):
+        synth, fake = _synthesizer_with_fake("Ok.")
+        synth.generate_week_plan_narrative('{}')
+        assert "tools" not in fake.calls[0]
+
+
+class TestWeekPlanChat:
+    def test_week_plan_chat_threads_history_and_caps_it(self):
+        synth, fake = _synthesizer_with_fake("About the race...")
+        history = [{"role": "user", "content": f"q{i}"} for i in range(30)]
+        history += [{"role": "assistant", "content": "a"},
+                    {"role": "user", "content": "final"}]
+        reply = synth.week_plan_chat('{}', "Narrative.", history)
+        assert reply == "About the race..."
+        sent = fake.calls[0]["messages"]
+        assert len(sent) <= 20
+        assert sent[-1]["content"] == "final"
+
+    def test_week_plan_chat_first_message_is_always_user(self):
+        """Capped history must never start with an assistant turn."""
+        synth, fake = _synthesizer_with_fake("Reply.")
+        history: list[dict] = []
+        for i in range(15):
+            history.append({"role": "user", "content": f"q{i}"})
+            history.append({"role": "assistant", "content": f"a{i}"})
+        history.append({"role": "user", "content": "final"})
+        assert len(history) == 31
+
+        synth.week_plan_chat('{}', "Narrative.", history)
+        sent = fake.calls[0]["messages"]
+
+        assert sent[0]["role"] == "user", (
+            f"First sent message must be 'user', got '{sent[0]['role']}'"
+        )
+        assert len(sent) <= 20
+        assert sent[-1]["content"] == "final"
+
+    def test_week_plan_chat_max_tokens_600(self):
+        synth, fake = _synthesizer_with_fake("Ok.")
+        synth.week_plan_chat('{}', "Narrative.", [{"role": "user", "content": "hi"}])
+        assert fake.calls[0]["max_tokens"] == 600
+
+    def test_week_plan_chat_system_contains_plan_and_narrative(self):
+        synth, fake = _synthesizer_with_fake("Ok.")
+        plan_json = '{"week_start": "2026-07-21"}'
+        narrative = "Your race is PCup at Spa."
+        synth.week_plan_chat(plan_json, narrative,
+                             [{"role": "user", "content": "q"}])
+        system = fake.calls[0]["system"]
+        assert plan_json in system
+        assert narrative in system

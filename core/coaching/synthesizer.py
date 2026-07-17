@@ -28,6 +28,11 @@ from core.coaching.prompts.briefing import (
     build_briefing_chat_system,
     build_briefing_prompt,
 )
+from core.coaching.prompts.week_plan import (
+    WEEKPLAN_SYSTEM_PROMPT,
+    build_week_plan_chat_system,
+    build_week_plan_prompt,
+)
 
 
 @dataclass
@@ -293,6 +298,63 @@ class Synthesizer:
             model=self.model,
             max_tokens=600,
             system=build_briefing_chat_system(briefing_json, narrative),
+            messages=msgs,
+        )
+        return self._extract_text(response)
+
+    def generate_week_plan_narrative(
+        self, plan_json: str, profile_block: str = ""
+    ) -> str:
+        """AI delivery of the deterministic week plan (page-only).
+
+        No web search — every fact comes from the week-plan JSON and the
+        optional driver-profile block.
+
+        Args:
+            plan_json: The JSON-serialised WeekPlan dict.
+            profile_block: Optional pre-formatted driver-profile block
+                (from ``profile_prompt_block``). When provided, cross-race
+                tendencies may be cited in the delivery.
+        """
+        response = self.client.messages.create(
+            model=self.model,
+            max_tokens=800,
+            system=WEEKPLAN_SYSTEM_PROMPT,
+            messages=[{
+                "role": "user",
+                "content": build_week_plan_prompt(plan_json, profile_block),
+            }],
+        )
+        return self._extract_text(response)
+
+    def week_plan_chat(
+        self,
+        plan_json: str,
+        narrative: str,
+        history: list[dict],
+    ) -> str:
+        """One follow-up chat turn grounded in the week plan (ephemeral —
+        v1 does not persist week-plan chat).
+
+        history: [{"role": "user"|"assistant", "content": str}, ...],
+        newest last. Only the last MAX_CHAT_HISTORY turns are sent.
+
+        Guard: if the capped slice starts with an assistant turn (which the
+        Anthropic Messages API rejects), the leading assistant message is
+        dropped so the first sent message always has role 'user'.
+
+        Args:
+            plan_json: The JSON-serialised WeekPlan dict.
+            narrative: The already-delivered AI week-plan narrative text.
+            history: Conversation history, newest last.
+        """
+        msgs = history[-self.MAX_CHAT_HISTORY:]
+        if msgs and msgs[0]["role"] != "user":
+            msgs = msgs[1:]
+        response = self.client.messages.create(
+            model=self.model,
+            max_tokens=600,
+            system=build_week_plan_chat_system(plan_json, narrative),
             messages=msgs,
         )
         return self._extract_text(response)

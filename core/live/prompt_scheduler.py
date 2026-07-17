@@ -15,7 +15,11 @@ is dropped entirely.
 from dataclasses import dataclass
 
 from core.coaching.debrief import RegionDiagnosis
-from core.live.nudges import approach_cue_from_diagnosis
+from core.live.exit_verdict import ArmedVerdict, crossed
+from core.live.nudges import (
+    approach_cue_from_diagnosis,
+    fault_kinds_from_diagnosis,
+)
 from core.track.models import Corner
 
 # Tunable constants — expected to be adjusted from real driving, like the
@@ -66,7 +70,7 @@ def _place_trigger(
     return trigger
 
 
-def build_schedule(
+def build_plan(
     diagnoses: list[RegionDiagnosis],
     corners: list[Corner],
     track_length_m: float,
@@ -75,12 +79,14 @@ def build_schedule(
     margin_m: float = CLAMP_MARGIN_M,
     min_gap_m: float = MIN_GAP_M,
     max_prompts: int = MAX_PROMPTS,
-) -> list[ScheduledPrompt]:
-    """Distance-triggered prompts for the next lap, from this lap's
-    diagnoses (already sorted by time lost)."""
+) -> "tuple[list[ScheduledPrompt], list[ArmedVerdict]]":
+    """Prompts AND armed exit verdicts for the next lap, from this lap's
+    diagnoses. One construction site: a verdict exists iff its corner's
+    cue was actually scheduled (spec scope rule 1, structurally)."""
     if track_length_m <= 0:
-        return []
+        return [], []
     prompts: list[ScheduledPrompt] = []
+    verdicts: list[ArmedVerdict] = []
     for diag in diagnoses:
         if len(prompts) >= max_prompts:
             break
@@ -98,7 +104,28 @@ def build_schedule(
         if trigger is None:
             continue
         prompts.append(ScheduledPrompt(trigger_m=trigger, text=cue))
-    return prompts
+        verdicts.append(
+            ArmedVerdict(diagnosis=diag,
+                         faults=fault_kinds_from_diagnosis(diag))
+        )
+    return prompts, verdicts
+
+
+def build_schedule(
+    diagnoses: list[RegionDiagnosis],
+    corners: list[Corner],
+    track_length_m: float,
+    *,
+    lead_m: float = LEAD_M,
+    margin_m: float = CLAMP_MARGIN_M,
+    min_gap_m: float = MIN_GAP_M,
+    max_prompts: int = MAX_PROMPTS,
+) -> list[ScheduledPrompt]:
+    """Prompts only — thin wrapper kept for existing callers/tests."""
+    return build_plan(
+        diagnoses, corners, track_length_m, lead_m=lead_m,
+        margin_m=margin_m, min_gap_m=min_gap_m, max_prompts=max_prompts,
+    )[0]
 
 
 class PromptScheduler:
@@ -143,10 +170,4 @@ class PromptScheduler:
         return None
 
 
-def _crossed(prev: float, curr: float, trigger: float) -> bool:
-    if curr >= prev:
-        return prev < trigger <= curr
-    # curr < prev is treated as a start/finish wrap. Safe because iRacing's
-    # LapDist comes from the track spline (monotonic within a lap, no GPS
-    # jitter); a genuine reversal (spin) is covered by the fired flag.
-    return trigger > prev or trigger <= curr
+_crossed = crossed  # shared wrap-safe crossing (lives in exit_verdict)

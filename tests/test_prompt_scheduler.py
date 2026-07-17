@@ -1,9 +1,11 @@
 """Tests for the in-corner prompt scheduler (pure state machine)."""
 
 from core.coaching.debrief import RegionDiagnosis
+from core.live.nudges import FaultKind
 from core.live.prompt_scheduler import (
     PromptScheduler,
     ScheduledPrompt,
+    build_plan,
     build_schedule,
 )
 from core.telemetry.loss_regions import LossRegion
@@ -116,3 +118,22 @@ def test_reset_position_prevents_false_wrap_fire_after_pits():
     s.reset_position()      # feeds were skipped (towed to pits)
     assert s.feed(300.0) is None   # resume near pit exit: primes, no fire
     assert s.feed(400.0) is None   # still nowhere near the trigger
+
+
+def test_build_plan_arms_verdict_per_scheduled_prompt():
+    prompts, verdicts = build_plan([_diag(onset=800.0)], [], TRACK_LEN)
+    assert len(prompts) == len(verdicts) == 1
+    assert verdicts[0].diagnosis.label == "La Source"
+    assert verdicts[0].faults[0] is FaultKind.BRAKING
+
+
+def test_build_plan_dropped_prompt_arms_no_verdict():
+    # No safe speaking gap -> prompt dropped -> no verdict either
+    corners = [_corner(450.0, 730.0)]
+    prompts, verdicts = build_plan([_diag(onset=800.0)], corners, TRACK_LEN)
+    assert prompts == [] and verdicts == []
+
+
+def test_build_schedule_still_returns_prompts_only():
+    schedule = build_schedule([_diag(onset=800.0)], [], TRACK_LEN)
+    assert len(schedule) == 1 and isinstance(schedule[0], ScheduledPrompt)

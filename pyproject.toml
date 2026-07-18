@@ -26,10 +26,16 @@ dev = [
     "pytest-cov>=7.0.0",
     "pyirsdk>=1.3.6",
 ]
+# Rig-only extras (uv sync --group rig): kokoro drags torch+spacy, so these
+# stay out of [project.dependencies] to keep friend installs lean.
 rig = [
     "kokoro>=0.9.4",
     "faster-whisper>=1.2.1",
     "sounddevice>=0.5.5",
+    # pygame-ce, not pygame: upstream pygame has no Python 3.14 wheel;
+    # the CE fork ships cp314 and installs the same `import pygame` namespace.
     "pygame-ce>=2.5.7",
+    # kokoro's spacy G2P downloads this model via pip at runtime otherwise --
+    # this uv venv has no pip, so the wheel is pinned here instead.
     "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
 ]

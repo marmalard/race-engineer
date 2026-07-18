@@ -373,41 +373,47 @@ def main() -> None:
                                     session_type=session_type)
 
             # Engineer feed -- separate read because CarIdx channels are
-            # arrays; the scalar churn guard above must not see them.
-            engineer_active = (args.engineer and session_type == "Race"
-                               and race_state is not None)
-            eng_boundary = False
-            if race_state is not None:
-                eng_sample = {ch: ir[ch] for ch in ENGINEER_CHANNELS}
-                eng_boundary = race_state.feed(eng_sample)
-                if engineer_active:
-                    _dist = sample.get("LapDist")
-                    _gap = race_state.current_gap_ahead()
-                    if (_dist is not None and _gap is not None
-                            and corner_loss is not None):
-                        corner_loss.feed(
-                            lap_dist_m=float(_dist), gap_ahead_s=_gap[1],
-                            ahead_idx=_gap[0],
-                            lap=int(sample.get("Lap") or 0),
+            # arrays; the scalar churn guard above must not see them. The
+            # feed runs in every session (harmless, keeps history warm);
+            # only EMISSION is gated on Race via engineer_active.
+            try:
+                engineer_active = (args.engineer and session_type == "Race"
+                                   and race_state is not None)
+                eng_boundary = False
+                if race_state is not None:
+                    eng_sample = {ch: ir[ch] for ch in ENGINEER_CHANNELS}
+                    eng_boundary = race_state.feed(eng_sample)
+                    if engineer_active:
+                        _dist = sample.get("LapDist")
+                        _gap = race_state.current_gap_ahead()
+                        if (_dist is not None and _gap is not None
+                                and corner_loss is not None):
+                            corner_loss.feed(
+                                lap_dist_m=float(_dist), gap_ahead_s=_gap[1],
+                                ahead_idx=_gap[0],
+                                lap=int(sample.get("Lap") or 0),
+                            )
+                if (engineer_active and eng_boundary
+                        and engineer_calls is not None):
+                    extra = None
+                    if corner_loss is not None:
+                        snap_ahead = race_state.snapshot().get("ahead") or {}
+                        extra = corner_loss.take_call(
+                            target_name=snap_ahead.get("name", "him")
                         )
-            if engineer_active and eng_boundary and engineer_calls is not None:
-                extra = None
-                if corner_loss is not None:
-                    snap_ahead = race_state.snapshot().get("ahead") or {}
-                    extra = corner_loss.take_call(
-                        target_name=snap_ahead.get("name", "him")
+                    spoken, dropped = engineer_calls.on_lap(
+                        race_state, now=time.monotonic(), extra_call=extra,
                     )
-                spoken, dropped = engineer_calls.on_lap(
-                    race_state, now=time.monotonic(), extra_call=extra,
-                )
-                for line in spoken:
-                    emit(f"  [ENG] {line}")
-                    speaker.say(line)
-                if session_log is not None and (spoken or dropped):
-                    session_log.log(
-                        "engineer_call", spoken=spoken, dropped=dropped,
-                        snapshot=race_state.snapshot(),
-                    )
+                    for line in spoken:
+                        emit(f"  [ENG] {line}")
+                        speaker.say(line)
+                    if session_log is not None and (spoken or dropped):
+                        session_log.log(
+                            "engineer_call", spoken=spoken, dropped=dropped,
+                            snapshot=race_state.snapshot(),
+                        )
+            except Exception:  # noqa: BLE001 -- never kill the coach
+                pass
 
             tick = tracker.feed(sample)
             completed = tick.completed

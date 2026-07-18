@@ -41,7 +41,11 @@ _CARIDX_KEYS = ("CarIdxLap", "CarIdxPosition", "CarIdxF2Time",
 
 
 def speech_name(user_name: str) -> str:
-    """iRacing display name -> spoken surname: 'Anthony Moorman2' -> 'Moorman'."""
+    """iRacing display name -> spoken surname: 'Anthony Moorman2' -> 'Moorman'.
+
+    Known limit: multi-word surnames ('De Silva') and suffixes ('Jr') collapse
+    to the last word.
+    """
     cleaned = re.sub(r"\d+$", "", (user_name or "").strip())
     parts = cleaned.split()
     return parts[-1] if parts else "the other car"
@@ -68,6 +72,7 @@ class RaceState:
         self._positions: list[int] = []
         self._f2: list[float] = []
         self._laps: list[int] = []
+        self._pcts: list[float] = []
         self._laps_remaining: int | None = None
         self._time_remaining: float | None = None
 
@@ -87,6 +92,10 @@ class RaceState:
         self._laps = [int(v or 0) for v in laps]
         self._positions = [int(v or 0) for v in sample["CarIdxPosition"]]
         self._f2 = [float(v or 0.0) for v in sample["CarIdxF2Time"]]
+        self._pcts = [
+            float(v) if isinstance(v, (int, float)) else -1.0
+            for v in sample["CarIdxLapDistPct"]
+        ]
         raw_remain = sample.get("SessionLapsRemain")
         self._laps_remaining = (
             int(raw_remain) if isinstance(raw_remain, (int, float))
@@ -108,7 +117,8 @@ class RaceState:
             self._player_lap_start = st
             self._record_lap_gaps(my_lap)
         elif self._prev_player_lap != my_lap:
-            self._player_lap_start = st  # reset/tow/first sight: restart clock
+            # multi-lap jump or reset: restart the clock, never record a fused lap time
+            self._player_lap_start = st
         self._prev_player_lap = my_lap
         return boundary
 
@@ -120,18 +130,38 @@ class RaceState:
                 return idx
         return None
 
+    def _same_racing_lap(self, a: int, b: int) -> bool:
+        """True when cars a and b are within one lap of total race
+        progress. F2Time is measured in each car's own lap frame, so a
+        gap is only physically meaningful inside that window -- a lapped
+        car's F2 difference is a wrong number, and silence beats a wrong
+        number. Total progress (lap + pct) also keeps the boundary-tick
+        case honest: at the player's line crossing, the car two seconds
+        behind is momentarily still on the previous lap NUMBER but is
+        within 1.0 laps of progress."""
+        pa, pb = self._pcts[a], self._pcts[b]
+        if pa < 0 or pb < 0:
+            return False
+        return abs((self._laps[a] + pa) - (self._laps[b] + pb)) < 1.0
+
     def _record_lap_gaps(self, lap: int) -> None:
         my_pos = self._positions[self.player_idx]
         my_f2 = self._f2[self.player_idx]
         ahead = self._idx_at_position(my_pos - 1)
         behind = self._idx_at_position(my_pos + 1)
+        gap_ahead = None
+        if ahead is not None and self._same_racing_lap(self.player_idx, ahead):
+            gap_ahead = my_f2 - self._f2[ahead]
+        gap_behind = None
+        if behind is not None and self._same_racing_lap(self.player_idx, behind):
+            gap_behind = self._f2[behind] - my_f2
         self.lap_gaps.append(LapGaps(
             lap=lap,
             position=my_pos,
             ahead_idx=ahead,
-            gap_ahead_s=(my_f2 - self._f2[ahead]) if ahead is not None else None,
+            gap_ahead_s=gap_ahead,
             behind_idx=behind,
-            gap_behind_s=(self._f2[behind] - my_f2) if behind is not None else None,
+            gap_behind_s=gap_behind,
         ))
 
     def current_gap_ahead(self) -> tuple[int, float] | None:
@@ -140,6 +170,8 @@ class RaceState:
             return None
         ahead = self._idx_at_position(self._positions[self.player_idx] - 1)
         if ahead is None:
+            return None
+        if not self._same_racing_lap(self.player_idx, ahead):
             return None
         return ahead, self._f2[self.player_idx] - self._f2[ahead]
 
@@ -174,7 +206,7 @@ class RaceState:
         last = self.lap_gaps[-1] if self.lap_gaps else None
         return {
             "position": last.position if last else None,
-            "field_size": sum(1 for p in self._positions if p > 0),
+            "field_size": sum(1 for p in self._positions if p > 0),  # classified cars, not cars currently on track
             "lap": self._laps[self.player_idx] if self._laps else None,
             "laps_remaining": self._laps_remaining,
             "time_remaining_s": self._time_remaining,

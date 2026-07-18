@@ -9,12 +9,12 @@ ROSTER = [
 ]
 
 
-def tick(st, laps, positions, f2, laps_remain=10, time_remain=1800.0):
+def tick(st, laps, positions, f2, laps_remain=10, time_remain=1800.0, pcts=None):
     return {
         "SessionTime": st,
         "CarIdxLap": laps,
         "CarIdxPosition": positions,
-        "CarIdxLapDistPct": [0.5, 0.5, 0.5],
+        "CarIdxLapDistPct": pcts if pcts is not None else [0.5, 0.5, 0.5],
         "CarIdxF2Time": f2,
         "CarIdxOnPitRoad": [False, False, False],
         "SessionLapsRemain": laps_remain,
@@ -46,7 +46,7 @@ def test_lap_boundary_records_gaps_to_position_neighbors():
     s = make_state()
     # player P2: car 2 (P1) ahead, car 0 (P3) behind. F2 = time behind leader.
     s.feed(tick(100.0, [2, 2, 2], [3, 2, 1], [14.0, 12.0, 0.0]))
-    assert s.feed(tick(230.0, [2, 3, 2], [3, 2, 1], [14.1, 12.0, 0.0])) is True
+    assert s.feed(tick(230.0, [3, 3, 3], [3, 2, 1], [14.1, 12.0, 0.0])) is True
     g = s.lap_gaps[-1]
     assert g.lap == 3
     assert g.position == 2
@@ -59,16 +59,16 @@ def test_lap_boundary_records_gaps_to_position_neighbors():
 def test_player_lap_time_derived_from_boundary_session_times():
     s = make_state()
     s.feed(tick(100.0, [2, 2, 2], [3, 2, 1], [14.0, 12.0, 0.0]))
-    s.feed(tick(230.0, [2, 3, 2], [3, 2, 1], [14.0, 12.0, 0.0]))
-    s.feed(tick(361.5, [2, 4, 2], [3, 2, 1], [14.0, 12.0, 0.0]))
+    s.feed(tick(230.0, [3, 3, 3], [3, 2, 1], [14.0, 12.0, 0.0]))
+    s.feed(tick(361.5, [4, 4, 4], [3, 2, 1], [14.0, 12.0, 0.0]))
     assert abs(s.player_lap_times[-1] - 131.5) < 1e-9
 
 
 def test_snapshot_shape_names_and_trend():
     s = make_state()
     s.feed(tick(100.0, [2, 2, 2], [3, 2, 1], [14.0, 12.0, 0.0]))
-    s.feed(tick(230.0, [2, 3, 2], [3, 2, 1], [14.0, 12.0, 0.0], laps_remain=6))
-    s.feed(tick(360.0, [2, 4, 2], [3, 2, 1], [13.5, 12.5, 0.0], laps_remain=5))
+    s.feed(tick(230.0, [3, 3, 3], [3, 2, 1], [14.0, 12.0, 0.0], laps_remain=6))
+    s.feed(tick(360.0, [4, 4, 4], [3, 2, 1], [13.5, 12.5, 0.0], laps_remain=5))
     snap = s.snapshot()
     assert snap["position"] == 2
     assert snap["field_size"] == 3
@@ -95,3 +95,36 @@ def test_no_neighbor_yields_none_blocks():
     s.feed(one2)
     snap = s.snapshot()
     assert snap["ahead"] is None and snap["behind"] is None
+
+
+def test_lapped_neighbor_gap_is_withheld_not_wrong():
+    s = make_state()
+    # Behind car (idx 0) is a full lap of progress down: F2 frames differ,
+    # so the number is withheld -- silence beats a wrong gap.
+    s.feed(tick(100.0, [2, 2, 2], [3, 2, 1], [14.0, 12.0, 0.0]))
+    s.feed(tick(230.0, [2, 3, 3], [3, 2, 1], [14.0, 12.0, 0.0]))
+    g = s.lap_gaps[-1]
+    assert g.behind_idx == 0          # still the position neighbor...
+    assert g.gap_behind_s is None     # ...but no number is quoted
+    assert abs(g.gap_ahead_s - 12.0) < 1e-9   # same-lap ahead gap survives
+    assert s.snapshot()["behind"] is None
+
+
+def test_behind_car_not_yet_across_the_line_still_gets_a_gap():
+    s = make_state()
+    # At the player's boundary tick the car close behind is momentarily
+    # still on the previous lap NUMBER -- progress math keeps it valid.
+    s.feed(tick(100.0, [2, 2, 2], [3, 2, 1], [14.0, 12.0, 0.0],
+                pcts=[0.90, 0.95, 0.97]))
+    s.feed(tick(230.0, [2, 3, 3], [3, 2, 1], [14.1, 12.0, 0.0],
+                pcts=[0.98, 0.02, 0.05]))
+    g = s.lap_gaps[-1]
+    assert abs(g.gap_behind_s - 2.1) < 1e-9
+
+
+def test_multi_lap_jump_records_no_fused_lap_time():
+    s = make_state()
+    s.feed(tick(100.0, [2, 2, 2], [3, 2, 1], [14.0, 12.0, 0.0]))
+    s.feed(tick(400.0, [4, 4, 4], [3, 2, 1], [14.0, 12.0, 0.0]))
+    assert s.player_lap_times == []
+    assert s.lap_gaps == []

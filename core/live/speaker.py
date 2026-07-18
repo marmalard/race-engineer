@@ -112,11 +112,19 @@ def _sapi_engine() -> Callable[[str], None]:
 
 
 def create_speaker(mute: bool = False) -> Speaker | NullSpeaker:
-    """A Speaker, or NullSpeaker when muted or when TTS is unavailable."""
+    """A Speaker (neural voice when the rig group is installed, else SAPI),
+    or NullSpeaker when muted or when no TTS is available."""
     if mute:
         return NullSpeaker()
+    from core.live import voice_engine
+    engine = voice_engine.neural_engine()
+    if engine is not None:
+        print("Voice: neural (Kokoro).")
+    else:
+        print("Voice: SAPI fallback (run uv sync --group rig for the "
+              "neural voice).")
     try:
-        return Speaker()
+        return Speaker(engine=engine)  # engine=None -> SAPI inside Speaker
     except Exception:
         logger.warning("TTS unavailable; running muted", exc_info=True)
         return NullSpeaker()

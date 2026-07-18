@@ -16,6 +16,7 @@ under core/live/ and core/coaching/; this file only drives pyirsdk.
 import argparse
 import socket
 import sys
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -64,6 +65,10 @@ from core.live.prompt_scheduler import PromptScheduler, build_plan  # noqa: E402
 from core.live.session_reader import LapBoundaryTracker  # noqa: E402
 from core.live.session_log import SessionLog  # noqa: E402
 from core.live.speaker import create_speaker  # noqa: E402
+from core.engineer.answers import answer_question, make_claude_ask  # noqa: E402
+from core.engineer.mic import MicCapture  # noqa: E402
+from core.engineer.ptt_input import PTTButton, open_joystick  # noqa: E402
+from core.engineer import stt  # noqa: E402
 from core.telemetry.normalizer import Normalizer  # noqa: E402
 from core.track.lovely_seeder import seed_track_from_lovely  # noqa: E402
 from core.track.models import Track, TrackType  # noqa: E402
@@ -218,6 +223,24 @@ def _load_reference(track_id: str, car: str) -> "ReferenceLap | None":
     return ref
 
 
+def _ptt_worker(audio, stt_model, snapshot: dict, ask, speaker,
+                emit, session_log, budget) -> None:
+    """Runs on a worker thread: STT -> answer -> priority speech. Never
+    raises into the tick loop; every failure becomes a spoken line."""
+    import time as _time
+    try:
+        transcript = stt.transcribe(stt_model, audio)
+        text, source = answer_question(transcript, snapshot, ask=ask)
+        speaker.say_priority(text)
+        budget.note_priority(_time.monotonic())
+        emit(f"  [PTT] {transcript or '(unintelligible)'} -> {text}")
+        if session_log is not None:
+            session_log.log("ptt", transcript=transcript, answer=text,
+                            source=source, snapshot=snapshot)
+    except Exception:
+        speaker.say_priority("Say again?")
+
+
 def _diag_fields(d) -> dict:
     """RegionDiagnosis -> flat dict for the session log (all tuning numbers)."""
     return {
@@ -244,6 +267,26 @@ def main() -> None:
     print(f"Web display: http://{_lan_ip()}:8042  (open in Safari on your iPad)")
 
     speaker = create_speaker(mute=args.mute)
+
+    ptt_poll = open_joystick(args.ptt_button) if args.engineer else None
+    ptt_button = PTTButton()
+    mic = MicCapture()
+    ptt_ask = make_claude_ask() if args.engineer else None
+    stt_model = None
+    stt_ready = threading.Event()
+
+    def _load_stt() -> None:
+        nonlocal stt_model
+        stt_model = stt.load_model()
+        stt_ready.set()
+
+    if args.engineer and ptt_poll is not None:
+        threading.Thread(target=_load_stt, daemon=True).start()
+        print(f"PTT: joystick 0 button {args.ptt_button} "
+              f"(probe with scripts/probe_ptt_button.py). "
+              f"Claude path: {'on' if ptt_ask else 'OFF (no API key)'}.")
+    elif args.engineer:
+        print("PTT: no joystick found -- engineer calls only.")
 
     def emit(block: str) -> None:
         print(block)
@@ -412,6 +455,25 @@ def main() -> None:
                             "engineer_call", spoken=spoken, dropped=dropped,
                             snapshot=race_state.snapshot(),
                         )
+                if engineer_active and ptt_poll is not None:
+                    event = ptt_button.feed(ptt_poll())
+                    if event == "press":
+                        speaker.cancel_pending()  # driver keyed the radio
+                        mic.start()
+                    elif event == "release":
+                        audio = mic.stop()
+                        if stt_ready.is_set() and race_state is not None:
+                            threading.Thread(
+                                target=_ptt_worker,
+                                args=(audio, stt_model, race_state.snapshot(),
+                                      ptt_ask, speaker, emit, session_log,
+                                      engineer_calls.budget),
+                                daemon=True,
+                            ).start()
+                        else:
+                            speaker.say_priority(
+                                "Radio's still warming up — give me a second."
+                            )
             except Exception:  # noqa: BLE001 -- never kill the coach
                 pass
 

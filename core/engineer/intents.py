@@ -13,18 +13,28 @@ _NUM_WORDS = {1: "One", 2: "Two", 3: "Three", 4: "Four", 5: "Five",
 
 
 def _fmt_lap(seconds: float) -> str:
-    m, s = divmod(seconds, 60.0)
-    return f"{int(m)}:{s:04.1f}"
+    total_tenths = round(seconds * 10)
+    m, tenths = divmod(total_tenths, 600)
+    return f"{m}:{tenths / 10:04.1f}"
 
 
 def _num_word(n: int) -> str:
     return _NUM_WORDS.get(n, str(n))
 
 
+_TACTICAL_STARTS = ("should ", "can ", "close ", "when ", "do i ",
+                    "how do ", "is it worth")
+
+
 def match_intent(transcript: str, snap: dict) -> str | None:
-    q = (transcript or "").lower()
+    q = (transcript or "").lower().strip()
     ahead = snap.get("ahead")
     behind = snap.get("behind")
+
+    # Advice-shaped questions belong to the Claude path even when they mention
+    # a quantity (e.g. "close the gap", "should I close the gap").
+    if q.startswith(_TACTICAL_STARTS):
+        return None
 
     if "gap" in q or "how far" in q:
         if "behind" in q or "back" in q:
@@ -42,13 +52,15 @@ def match_intent(transcript: str, snap: dict) -> str | None:
         return f"P{snap['position']} of {snap['field_size']}."
 
     if (("laps" in q and ("left" in q or "remaining" in q or "to go" in q))
-            or "how long" in q):
+            or "how long" in q or "how much longer" in q or "how much left" in q):
         laps = snap.get("laps_remaining")
         if laps is not None:
             return f"{_num_word(laps)} laps to go."
         t = snap.get("time_remaining_s")
         if t is not None:
-            return f"{_num_word(round(t / 60.0))} minutes left."
+            mins = round(t / 60.0)
+            unit = "minute" if mins == 1 else "minutes"
+            return f"{_num_word(mins)} {unit} left."
         return None
 
     if "last lap" in q or "lap time" in q or "pace" in q:

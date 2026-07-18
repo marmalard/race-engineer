@@ -57,3 +57,19 @@ def test_missing_data_returns_none_not_a_wrong_answer():
              "ahead": None, "behind": None}
     assert match_intent("what's the gap behind", empty) is None
     assert match_intent("what position am I in", empty) is None
+
+
+def test_sub_minute_lap_time_formats_correctly():
+    snap = dict(SNAP, last_lap_s=59.96, best_lap_s=59.5)
+    assert match_intent("what was my last lap", snap) == \
+        "Last lap 1:00.0, best 0:59.5."
+
+
+def test_tactical_gap_question_falls_through_to_claude():
+    assert match_intent("close the gap", SNAP) is None
+    assert match_intent("should I close the gap", SNAP) is None
+
+
+def test_one_minute_left_is_singular():
+    snap = dict(SNAP, laps_remaining=None, time_remaining_s=62.0)
+    assert match_intent("how much longer", snap) == "One minute left."

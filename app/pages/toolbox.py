@@ -30,15 +30,18 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _RUN_DIR = _REPO_ROOT / "data" / "run"
 
 
-def _coach(mute: bool = False, corner_prompts: bool = True) -> ManagedProcess:
+def _coach(mute: bool = False, corner_prompts: bool = True,
+           engineer: bool = True) -> ManagedProcess:
     """Coach spawn command. Round-2 CLI: corner prompts are ON by default,
-    --no-corner-prompts disables (coupling-tested in test_toolbox_commands —
+    --no-corner-prompts disables (coupling-tested in test_toolbox_commands --
     a stale flag here killed the coach at startup on 2026-07-14)."""
     cmd = [_PY, "scripts/live_coach.py"]
     if mute:
         cmd.append("--mute")
     if not corner_prompts:
         cmd.append("--no-corner-prompts")
+    if not engineer:
+        cmd.append("--no-engineer")
     return ManagedProcess(
         "live-coach", cmd, run_dir=_RUN_DIR, workdir=_REPO_ROOT
     )
@@ -101,8 +104,13 @@ def render_toolbox_page() -> None:
             help="Approach-triggered in-corner cues (on by default since "
                  "voice round 2)",
         )
+        engineer = st.checkbox(
+            "Race engineer", value=True, key="coach_engineer",
+            help="Gap calls and race intelligence (active in Race sessions "
+                 "only; on by default)",
+        )
         if st.button("Start coach", disabled=coach.is_running()):
-            proc = _coach(mute, prompts)
+            proc = _coach(mute, prompts, engineer)
             proc.start()
             # An instant death (bad flag, import error) must not be silent:
             # the 2026-07-14 argparse crash showed 'running' for one rerun

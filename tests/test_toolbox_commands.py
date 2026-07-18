@@ -57,3 +57,16 @@ def test_toolbox_coach_defaults_match_cli_defaults():
     args = live_coach.build_parser().parse_args(flags)
     assert args.mute is False
     assert args.corner_prompts is True
+
+
+@pytest.mark.parametrize("engineer", [False, True])
+def test_toolbox_engineer_flag_parses_against_live_coach_cli(engineer):
+    cmd = _coach(engineer=engineer).command
+    args = live_coach.build_parser().parse_args(cmd[2:])
+    assert args.engineer is engineer
+
+
+def test_engineer_defaults_on_in_both_cli_and_toolbox():
+    assert live_coach.build_parser().parse_args([]).engineer is True
+    cmd = _coach().command
+    assert live_coach.build_parser().parse_args(cmd[2:]).engineer is True

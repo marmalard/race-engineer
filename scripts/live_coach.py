@@ -37,6 +37,10 @@ import irsdk  # noqa: E402
 
 from core.benchmark.reference_store import ReferenceLap, ReferenceStore  # noqa: E402
 from core.coaching.debrief import build_debrief  # noqa: E402
+from core.engineer.calls import EngineerCalls  # noqa: E402
+from core.engineer.corner_loss import CornerLossTracker  # noqa: E402
+from core.engineer.race_state import ENGINEER_CHANNELS, RaceState  # noqa: E402
+from core.engineer.radio_budget import RadioBudget  # noqa: E402
 from core.live.feed import NudgeFeed, start_web_display  # noqa: E402
 from core.live.lap_buffer import SAMPLE_CHANNELS  # noqa: E402
 from core.live.exit_verdict import VerdictWatcher  # noqa: E402
@@ -168,7 +172,14 @@ def build_parser() -> argparse.ArgumentParser:
                         help="cue behavior in Race sessions: full = like "
                              "practice, persistent = only faults seen 2+ "
                              "consecutive laps (default), off = silent")
-    parser.set_defaults(corner_prompts=True)
+    parser.add_argument("--no-engineer", dest="engineer",
+                        action="store_false",
+                        help="disable race engineer calls + PTT "
+                             "(on by default; active in Race sessions only)")
+    parser.add_argument("--ptt-button", type=int, default=5,
+                        help="joystick button index for push-to-talk "
+                             "(find yours with scripts/probe_ptt_button.py)")
+    parser.set_defaults(corner_prompts=True, engineer=True)
     return parser
 
 
@@ -253,6 +264,9 @@ def main() -> None:
     meta_loaded = False
     prev_flagged: set = set()
     prev_delta: float | None = None
+    race_state: RaceState | None = None
+    engineer_calls: EngineerCalls | None = None
+    corner_loss: CornerLossTracker | None = None
 
     try:
         while True:
@@ -280,6 +294,17 @@ def main() -> None:
                 incident_tracker = IncidentTracker()
                 prev_flagged = set()
                 prev_delta = None
+                driver_info = ir["DriverInfo"] or {}
+                player_idx = int(driver_info.get("DriverCarIdx", 0) or 0)
+                race_state = RaceState(player_idx)
+                race_state.set_roster(driver_info.get("Drivers", []))
+                engineer_calls = EngineerCalls(RadioBudget())
+                corner_loss = CornerLossTracker([
+                    (c.distance_start_meters, c.distance_end_meters, c.name)
+                    for c in corners
+                    if c.name and c.distance_start_meters is not None
+                    and c.distance_end_meters is not None
+                ])
                 meta_loaded = True
                 if session_log is not None:
                     session_log.close()
@@ -346,6 +371,43 @@ def main() -> None:
                 if session_log is not None:
                     session_log.log("session_type", session_num=session_num,
                                     session_type=session_type)
+
+            # Engineer feed -- separate read because CarIdx channels are
+            # arrays; the scalar churn guard above must not see them.
+            engineer_active = (args.engineer and session_type == "Race"
+                               and race_state is not None)
+            eng_boundary = False
+            if race_state is not None:
+                eng_sample = {ch: ir[ch] for ch in ENGINEER_CHANNELS}
+                eng_boundary = race_state.feed(eng_sample)
+                if engineer_active:
+                    _dist = sample.get("LapDist")
+                    _gap = race_state.current_gap_ahead()
+                    if (_dist is not None and _gap is not None
+                            and corner_loss is not None):
+                        corner_loss.feed(
+                            lap_dist_m=float(_dist), gap_ahead_s=_gap[1],
+                            ahead_idx=_gap[0],
+                            lap=int(sample.get("Lap") or 0),
+                        )
+            if engineer_active and eng_boundary and engineer_calls is not None:
+                extra = None
+                if corner_loss is not None:
+                    snap_ahead = race_state.snapshot().get("ahead") or {}
+                    extra = corner_loss.take_call(
+                        target_name=snap_ahead.get("name", "him")
+                    )
+                spoken, dropped = engineer_calls.on_lap(
+                    race_state, now=time.monotonic(), extra_call=extra,
+                )
+                for line in spoken:
+                    emit(f"  [ENG] {line}")
+                    speaker.say(line)
+                if session_log is not None and (spoken or dropped):
+                    session_log.log(
+                        "engineer_call", spoken=spoken, dropped=dropped,
+                        snapshot=race_state.snapshot(),
+                    )
 
             tick = tracker.feed(sample)
             completed = tick.completed

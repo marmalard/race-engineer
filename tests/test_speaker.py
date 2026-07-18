@@ -75,3 +75,63 @@ def test_null_speaker_is_a_noop():
 
 def test_create_speaker_mute_returns_null():
     assert isinstance(create_speaker(mute=True), NullSpeaker)
+
+
+def test_priority_beats_pending_normal():
+    engine = _BlockingEngine()
+    s = Speaker(engine=engine)
+    s.say("first")
+    assert engine.started.wait(timeout=5.0)
+    s.say("cue")               # pending normal
+    s.say_priority("answer")   # pending priority -- must win the next slot
+    engine.release.set()
+    assert _wait_for(lambda: len(engine.spoken) >= 2)
+    assert engine.spoken[1] == "answer"
+    s.close()
+
+
+def test_latest_wins_within_priority_tier():
+    engine = _BlockingEngine()
+    s = Speaker(engine=engine)
+    s.say("first")
+    assert engine.started.wait(timeout=5.0)
+    s.say_priority("a1")
+    s.say_priority("a2")  # replaces a1
+    engine.release.set()
+    assert _wait_for(lambda: len(engine.spoken) == 2)
+    assert engine.spoken == ["first", "a2"]
+    s.close()
+
+
+def test_normal_still_speaks_after_priority_drains():
+    engine = _BlockingEngine()
+    s = Speaker(engine=engine)
+    s.say("first")
+    assert engine.started.wait(timeout=5.0)
+    s.say("cue")
+    s.say_priority("answer")
+    engine.release.set()
+    assert _wait_for(lambda: len(engine.spoken) == 3)
+    assert engine.spoken == ["first", "answer", "cue"]
+    s.close()
+
+
+def test_cancel_pending_clears_normal_not_priority():
+    engine = _BlockingEngine()
+    s = Speaker(engine=engine)
+    s.say("first")
+    assert engine.started.wait(timeout=5.0)
+    s.say("cue")
+    s.say_priority("answer")
+    s.cancel_pending()  # PTT press: normal slot cleared, priority survives
+    engine.release.set()
+    assert _wait_for(lambda: len(engine.spoken) == 2)
+    assert engine.spoken == ["first", "answer"]
+    s.close()
+
+
+def test_null_speaker_has_priority_interface():
+    n = NullSpeaker()
+    n.say_priority("anything")
+    n.cancel_pending()
+    n.close()

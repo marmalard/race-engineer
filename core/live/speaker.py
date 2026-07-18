@@ -1,11 +1,14 @@
 """Non-blocking PC-side speech for the live coach.
 
 A daemon worker thread speaks via Windows SAPI (pyttsx3) so the 60Hz
-tick loop never blocks. The pending queue holds ONE slot: a newer say()
-replaces an unspoken pending utterance — the driver always hears the
-latest thing, never a backlog. An utterance already in progress is not
-interrupted. Any engine failure logs once and goes permanently silent;
-voice is an enhancement layer, the text surfaces stay canonical.
+tick loop never blocks. The pending queue has TWO tiers: a normal tier
+(coaching cues) and a priority tier (PTT answers). Priority always wins
+the next slot over a pending normal utterance; latest-wins within each
+tier. An utterance already in progress is not interrupted.
+cancel_pending() drops any unspoken normal utterance — used on a PTT
+key press to silence queued cues before the driver speaks. Any engine
+failure logs once and goes permanently silent; voice is an enhancement
+layer, the text surfaces stay canonical.
 """
 
 import logging
@@ -21,6 +24,12 @@ class NullSpeaker:
     def say(self, text: str) -> None:
         pass
 
+    def say_priority(self, text: str) -> None:
+        pass
+
+    def cancel_pending(self) -> None:
+        pass
+
     def close(self) -> None:
         pass
 
@@ -30,17 +39,33 @@ class Speaker:
 
     def __init__(self, engine: Callable[[str], None] | None = None) -> None:
         self._engine = engine if engine is not None else _sapi_engine()
-        self._pending: str | None = None
+        self._pending: str | None = None           # normal tier (cues, calls)
+        self._pending_priority: str | None = None  # PTT answers
         self._cv = threading.Condition()
         self._closed = False
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
     def say(self, text: str) -> None:
-        """Queue text to be spoken. O(1); replaces any unspoken pending text."""
+        """Queue text to be spoken. O(1); replaces any unspoken pending text
+        in the normal tier. A pending priority utterance still wins."""
         with self._cv:
             self._pending = text
             self._cv.notify()
+
+    def say_priority(self, text: str) -> None:
+        """Queue a PTT answer: always beats a pending normal utterance for
+        the next slot. Latest-wins within the priority tier. In-progress
+        speech is still never interrupted."""
+        with self._cv:
+            self._pending_priority = text
+            self._cv.notify()
+
+    def cancel_pending(self) -> None:
+        """Drop any unspoken NORMAL utterance (PTT press: the engineer shuts
+        up when the driver keys the radio). Priority answers survive."""
+        with self._cv:
+            self._pending = None
 
     def close(self) -> None:
         """Signal the worker to stop. In-progress speech completes; any
@@ -52,11 +77,16 @@ class Speaker:
     def _run(self) -> None:
         while True:
             with self._cv:
-                while self._pending is None and not self._closed:
+                while (self._pending is None
+                       and self._pending_priority is None
+                       and not self._closed):
                     self._cv.wait()
                 if self._closed:
                     return
-                text, self._pending = self._pending, None
+                if self._pending_priority is not None:
+                    text, self._pending_priority = self._pending_priority, None
+                else:
+                    text, self._pending = self._pending, None
             try:
                 self._engine(text)  # blocking; in-progress speech completes
             except Exception:

@@ -45,7 +45,11 @@ def make_claude_ask():
     if not key:
         return None
     import anthropic
-    client = anthropic.Anthropic(api_key=key, timeout=CLAUDE_TIMEOUT_S)
+    # max_retries=0: SDK retries would stretch the worst case to ~3x the
+    # timeout. On the radio a 12s-late answer is worse than the offline
+    # line -- the driver can just press again.
+    client = anthropic.Anthropic(api_key=key, timeout=CLAUDE_TIMEOUT_S,
+                                 max_retries=0)
 
     def ask(transcript: str, state_json: str) -> str:
         response = client.messages.create(

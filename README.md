@@ -83,6 +83,12 @@ uv run pytest
 uv run streamlit run app/streamlit_app.py
 ```
 
+Neural voice + PTT need the rig extras: `uv sync --group rig` (first run
+downloads the Kokoro and Whisper models). Plain `uv sync` removes them —
+the coach then falls back to the SAPI voice and prints why. Find your
+wheel's PTT button index with `scripts/probe_ptt_button.py`, then pass
+`--ptt-button N` (default 5).
+
 ### Using Your Telemetry
 
 iRacing telemetry files (.ibt) are in your `Documents/iRacing/telemetry/` folder. Upload them through the Lap Coaching page, or use the parser directly:

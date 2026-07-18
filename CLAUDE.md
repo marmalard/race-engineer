@@ -470,6 +470,15 @@ streamlit run app/streamlit_app.py
 - [ ] Founder validation: first real Sunday push (toast fires, plan reads right), curve backfill lands Wednesday, prescription matches felt priorities
 - Deferred: prep ledger, run sheet, mental-lap rehearsal, email/Discord channels, per-timeslot split prediction, mid-week conversational adjustments
 
+**PTT Live Engineer + Natural Voice** (complete, branch ptt-engineer — spec docs/superpowers/specs/2026-07-18-ptt-engineer-design.md, plan docs/superpowers/plans/2026-07-18-ptt-engineer.md)
+- [x] Stage A voice: Kokoro-82M engine factory (core/live/voice_engine.py, CPU + sounddevice playback; compat verified on Python 3.14 — torch 2.13 wheels exist, Piper fallback never needed) behind the existing Speaker engine seam; create_speaker is neural-first, SAPI on any failure; Speaker grew a priority slot (say_priority beats cues, cancel_pending on PTT press, in-progress never interrupted) + RadioBudget global spacing (20s floor; PTT answers exempt but spacing-noted)
+- [x] Stage B: core/engineer/ package — RaceState (PURE CarIdx tick machine, lap-boundary gap histories, snapshot() grounds both answer paths; CarIdx arrays bypass the scalar churn guard by design; gaps WITHHELD outside one lap of total race progress — F2Time frames differ, silence beats a wrong number), EngineerCalls (threat/attack/closing-laps, episode re-arm, exact-string pinned), CornerLossTracker (per-corner gap attribution, once per target, self-gates on data quality)
+- [x] Stage C: PTT loop — pygame wheel button (--ptt-button, scripts/probe_ptt_button.py finds the index) → sounddevice capture (10s hard cap) → faster-whisper base.en int8 (background-loaded at connect; failed load speaks a visible startup line) → intents fast path (tactical-question guard falls advice through to Claude) / Haiku with radio tone contract (4s timeout, max_retries=0 — hard ceiling) / "Can't reach the pit wall — stand by." → say_priority; a session flip away from Race mid-hold scratches the recording (no stream leak, no phantom answer)
+- [x] Engineer default ON in Race sessions only (--no-engineer to disable); whole tick-loop engineer block try/except-guarded (never kills the coach); Toolbox coupling-tested; every call/transcript/answer JSONL-logged with snapshot for threshold tuning
+- [x] Deps in the `rig` dependency group (`uv sync --group rig`) — kokoro drags torch+spacy+transformers, friend installs stay lean; pygame-ce not pygame (no upstream cp314 wheel, same import namespace); en-core-web-sm pinned as a wheel URL (kokoro's G2P would shell out to pip, the venv has none); plain `uv sync` strips the group → coach degrades to SAPI with a visible line
+- [ ] Driving validation: voice quality (VOICE constant in voice_engine.py), call thresholds (THREAT_GAP_S/TREND_LAPS/REARM_GAP_S in calls.py, DOMINANCE in corner_loss.py), PTT latency + STT accuracy with the rig mic; find the real Simagic button index via scripts/probe_ptt_button.py (default 5 is a guess)
+- Deferred (spec §9): fuel/pit-window call, model escalation, barge-in, wake-word
+
 **Stage 3: Telemetry Watcher** (complete, merged 2026-07-09)
 - [x] TrackDB session-history methods — sessions/laps tables activated; record_session pre-creates a stub track row for the FK, healed by the processor's early upsert_track (`core/track/track_db.py`)
 - [x] Scanner — 90s write-stability window, sessions-table dedupe, strictly-faster promotion, `is_plausible_lap` 85 m/s gate (ROAD-ONLY assumption — oval needs a track_type-dependent ceiling), `covers_full_lap` 98% gate (`core/watcher/scanner.py`)
@@ -733,7 +742,7 @@ streamlit run app/streamlit_app.py
 - Deployment: `tailscale serve/funnel 8501` + `streamlit run` from the host PC; `.streamlit/config.toml` sets maxUploadSize 400
 
 ### Test Suite
-- 1090 tests passing on master with local fixtures (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`); skip count varies with local gitignored fixtures (race-capture integration tests need Oulton; some lap tests need specific telemetry files)
+- 1090 tests passing on master with local fixtures (`uv run pytest -q` or `.venv/Scripts/python.exe -m pytest -q`); skip count varies with local gitignored fixtures (race-capture integration tests need Oulton; some lap tests need specific telemetry files). Branch ptt-engineer adds ~50 engineer/voice tests.
 - Test fixtures: `tests/fixtures/sample.ibt` (Spa, BMW M2 CS Racing, 2 laps — gitignored)
 - Multi-lap fixture from `C:\Users\antho\Documents\iRacing\telemetry\` (Road America F4, 7 laps)
 - Bathurst fixture also available for corner detection tuning tests

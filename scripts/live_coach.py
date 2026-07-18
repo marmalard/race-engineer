@@ -278,6 +278,9 @@ def main() -> None:
     def _load_stt() -> None:
         nonlocal stt_model
         stt_model = stt.load_model()
+        if stt_model is None:
+            print("PTT: speech model failed to load -- questions will get "
+                  "'Say again?' (run uv sync --group rig).")
         stt_ready.set()
 
     if args.engineer and ptt_poll is not None:
@@ -455,6 +458,12 @@ def main() -> None:
                             "engineer_call", spoken=spoken, dropped=dropped,
                             snapshot=race_state.snapshot(),
                         )
+                if not engineer_active and ptt_poll is not None:
+                    # Session flipped away from Race mid-hold: scratch the
+                    # recording now, or the open stream leaks and the next
+                    # race's first tick fires a phantom release/answer.
+                    if ptt_button.feed(False) == "release":
+                        mic.stop()
                 if engineer_active and ptt_poll is not None:
                     event = ptt_button.feed(ptt_poll())
                     if event == "press":

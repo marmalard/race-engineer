@@ -38,10 +38,11 @@ def neural_engine(
 
     Injection points exist for tests only; production callers pass nothing.
     """
+    import numpy as np  # core dep, always present; the speak closure captures it
+
     factory = pipeline_factory or _default_pipeline_factory
     play = player or _default_player
     try:
-        import numpy as np
         pipeline = factory()
     except Exception:
         logger.warning("Neural voice unavailable; falling back to SAPI",

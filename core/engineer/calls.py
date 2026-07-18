@@ -139,6 +139,8 @@ class EngineerCalls:
                 f"{tenths_phrase(rate)} a lap.")
 
     def _closing_laps(self, state: RaceState) -> str | None:
+        # on_lap only runs at a lap boundary, right after a lap_gaps append,
+        # so the empty-gaps return can't skip past the threshold in practice.
         if self._closing_done or not state.lap_gaps:
             return None
         last = state.lap_gaps[-1]
@@ -152,6 +154,8 @@ class EngineerCalls:
         self._closing_done = True
         gap_txt = (f", gap behind {last.gap_behind_s:.1f}"
                    if last.gap_behind_s is not None else "")
+        minutes = int(CLOSING_TIME_S // 60)
         lead = (f"{_LAP_WORDS.get(CLOSING_LAPS_N, str(CLOSING_LAPS_N))} to go"
-                if lap_hit else "Five minutes to go")
+                if lap_hit
+                else f"{_LAP_WORDS.get(minutes, str(minutes))} minutes to go")
         return f"{lead}, P{last.position}{gap_txt}."

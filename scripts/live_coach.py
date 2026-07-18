@@ -34,6 +34,14 @@ if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
         encoding="utf-8", errors="replace", line_buffering=True
     )
 
+# Load .env ourselves: only Toolbox-spawned instances inherit Streamlit's
+# dotenv-loaded env. Any other spawn (launcher, terminal, scheduler) was
+# silently running credential-less and the PTT Claude path was offline
+# (2026-07-14 watch_telemetry incident — mirrored here).
+from dotenv import load_dotenv  # noqa: E402
+
+load_dotenv()
+
 import irsdk  # noqa: E402
 
 from core.benchmark.reference_store import ReferenceLap, ReferenceStore  # noqa: E402
@@ -233,12 +241,16 @@ def _ptt_worker(audio, stt_model, snapshot: dict, ask, speaker,
         text, source = answer_question(transcript, snapshot, ask=ask)
         speaker.say_priority(text)
         budget.note_priority(_time.monotonic())
+    except Exception:
+        speaker.say_priority("Say again?")
+        return
+    try:
         emit(f"  [PTT] {transcript or '(unintelligible)'} -> {text}")
         if session_log is not None:
             session_log.log("ptt", transcript=transcript, answer=text,
                             source=source, snapshot=snapshot)
     except Exception:
-        speaker.say_priority("Say again?")
+        pass
 
 
 def _diag_fields(d) -> dict:
@@ -452,10 +464,16 @@ def main() -> None:
                     )
                     for line in spoken:
                         emit(f"  [ENG] {line}")
-                        speaker.say(line)
+                    # One utterance so lines can't self-clobber (latest-wins
+                    # queue). Known limit: a lap-summary say() arriving while
+                    # the speaker is mid-utterance can still replace a pending
+                    # engineer call (one-slot latest-wins by design); logged
+                    # as queued, not aired.
+                    if spoken:
+                        speaker.say(" ".join(spoken))
                     if session_log is not None and (spoken or dropped):
                         session_log.log(
-                            "engineer_call", spoken=spoken, dropped=dropped,
+                            "engineer_call", queued=spoken, dropped=dropped,
                             snapshot=race_state.snapshot(),
                         )
                 if not engineer_active and ptt_poll is not None:

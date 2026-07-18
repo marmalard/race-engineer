@@ -87,6 +87,14 @@ def test_closing_laps_line_exact_and_once():
     assert spoken == []
 
 
+def test_closing_laps_fires_late_when_coach_restarts_inside_window():
+    calls = EngineerCalls(wide_open_budget())
+    s = state_with([g(10, behind=2.1)])
+    s._laps_remaining = 3
+    spoken, _ = calls.on_lap(s, now=100.0)
+    assert spoken == ["Three to go, P6, gap behind 2.1."]
+
+
 def test_budget_blocks_and_reports_dropped():
     calls = EngineerCalls(RadioBudget(min_spacing_s=1000.0))
     s = state_with([g(3, ahead=4.0, behind=2.0),

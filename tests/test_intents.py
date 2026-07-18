@@ -73,3 +73,8 @@ def test_tactical_gap_question_falls_through_to_claude():
 def test_one_minute_left_is_singular():
     snap = dict(SNAP, laps_remaining=None, time_remaining_s=62.0)
     assert match_intent("how much longer", snap) == "One minute left."
+
+
+def test_losing_question_falls_through_not_position():
+    assert match_intent("where am I losing him", SNAP) is None
+    assert match_intent("where do I lose time", SNAP) is None

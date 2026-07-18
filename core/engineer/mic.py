@@ -30,10 +30,10 @@ class MicCapture:
             self._n_samples += len(indata)
 
     def start(self) -> None:
-        import sounddevice as sd
         self._frames = []
         self._n_samples = 0
         try:
+            import sounddevice as sd
             self._stream = sd.InputStream(
                 samplerate=SAMPLE_RATE, channels=1, dtype="float32",
                 callback=self._cb,

@@ -477,6 +477,7 @@ streamlit run app/streamlit_app.py
 - [x] Engineer default ON in Race sessions only (--no-engineer to disable); whole tick-loop engineer block try/except-guarded (never kills the coach); Toolbox coupling-tested; every call/transcript/answer JSONL-logged with snapshot for threshold tuning
 - [x] Deps in the `rig` dependency group (`uv sync --group rig`) — kokoro drags torch+spacy+transformers, friend installs stay lean; pygame-ce not pygame (no upstream cp314 wheel, same import namespace); en-core-web-sm pinned as a wheel URL (kokoro's G2P would shell out to pip, the venv has none); plain `uv sync` strips the group → coach degrades to SAPI with a visible line
 - [ ] Driving validation: voice quality (VOICE constant in voice_engine.py), call thresholds (THREAT_GAP_S/TREND_LAPS/REARM_GAP_S in calls.py, DOMINANCE in corner_loss.py), PTT latency + STT accuracy with the rig mic; find the real Simagic button index via scripts/probe_ptt_button.py (default 5 is a guess)
+- Known limits: RadioBudget spaces ENGINEER speech only (cues/verdicts/lap summaries keep their own gates — spec decision 5 narrowed deliberately); a lap-summary utterance can still replace a queued engineer call in the one-slot speaker (JSONL says `queued`, truthfully); multiclass neighbors come from overall CarIdxPosition (class-blind); mic cap is soft by one callback block
 - Deferred (spec §9): fuel/pit-window call, model escalation, barge-in, wake-word
 
 **Stage 3: Telemetry Watcher** (complete, merged 2026-07-09)

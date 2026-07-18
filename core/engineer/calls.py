@@ -146,7 +146,7 @@ class EngineerCalls:
         last = state.lap_gaps[-1]
         laps_left = state._laps_remaining
         time_left = state._time_remaining
-        lap_hit = laps_left is not None and laps_left == CLOSING_LAPS_N
+        lap_hit = (laps_left is not None and 0 < laps_left <= CLOSING_LAPS_N)
         time_hit = (laps_left is None and time_left is not None
                     and time_left <= CLOSING_TIME_S)
         if not (lap_hit or time_hit):
@@ -155,7 +155,7 @@ class EngineerCalls:
         gap_txt = (f", gap behind {last.gap_behind_s:.1f}"
                    if last.gap_behind_s is not None else "")
         minutes = int(CLOSING_TIME_S // 60)
-        lead = (f"{_LAP_WORDS.get(CLOSING_LAPS_N, str(CLOSING_LAPS_N))} to go"
+        lead = (f"{_LAP_WORDS.get(laps_left, str(laps_left))} to go"
                 if lap_hit
                 else f"{_LAP_WORDS.get(minutes, str(minutes))} minutes to go")
         return f"{lead}, P{last.position}{gap_txt}."

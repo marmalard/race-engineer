@@ -54,3 +54,9 @@ def test_claude_failure_gives_offline_line():
 def test_empty_transcript_asks_for_a_repeat():
     text, source = answer_question("", SNAP, ask=None)
     assert (text, source) == ("Say again?", "fast")
+
+
+def test_tone_contract_explains_trend_sign():
+    from core.coaching.prompts.engineer import ENGINEER_SYSTEM_PROMPT
+    assert "trend_s_per_lap" in ENGINEER_SYSTEM_PROMPT
+    assert "negative" in ENGINEER_SYSTEM_PROMPT

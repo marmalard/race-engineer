@@ -36,6 +36,9 @@ def match_intent(transcript: str, snap: dict) -> str | None:
     if q.startswith(_TACTICAL_STARTS):
         return None
 
+    if "losing" in q or "lose " in q:
+        return None  # corner-loss territory -- let Claude own it
+
     if "gap" in q or "how far" in q:
         if "behind" in q or "back" in q:
             if behind is None:

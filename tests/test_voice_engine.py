@@ -17,7 +17,7 @@ def test_neural_engine_speaks_through_player():
     played = []
 
     class FakePipeline:
-        def __call__(self, text, voice):
+        def __call__(self, text, voice, speed):
             yield ("g", "p", np.zeros(2400, dtype=np.float32))
             yield ("g", "p", np.ones(2400, dtype=np.float32))
 
@@ -30,6 +30,39 @@ def test_neural_engine_speaks_through_player():
     assert engine is not None
     engine("hello")
     assert played == [(4800, voice_engine.SAMPLE_RATE)]
+
+
+def test_speak_passes_the_speed_constant():
+    seen = {}
+
+    class FakePipeline:
+        def __call__(self, text, voice, speed):
+            seen["speed"] = speed
+            yield ("g", "p", np.ones(2400, dtype=np.float32))
+
+    engine = voice_engine.neural_engine(
+        pipeline_factory=FakePipeline, player=lambda wav, sr: None
+    )
+    engine("hello")
+    assert seen["speed"] == voice_engine.SPEED
+
+
+def test_quiet_synthesis_is_peak_normalized():
+    # Field note 2026-07-18: raw Kokoro output was inaudible under game
+    # audio. A quiet waveform must reach TARGET_PEAK before playback.
+    played = []
+
+    class FakePipeline:
+        def __call__(self, text, voice, speed):
+            yield ("g", "p", np.full(2400, 0.2, dtype=np.float32))
+
+    engine = voice_engine.neural_engine(
+        pipeline_factory=FakePipeline, player=lambda wav, sr: played.append(wav)
+    )
+    engine("hello")
+    peak = float(np.max(np.abs(played[0])))
+    assert abs(peak - voice_engine.TARGET_PEAK * voice_engine.GAIN) < 1e-6
+    assert peak <= 1.0  # gain values > 1.0 must clip, never overflow
 
 
 def test_create_speaker_uses_neural_when_available(monkeypatch):

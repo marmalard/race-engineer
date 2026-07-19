@@ -17,6 +17,14 @@ logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 24000     # Kokoro's fixed output rate
 VOICE = "am_michael"    # calm US male -- the engineer register
+SPEED = 1.15            # >1 = faster; field note 2026-07-18: default read slow
+# Kokoro's raw waveform peaks well below full scale, which made the voice
+# inaudible under game audio (SAPI plays at system TTS volume, so the old
+# voice cut through). Every utterance is peak-normalized to TARGET_PEAK,
+# then GAIN applies on top (values > 1.0 clip radio-style -- raise it if
+# normalization alone still loses to engine noise).
+TARGET_PEAK = 0.95
+GAIN = 1.0
 
 
 def _default_pipeline_factory():
@@ -51,12 +59,16 @@ def neural_engine(
 
     def speak(text: str) -> None:
         chunks = []
-        for result in pipeline(text, voice=VOICE):
+        for result in pipeline(text, voice=VOICE, speed=SPEED):
             audio = result[2] if isinstance(result, tuple) else result.audio
             if hasattr(audio, "detach"):
                 audio = audio.detach().cpu().numpy()
             chunks.append(np.asarray(audio, dtype=np.float32))
         if chunks:
-            play(np.concatenate(chunks), SAMPLE_RATE)
+            wav = np.concatenate(chunks)
+            peak = float(np.max(np.abs(wav)))
+            if peak > 0.0:
+                wav = np.clip(wav * (TARGET_PEAK * GAIN / peak), -1.0, 1.0)
+            play(wav, SAMPLE_RATE)
 
     return speak
